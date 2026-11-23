@@ -1,0 +1,28 @@
+## Interface: 16001
+## Title: Recipe Vacuum
+## Notes: Shows the recipes you don't know yet in the profession window, and where they come from.
+## Category: Jig Boltgrip's Toolkit
+## Author: Jig Boltgrip
+## Version: @project-version@
+## SavedVariables: RecipeVacuumDB
+## IconTexture: Interface\GossipFrame\VendorGossipIcon
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\AceComm-3.0\ChatThrottleLib.lua
+Libs\AceComm-3.0\AceComm-3.0.lua
+Libs\JigBoltgripToolkit\JigBoltgripToolkit.lua
+
+Core.lua
+Sources.lua
+Finds.lua
+Sharing.lua
+Settings.lua
+Record.lua
+Filter.lua
+Unlearned.lua
+RecipeList.lua
+
+#@debug@
+Dev.lua
+#@end-debug@
