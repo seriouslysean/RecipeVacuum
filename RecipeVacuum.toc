@@ -4,6 +4,7 @@
 ## Category: Jig Boltgrip's Toolkit
 ## Author: Jig Boltgrip
 ## Version: @project-version@
+## X-License: GPL-3.0
 ## SavedVariables: RecipeVacuumDB
 ## IconTexture: Interface\GossipFrame\VendorGossipIcon
 
@@ -13,6 +14,7 @@ Libs\AceComm-3.0\ChatThrottleLib.lua
 Libs\AceComm-3.0\AceComm-3.0.lua
 Libs\JigBoltgripToolkit\JigBoltgripToolkit.lua
 
+Data\Included.lua
 Core.lua
 Sources.lua
 Finds.lua

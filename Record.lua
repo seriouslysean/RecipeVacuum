@@ -1,9 +1,9 @@
 local addonName, ns = ...
 
 -- Self Found: when a trainer or vendor window opens, save the recipes it teaches or sells,
--- for every profession, with the NPC, the player's faction and where the player stands.
--- Keys follow another addon's scanner (see Sources.lua): recipe IDs from trainer service
--- tooltips, item IDs for recipe items sold by vendors.
+-- for every profession, into the self-found layer (Core.lua), with the NPC, the player's
+-- faction and where the player stands. Keys follow another addon's Scanner.lua: recipe
+-- IDs from trainer service tooltips, item IDs for recipe items sold by vendors.
 
 local RECIPE_ITEM_CLASS = Enum.ItemClass.Recipe
 
@@ -17,8 +17,11 @@ local function GetPlayerLocation()
 	return mapID, math.floor(x * 1000 + 0.5) / 1000, math.floor(y * 1000 + 0.5) / 1000
 end
 
+local BUILD = tonumber((select(2, GetBuildInfo())))
+
 -- The NPC the player is talking to, or nil when the client keeps it hidden (secret values).
-local function GetNPC()
+-- Its name and position go into the shared NPC table once per scan.
+local function CurrentNPC()
 	local guid = UnitGUID("npc")
 	if issecretvalue(guid) or not guid then
 		return nil
@@ -27,50 +30,49 @@ local function GetNPC()
 	if unitType ~= "Creature" then
 		return nil
 	end
+	npcID = tonumber(npcID)
+	local seen = GetServerTime()
 	local mapID, x, y = GetPlayerLocation()
-	return {
-		npcID = tonumber(npcID), npcName = UnitName("npc"), faction = (UnitFactionGroup("player")),
-		mapID = mapID, x = x, y = y, seen = time(),
-	}
+	ns.NoteNPC(ns.db.npcs, npcID, UnitName("npc"), mapID, x, y, seen)
+	return { npcID = npcID, faction = (UnitFactionGroup("player")), seen = seen }
 end
 
--- Adds or updates one source; returns true when it is new. npc carries the NPC and where
--- the player stood, looked up once per scan.
-local function Save(key, sourceType, npc, details)
-	local entries = ns.db.sources[key]
-	if not entries then
-		entries = {}
-		ns.db.sources[key] = entries
+local DETAIL_FIELDS = { "faction", "skill", "cost", "price", "limited", "spellID" }
+
+-- Adds or updates one self-found observation in found[bucket][id]; returns isNew and
+-- whether anything other than the time seen changed (which gives it a new revision).
+local function Save(bucket, id, kind, npc, details)
+	local observations = ns.db.found[bucket][id]
+	if not observations then
+		observations = {}
+		ns.db.found[bucket][id] = observations
 	end
-	local entry
-	for _, existing in ipairs(entries) do
-		if existing.type == sourceType and existing.npcID == npc.npcID then
-			entry = existing
+	local observation
+	for _, existing in ipairs(observations) do
+		if existing.kind == kind and existing.npc == npc.npcID then
+			observation = existing
 			break
 		end
 	end
-	local isNew = entry == nil
+	local isNew = observation == nil
 	if isNew then
-		entry = {}
-		table.insert(entries, entry)
+		observation = { kind = kind, npc = npc.npcID }
+		table.insert(observations, observation)
 	end
-	local firsthand = entry.origin ~= "self"
-	if firsthand then
-		wipe(entry)
-		entry.type, entry.origin, entry.npcID = sourceType, "self", npc.npcID
+	details.faction = npc.faction
+	local changed = isNew
+	for _, field in ipairs(DETAIL_FIELDS) do
+		if observation[field] ~= details[field] then
+			observation[field] = details[field]
+			changed = true
+		end
 	end
-	local betterID = details.spellID and details.spellID ~= entry.spellID
-	entry.npcName = npc.npcName
-	entry.mapID, entry.x, entry.y = npc.mapID, npc.x, npc.y
-	entry.faction = npc.faction
-	entry.seen = npc.seen
-	for field, value in pairs(details) do
-		entry[field] = value
+	-- No deletion on absence: a visit only refreshes when and on which build it was seen.
+	observation.seen, observation.build = npc.seen, BUILD
+	if changed then
+		ns.MarkFind(observation, bucket == "items" and "item" or "recipe", id)
 	end
-	if firsthand or betterID then
-		ns.MarkFind(key, entry)
-	end
-	return isNew, firsthand or betterID
+	return isNew, changed
 end
 
 local function Announce(count, npc)
@@ -88,15 +90,15 @@ end
 -- scan (as the window's own checkboxes do) and put the player's choice back after.
 local TRAINER_SERVICE_TYPES = { "available", "unavailable", "used" }
 
-local function RemoveTrainerFallback(key, npcID, skill)
-	local entries = ns.db.sources[key]
-	if entries then
-		for index, entry in ipairs(entries) do
-			if entry.type == "trainer" and entry.npcID == npcID and entry.skill == skill then
-				ns.ForgetFind(entry)
-				table.remove(entries, index)
-				if #entries == 0 then
-					ns.db.sources[key] = nil
+-- A schema 1 trainer find for the same NPC, now seen with its recipe ID, is replaced.
+local function RemoveTrainerFallback(name, npcID)
+	local observations = ns.db.found.trainerNames[name]
+	if observations then
+		for index, observation in ipairs(observations) do
+			if observation.npc == npcID then
+				table.remove(observations, index)
+				if #observations == 0 then
+					ns.db.found.trainerNames[name] = nil
 				end
 				return true
 			end
@@ -108,7 +110,7 @@ local function RecordTrainer()
 	if not ns.db.selfFound or not IsTradeskillTrainer() then
 		return 0
 	end
-	local npc = GetNPC()
+	local npc = CurrentNPC()
 	if not npc then
 		return 0
 	end
@@ -133,13 +135,16 @@ local function RecordTrainer()
 			-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id.
 			local tooltip = C_TooltipInfo.GetTrainerService(index)
 			local spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
-			local nameKey = ns.NameKey(name)
-			local isNew, updated = Save(spellID or nameKey, "trainer", npc, { skill = skillRank, cost = cost, name = name })
-			changed = changed or updated
-			if spellID and RemoveTrainerFallback(nameKey, npc.npcID, skillRank) then
-				changed = true
-			elseif isNew then
-				count = count + 1
+			-- Services without a recipe ID (no Spell tooltip) are not recipes Recipe Vacuum can
+			-- list; name keys are no longer written.
+			if spellID then
+				local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })
+				changed = changed or updated
+				if RemoveTrainerFallback(ns.NameKey(name), npc.npcID) then
+					changed = true
+				elseif isNew then
+					count = count + 1
+				end
 			end
 		end
 	end
@@ -158,7 +163,7 @@ local function RecordVendor()
 	if not ns.db.selfFound then
 		return 0
 	end
-	local npc = GetNPC()
+	local npc = CurrentNPC()
 	if not npc then
 		return 0
 	end
@@ -181,10 +186,7 @@ local function RecordVendor()
 				ns.db.pendingItems[itemID] = { name = recipeName:lower(), spellID = info.spellID }
 			end
 			if recipeName then
-				local isNew, updated = Save(ns.ItemKey(itemID), "vendor", npc, {
-					itemID = itemID,
-					itemName = itemName,
-					recipeName = recipeName,
+				local isNew, updated = Save("items", itemID, "vendor", npc, {
 					spellID = info.spellID,
 					price = info.price,
 					limited = info.numAvailable >= 0,

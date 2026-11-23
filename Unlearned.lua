@@ -75,7 +75,8 @@ local function GetUnlearnedCategories(professionInfo)
 
 	-- One pass over the profession: unlearned recipes, flagged when another faction's, plus,
 	-- only while recorded vendor items wait to be linked, a name and ID index to link them.
-	local pending = next(ns.db.pendingItems) and ns.db.pendingItems
+	local db = ns.db
+	local pending = next(db.pendingItems) or next(db.found.trainerNames) or next(db.shared.trainerNames)
 	local byName, inProfession = pending and {}, pending and {}
 	local unlearned = {}
 	local playerFaction = UnitFactionGroup("player")
@@ -86,7 +87,7 @@ local function GetUnlearnedCategories(professionInfo)
 			indexComplete = false
 		elseif C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID) then
 			if pending then
-				local nameKey = recipeInfo.name:lower()
+				local nameKey = ns.NameKey(recipeInfo.name)
 				byName[nameKey] = byName[nameKey] or {}
 				table.insert(byName[nameKey], recipeInfo.recipeID)
 				inProfession[recipeInfo.recipeID] = nameKey
@@ -105,7 +106,7 @@ local function GetUnlearnedCategories(professionInfo)
 		end
 	end
 	if pending and indexComplete then
-		ns.LinkPendingItems(byName, inProfession, professionInfo.profession)
+		ns.LinkPending(byName, inProfession, professionInfo.profession)
 	end
 
 	local categories, byID, seen = {}, {}, {}

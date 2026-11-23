@@ -2,7 +2,7 @@
 
 A WoW Forever addon that shows the recipes you don't know yet in Blizzard's profession window, and where they come from. It builds on the window Forever ships and follows Blizzard's design language.
 
-By default, **Shared discoveries** records trainer and vendor finds and quietly exchanges missing observations with friends, guildmates and group members running Recipe Vacuum. Choose **Self Found** under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum to pause sharing and show only firsthand finds. **Announce new finds** controls personal visit messages.
+By default, **Everything** records trainer and vendor finds and quietly exchanges missing observations with friends, guildmates and group members running Recipe Vacuum. Choose **Self Found** under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum to pause sharing and show only firsthand finds. **Announce new finds** controls personal visit messages.
 
 To contribute discoveries collected while playing alone, choose **Export Finds**, copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
 

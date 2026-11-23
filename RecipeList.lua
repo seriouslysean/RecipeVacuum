@@ -4,8 +4,13 @@ local _, ns = ...
 -- One icon per known source type, in ns.sourceOrder; Blizzard's search glass when no source
 -- is known yet; its red X when the character can never learn the recipe. Blizzard's skill-up
 -- arrow on the left is left alone.
-local ICON_SIZE = 14
+local ICON_SIZE = 12
 local ICON_GAP = 4
+-- Source marks use Blizzard's disabled look for things not yet had: desaturated at half
+-- alpha, as the Classic mount journal draws empty and disabled entries
+-- (Blizzard_MountCollection.lua). Every mark follows it, the red X included; the
+-- "Full color source icons" option turns dimming off.
+local MARK_ALPHA = 0.5
 local MAX_ICONS = #ns.sourceOrder
 
 -- Our per-row state, kept in a weak-keyed side table instead of on Blizzard's pooled rows.
@@ -113,6 +118,9 @@ local function UpdateRow(row, node)
 				ns.SetSourceTexture(icon.Texture, mark)
 				icon.mark = mark
 			end
+			local dimmed = not ns.db.fullColorIcons
+			icon.Texture:SetDesaturated(dimmed)
+			icon.Texture:SetAlpha(dimmed and MARK_ALPHA or 1)
 			icon:Show()
 			anchor, anchorPoint = icon, "LEFT"
 		else

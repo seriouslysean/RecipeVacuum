@@ -1,12 +1,31 @@
 local _, ns = ...
 local comm = {}
 LibStub("AceComm-3.0"):Embed(comm)
-local prefix = "RecipeVacuum1"
+
+-- Sharing is automatic and invisible: hidden addon messages (CHAT_MSG_ADDON) only.
+-- 1. Probe on PROBE_PREFIX: collection ID and revision, on joining a guild or group, on
+--    reconnecting, or when a friend comes online. Replies follow another addon' version check.
+-- 2. A peer that is behind whispers on DATA_PREFIX: "G <collection> <after>".
+-- 3. The owner replies with one AceComm BULK message: "D <collection> <after> <through> <payload>",
+--    every observation after <after> up to <through>, capped near 4 kB encoded; the receiver
+--    asks again from <through> until it reaches the tip. This is the request-plus-bulk shape
+--    of another addon Transmission.lua, with data on its own prefix as another addon keeps its
+--    progress messages on another addon. AceComm splits and reassembles; ChatThrottleLib
+--    paces sends and requeues throttled ones, so no manual retry is needed.
+-- The version is in both prefixes; messages from other versions are ignored.
+local PROBE_PREFIX = "RecipeVacuum2"
+local DATA_PREFIX = "RecipeVacuum2D"
+local SEND_LIMIT = 4000     -- encoded bytes per reply (about 16 AceComm chunks)
+local RECEIVE_LIMIT = 6000  -- larger replies are rejected before decoding
+local EXPANDED_LIMIT = 65536 -- decompressed bytes accepted before CBOR decoding
+local MAX_ROWS = 64
+local REQUEST_TIMEOUT = 30
+
 local enabled, inWorld, deferred
 local friends, waiting, replied = {}, {}, {}
 local active, sourcesDirty
 local home, instance, guild, rosterRequested
-local cachedPages, offerQueued
+local cachedReplies, offerQueued = {}, nil
 
 local function Ready()
 	if not enabled then return false end
@@ -18,7 +37,11 @@ local function Ready()
 end
 
 local function Send(text, channel, target)
-	comm:SendCommMessage(prefix, text, channel, target, "BULK")
+	comm:SendCommMessage(PROBE_PREFIX, text, channel, target, "BULK")
+end
+
+local function SendData(text, target)
+	comm:SendCommMessage(DATA_PREFIX, text, "WHISPER", target, "BULK")
 end
 
 local function Offer(kind)
@@ -53,7 +76,7 @@ local function Broadcast(kind)
 end
 
 function ns.ScheduleFindOffer()
-	cachedPages = nil
+	wipe(cachedReplies)
 	if not enabled or offerQueued then return end
 	-- Trainer and merchant scans may discover dozens of recipes in one visit.
 	offerQueued = true
@@ -70,38 +93,31 @@ local function Encode(rows)
 end
 
 local function Decode(text)
+	if #text > RECEIVE_LIMIT then return nil end
 	local compressed = C_EncodingUtil.DecodeBase64(text)
 	local bytes = compressed and C_EncodingUtil.DecompressString(compressed, Enum.CompressionMethod.Deflate)
-	return bytes and C_EncodingUtil.DeserializeCBOR(bytes)
+	if not bytes or #bytes > EXPANDED_LIMIT then return nil end
+	return C_EncodingUtil.DeserializeCBOR(bytes)
 end
 
-local function SendPage(sender, after, selection)
-	-- Keep only eight recent pages. An identical request reuses the encoded reply.
-	cachedPages = cachedPages or {}
-	local slot = math.floor(after / ns.findPageSize) % 8
-	local page = cachedPages[slot]
-	if not page or page.after ~= after then
-		page = { after = after }
-		cachedPages[slot] = page
-	end
-	local message = selection and page.selection == selection and page.details or (not selection and page.index)
-	if not message then
-		local last, rows = ns.FindPage(after, selection)
+-- Builds the reply for one request, halving the row count until it fits SEND_LIMIT.
+-- Replies are cached per starting revision, so several peers asking for the same range
+-- after one guild probe cost one encode; any new find clears the cache.
+local function Reply(after)
+	local cached = cachedReplies[after]
+	if cached then return cached end
+	local limit = MAX_ROWS
+	while true do
+		local rows, through = ns.FindsSince(after, limit)
 		local encoded = Encode(rows)
-		if not encoded then return end
-		message = ("%s %s %d %d %s"):format(selection and "D" or "I", ns.db.exchange.id, after, last, encoded)
-		if selection then
-			page.selection, page.details = selection, message
-		else
-			page.index = message
+		if not encoded then return nil end
+		if #encoded <= SEND_LIMIT or limit <= 1 then
+			local message = ("D %s %d %d %s"):format(ns.db.exchange.id, after, through, encoded)
+			cachedReplies[after] = message
+			return message
 		end
+		limit = math.floor(limit / 2)
 	end
-	Send(message, "WHISPER", sender)
-end
-
-local function FinishPageRequest()
-	if active and active.timer then active.timer:Cancel() end
-	active = nil
 end
 
 local function FlushChanges()
@@ -112,23 +128,28 @@ local function FlushChanges()
 end
 
 local NextPeer
-local function Ask(pending)
-	if pending.timer then pending.timer:Cancel() end
-	local mask = pending.selection and (" " .. pending.selection) or ""
-	Send(("G %s %d%s"):format(pending.id, pending.after, mask), "WHISPER", pending.sender)
-	pending.timer = C_Timer.NewTimer(60, function()
-		if active ~= pending then return end
-		if pending.retries > 0 and Ready() and Trusted(pending.sender) then
-			pending.retries = pending.retries - 1
-			Ask(pending)
+local function FinishRequest()
+	if active and active.timer then active.timer:Cancel() end
+	active = nil
+	FlushChanges()
+	NextPeer()
+end
+
+local function Ask(peer)
+	if peer.timer then peer.timer:Cancel() end
+	SendData(("G %s %d"):format(peer.id, peer.after), peer.sender)
+	peer.timer = C_Timer.NewTimer(REQUEST_TIMEOUT, function()
+		if active ~= peer then return end
+		if peer.retries > 0 and Ready() and Trusted(peer.sender) then
+			peer.retries = peer.retries - 1
+			Ask(peer)
 		else
-			FinishPageRequest()
-			FlushChanges()
-			NextPeer()
+			FinishRequest()
 		end
 	end)
 end
 
+-- One outstanding request at a time; the rest wait.
 NextPeer = function()
 	if active or not Ready() then return end
 	for sender, peer in pairs(waiting) do
@@ -143,7 +164,12 @@ NextPeer = function()
 end
 
 local function QueuePeer(sender, id, tip)
-	if (ns.db.exchange.received[id] or 0) >= tip then return end
+	local received = ns.db.exchange.received
+	-- A tip below what we saved means that collection was reset: start it again from zero.
+	if received[id] and tip < received[id] then
+		received[id] = 0
+	end
+	if (received[id] or 0) >= tip then return end
 	local peer = active and active.sender == sender and active or waiting[sender]
 	if peer and peer.id == id then
 		peer.tip = math.max(peer.tip, tip)
@@ -173,68 +199,72 @@ local function ScheduleChannelReply(channel)
 		end
 	end)
 end
-local function OnMessage(_, message, channel, sender)
+
+local function ParseHeader(message)
+	local kind, id, number, rest = message:match("^(%u) (%d+%-%d+) (%d+)(.*)$")
+	local revision = tonumber(number)
+	if not revision or revision > 2^32 or #id > 32 then return nil end
+	return kind, id, revision, rest
+end
+
+local function OnProbe(_, message, channel, sender)
 	if not Ready() or issecretvalue(sender) or issecretvalue(message) then return end
 	if channel == "WHISPER" then
 		if not Trusted(sender) then return end
 	elseif not discoveryChannels[channel] then return end
-	local kind, id, number, rest = message:match("^([HOAGID]) (%d+%-%d+) (%d+)(.*)$")
-	local revision = tonumber(number)
-	if not revision or revision > 2^32 or #id > 32 then return end
+	local kind, id, revision, rest = ParseHeader(message)
+	if not kind or rest ~= "" or id == ns.db.exchange.id then return end
+	if kind == "H" then
+		if channel == "WHISPER" then
+			-- Friends outside the guild and group: answer the prober directly.
+			local now = GetTime()
+			if not replied[sender] or now - replied[sender] >= REPLY_DELAY then
+				replied[sender] = now
+				Send(Offer("A"), "WHISPER", sender)
+			end
+		else
+			ScheduleChannelReply(channel)
+		end
+	elseif kind == "A" then
+		replied[sender] = GetTime()
+	elseif kind ~= "O" then
+		return
+	end
+	QueuePeer(sender, id, revision)
+end
+
+local function OnData(_, message, channel, sender)
+	if not Ready() or channel ~= "WHISPER" or issecretvalue(sender) or issecretvalue(message) then return end
+	if not Trusted(sender) then return end
+	local kind, id, after, rest = ParseHeader(message)
 	local exchange = ns.db.exchange
-	if kind == "H" or kind == "O" or kind == "A" then
-		if rest ~= "" or id == exchange.id then return end
-		if kind == "H" then
-			if channel == "WHISPER" then
-				-- Friends outside the guild and group: answer the prober directly.
-				local now = GetTime()
-				if not replied[sender] or now - replied[sender] >= REPLY_DELAY then
-					replied[sender] = now
-					Send(Offer("A"), "WHISPER", sender)
-				end
-			else
-				ScheduleChannelReply(channel)
-			end
-		elseif kind == "A" then
-			replied[sender] = GetTime()
-		end
-		QueuePeer(sender, id, revision)
-	elseif channel == "WHISPER" and kind == "G" then
-		if id ~= exchange.id or revision >= exchange.revision then return end
-		local mask = rest:match("^ ([01]+)$")
-		if rest ~= "" and (not mask or #mask > ns.findPageSize) then return end
-		SendPage(sender, revision, mask)
-	elseif channel == "WHISPER" and (kind == "I" or kind == "D") then
-		local pending = active
-		if not pending or pending.sender ~= sender or pending.id ~= id or pending.after ~= revision then return end
-		if (kind == "D") ~= (pending.selection ~= nil) then return end
-		local last, encoded = rest:match("^ (%d+) (%S+)$")
-		last = tonumber(last)
-		if not last or last <= revision or last > revision + ns.findPageSize then return end
+	if kind == "G" then
+		if rest ~= "" or id ~= exchange.id or after >= exchange.revision then return end
+		local reply = Reply(after)
+		if reply then SendData(reply, sender) end
+	elseif kind == "D" then
+		-- Accept only the reply to our own outstanding request.
+		local peer = active
+		if not peer or peer.sender ~= sender or peer.id ~= id or peer.after ~= after then return end
+		local through, encoded = rest:match("^ (%d+) (%S+)$")
+		through = tonumber(through)
+		if not through or through <= after or through >= 2^32 then return end
 		local ok, rows = pcall(Decode, encoded)
-		if not ok or not rows then return end
-		if kind == "I" then
-			local mask = ns.SelectFinds(rows, last - revision)
-			if not mask then return end
-			if mask:find("1", 1, true) then
-				pending.selection, pending.retries = mask, 2
-				Ask(pending)
-				return
-			end
-		else
-			if last ~= revision + #pending.selection then return end
-			local changed = ns.MergeFindPage(rows)
-			if changed == nil then return end
-			sourcesDirty = sourcesDirty or changed
+		local changed = ok and rows and ns.MergeFinds(rows, MAX_ROWS)
+		if changed == nil or not (ok and rows) then
+			FinishRequest() -- invalid batch: nothing was written
+			return
 		end
-		exchange.received[id] = last
-		if last < pending.tip then
-			pending.after, pending.selection, pending.retries = last, nil, 2
-			Ask(pending)
+		-- The owner may have found more since its probe.
+		peer.tip = math.max(peer.tip, through)
+		sourcesDirty = sourcesDirty or changed
+		-- The cursor moves only after the whole batch validated and merged.
+		exchange.received[id] = through
+		if through < peer.tip then
+			peer.after, peer.retries = through, 2
+			Ask(peer)
 		else
-			FinishPageRequest()
-			FlushChanges()
-			NextPeer()
+			FinishRequest()
 		end
 	end
 end
@@ -332,15 +362,18 @@ function ns.SetSharing(value)
 	if not inWorld or enabled == value then return end
 	enabled = value
 	if enabled then
-		comm:RegisterComm(prefix, OnMessage)
+		comm:RegisterComm(PROBE_PREFIX, OnProbe)
+		comm:RegisterComm(DATA_PREFIX, OnData)
 		for _, event in ipairs(events) do frame:RegisterEvent(event) end
 		channelDirty, friendDirty, forceChannels, forceFriends = true, true, true, true
 		C_FriendList.ShowFriends()
 		ScheduleRefresh()
 	else
-		comm:UnregisterComm(prefix)
+		comm:UnregisterComm(PROBE_PREFIX)
+		comm:UnregisterComm(DATA_PREFIX)
 		for _, event in ipairs(events) do frame:UnregisterEvent(event) end
-		FinishPageRequest()
+		if active and active.timer then active.timer:Cancel() end
+		active = nil
 		wipe(waiting)
 		for channel, timer in pairs(replyTimers) do
 			timer:Cancel()
@@ -351,7 +384,8 @@ function ns.SetSharing(value)
 		wipe(replied)
 		wipe(bnetPresence)
 		wipe(changedFriends)
-		home, instance, guild, deferred, cachedPages = nil, nil, nil, nil, nil
+		home, instance, guild, deferred = nil, nil, nil, nil
+		wipe(cachedReplies)
 		rosterRequested = nil
 	end
 end

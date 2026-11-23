@@ -1,179 +1,162 @@
 local _, ns = ...
 
--- The revision belongs to the account's collection. Alts advertise the same collection,
--- and an interrupted recipient resumes after the last complete page it saved.
-ns.findPageSize = 32
+-- The account's self-found finds form one collection with an ID and a revision counter.
+-- Every observation carries the revision of its last meaningful change; a peer that saved
+-- revision N asks for everything after N. A new collection ID is issued whenever revisions
+-- are renumbered (a migration or a reset), so peers that saved a higher number resync from
+-- zero instead of believing they are current.
 
-function ns.ForgetFind(entry)
-	if entry.shareRevision then
-		ns.db.exchange.keys[entry.shareRevision] = nil
-	end
+local revisions = {} -- in memory only: { { rev, observation, ref = "recipe" | "item", id }, ... } in rev order
+
+local function NewCollectionID()
+	return ("%d-%d"):format(GetServerTime(), math.random(1000000000))
 end
 
-function ns.MarkFind(key, entry)
+function ns.MarkFind(observation, ref, id)
 	local exchange = ns.db.exchange
-	ns.ForgetFind(entry)
 	exchange.revision = exchange.revision + 1
-	entry.shareRevision = exchange.revision
-	exchange.keys[entry.shareRevision] = key
+	observation.rev = exchange.revision
+	table.insert(revisions, { rev = observation.rev, observation = observation, ref = ref, id = id })
 	ns.ScheduleFindOffer()
 end
 
+-- Rebuilds the revision index from the saved layer; it is derived data, so it is not saved.
 function ns.InitFinds()
-	local exchange = ns.db.exchange
-	if exchange and exchange.keys then return end
-	exchange = exchange or {
-		id = ("%d-%d"):format(GetServerTime(), math.random(1000000000)),
-		revision = 0, received = {},
+	local db = ns.db
+	if not db.exchange then
+		db.exchange = { id = NewCollectionID(), revision = 0, received = {} }
+	end
+	wipe(revisions)
+	local unrevised = {}
+	for ref, bucket in pairs({ recipe = db.found.recipes, item = db.found.items }) do
+		for id, observations in pairs(bucket) do
+			for _, observation in ipairs(observations) do
+				local row = { rev = observation.rev, observation = observation, ref = ref, id = id }
+				table.insert(observation.rev and revisions or unrevised, row)
+			end
+		end
+	end
+	table.sort(revisions, function(a, b) return a.rev < b.rev end)
+	local highest = revisions[#revisions] and revisions[#revisions].rev or 0
+	if highest > db.exchange.revision then
+		-- Saved revisions ahead of the counter mean the counter was reset: renumber.
+		db.exchange.id, db.exchange.revision = NewCollectionID(), highest
+	end
+	for _, row in ipairs(unrevised) do
+		db.exchange.revision = db.exchange.revision + 1
+		row.observation.rev, row.rev = db.exchange.revision, db.exchange.revision
+		table.insert(revisions, row)
+	end
+end
+
+-- Wire rows carry IDs only: names of items, recipes and quests are read from each client in
+-- its own language. NPC names are the one exception (no client lookup by NPC ID).
+local function WireRow(row)
+	local observation = row.observation
+	local npc = ns.db.npcs[observation.npc] or {}
+	local mapID, position
+	for candidate, saved in pairs(npc.positions or {}) do
+		if not position or (saved.seen or 0) > (position.seen or 0) then
+			mapID, position = candidate, saved
+		end
+	end
+	return {
+		k = observation.kind, r = row.ref == "recipe" and row.id or nil, i = row.ref == "item" and row.id or nil,
+		n = observation.npc, nm = npc.name, m = mapID, x = position and position.x, y = position and position.y,
+		f = observation.faction, s = observation.seen, b = observation.build,
+		sk = observation.skill, c = observation.cost, p = observation.price, l = observation.limited,
+		sp = observation.spellID,
 	}
-	ns.db.exchange, exchange.keys = exchange, {}
-	for key, entries in pairs(ns.db.sources) do
-		for _, entry in ipairs(entries) do
-			if entry.origin == "self" then
-				if entry.shareRevision then
-					exchange.keys[entry.shareRevision] = key
-				else
-					ns.MarkFind(key, entry)
-				end
+end
+
+-- Observations after revision `after`, oldest first, as wire rows: at most `limit` rows.
+-- Returns the rows and the revision they cover through.
+function ns.FindsSince(after, limit)
+	local rows, through = {}, after
+	for _, row in ipairs(revisions) do
+		-- A row is stale when its observation changed again later; the newer row covers it.
+		if row.rev > after and row.observation.rev == row.rev then
+			if #rows >= limit then
+				return rows, through
 			end
+			table.insert(rows, WireRow(row))
+			through = row.rev
 		end
 	end
+	return rows, ns.db.exchange.revision
 end
 
--- Use an allowlist for both exchange and export. Personal settings and session context
--- never belong to an observation. Provenance is assigned by the receiving account.
-local fields = {
-	type = "string", npcID = "number", npcName = "string", faction = "string",
-	mapID = "number", x = "number", y = "number", seen = "number",
-	name = "string", skill = "number", cost = "number",
-	itemID = "number", itemName = "string", recipeName = "string", spellID = "number",
-	price = "number", limited = "boolean", linkedRecipeID = "number",
-}
-
-local function Observation(key, entry)
-	local row = { key = key }
-	for field in pairs(fields) do row[field] = entry[field] end
-	if row.itemID and not row.recipeName then
-		local pending = ns.db.pendingItems[row.itemID]
-		row.recipeName = pending and pending.name
-		if not row.recipeName and row.itemName then
-			row.recipeName = row.itemName:match("^.-:%s*(.+)$") or row.itemName
-		end
-		if not row.recipeName and not row.spellID then
-			row.linkedRecipeID = ns.db.itemRecipe[row.itemID]
-		end
-	end
-	return row
-end
-
-function ns.FindPage(after, selection)
-	local exchange = ns.db.exchange
-	local last = math.min(after + (selection and #selection or ns.findPageSize), exchange.revision)
-	local rows = {}
-	for revision = after + 1, last do
-		local offset = revision - after
-		local key = exchange.keys[revision]
-		if key and (not selection or selection:sub(offset, offset) == "1") then
-			for _, entry in ipairs(ns.db.sources[key]) do
-				if entry.shareRevision == revision then
-					local row = selection and Observation(key, entry) or { offset, key, entry.npcID, entry.spellID }
-					table.insert(rows, row)
-					break
-				end
-			end
-		end
-	end
-	return last, rows
-end
-
+-- Validation runs on every received row before anything is saved. Received data is only
+-- parsed, never executed (the another addon 2021 incident ran received text through loadstring).
 local function PositiveID(value)
 	return type(value) == "number" and value > 0 and value < 2^32 and value == math.floor(value)
 end
 
--- A peer can share an entire trainer catalog we have already seen. Compare the small
--- list of identities first; the next whisper requests only the missing observations.
-function ns.SelectFinds(identities, size)
-	if type(identities) ~= "table" then return nil end
-	local selection = {}
-	for i = 1, size do selection[i] = "0" end
-	for _, identity in ipairs(identities) do
-		if type(identity) ~= "table" then return nil end
-		local offset, key, npcID, spellID = unpack(identity)
-		if not PositiveID(offset) or offset > size or not PositiveID(npcID)
-			or not (PositiveID(key) or type(key) == "string")
-			or (spellID and not PositiveID(spellID)) then return nil end
-		local needed = true
-		for _, entry in ipairs(ns.db.sources[key] or {}) do
-			if entry.npcID == npcID then
-				needed = entry.origin ~= "self" and spellID ~= nil and entry.spellID == nil
-				break
-			end
-		end
-		if needed then selection[offset] = "1" end
-	end
-	return table.concat(selection)
+local function Coordinate(value)
+	return value == nil or (type(value) == "number" and value >= 0 and value <= 1)
 end
+
+local FACTIONS = { Alliance = true, Horde = true }
 
 local function ValidRow(row)
-	if type(row) ~= "table" or not PositiveID(row.npcID) then return false end
-	for field, kind in pairs(fields) do
+	if type(row) ~= "table" or not PositiveID(row.n) then return false end
+	if row.k == "trainer" then
+		if not PositiveID(row.r) or row.i ~= nil then return false end
+	elseif row.k == "vendor" then
+		if not PositiveID(row.i) or row.r ~= nil then return false end
+	else
+		return false
+	end
+	if row.nm ~= nil and (type(row.nm) ~= "string" or #row.nm > 64 or row.nm:find("[%c|]")) then return false end
+	if row.m ~= nil and not (PositiveID(row.m) and C_Map.GetMapInfo(row.m)) then return false end
+	if not (Coordinate(row.x) and Coordinate(row.y)) then return false end
+	if row.f ~= nil and not FACTIONS[row.f] then return false end
+	if row.s ~= nil and not (PositiveID(row.s) and row.s <= GetServerTime() + 300) then return false end
+	for _, field in ipairs({ "b", "sk", "c", "p", "sp" }) do
 		local value = row[field]
-		if value ~= nil and type(value) ~= kind then return false end
-		if kind == "string" and value and (#value > 1024 or value:find("[%c|]")) then return false end
+		if value ~= nil and not (type(value) == "number" and value >= 0 and value < 2^32) then return false end
 	end
-	if row.type == "trainer" then
-		return PositiveID(row.key) or (type(row.key) == "string" and #row.key <= 1029
-			and row.key:match("^name:.+") and not row.key:find("[%c|]"))
-	end
-	return row.type == "vendor" and PositiveID(row.itemID) and row.key == ns.ItemKey(row.itemID)
-		and (not row.spellID or PositiveID(row.spellID))
-		and (not row.linkedRecipeID or PositiveID(row.linkedRecipeID))
+	if row.sp ~= nil and not PositiveID(row.sp) then return false end
+	if row.l ~= nil and type(row.l) ~= "boolean" then return false end
+	return true
 end
 
-local function Merge(row)
-	local db, key = ns.db, row.key
-	local entries = db.sources[key]
-	if not entries then
-		entries = {}
-		db.sources[key] = entries
-	end
-	local entry
-	for _, found in ipairs(entries) do
-		if found.type == row.type and found.npcID == row.npcID then entry = found; break end
-	end
-	if entry and entry.origin == "self" then return false end
-	local changed = false
-	if not entry then
-		entry = { origin = "shared" }
-		table.insert(entries, entry)
-	end
-	for field in pairs(fields) do
-		if entry[field] == nil and row[field] ~= nil then
-			entry[field] = row[field]
-			changed = true
-		end
-	end
-	if entry.itemID and not db.itemRecipe[entry.itemID] then
-		local pending = db.pendingItems[entry.itemID] or {}
-		pending.name = pending.name or (entry.recipeName and entry.recipeName:lower())
-		pending.spellID = pending.spellID or entry.spellID
-		pending.linkedRecipeID = pending.linkedRecipeID or entry.linkedRecipeID
-		db.pendingItems[entry.itemID] = pending
-	end
-	return changed
-end
-
-function ns.MergeFindPage(rows)
-	if type(rows) ~= "table" or #rows > ns.findPageSize then return nil end
+-- Merges valid rows into the shared layer, newest observation winning per source.
+-- Returns true when anything changed, false when nothing did, nil when the batch is invalid
+-- (nothing is written then).
+function ns.MergeFinds(rows, maxRows)
+	if type(rows) ~= "table" or #rows > maxRows then return nil end
 	local count = 0
-	for i, row in pairs(rows) do
-		if not PositiveID(i) or i > #rows or not ValidRow(row) then return nil end
+	for index, row in pairs(rows) do
+		if not PositiveID(index) or index > #rows or not ValidRow(row) then return nil end
 		count = count + 1
 	end
 	if count ~= #rows then return nil end
-	local changed = false
+	local db, changed = ns.db, false
 	for _, row in ipairs(rows) do
-		if Merge(row) then changed = true end
+		ns.NoteNPC(db.npcs, row.n, row.nm, row.m, row.x, row.y, row.s)
+		local bucket, id = row.r and db.shared.recipes or db.shared.items, row.r or row.i
+		bucket[id] = bucket[id] or {}
+		local observation
+		for _, existing in ipairs(bucket[id]) do
+			if existing.kind == row.k and existing.npc == row.n then
+				observation = existing
+				break
+			end
+		end
+		if not observation or (row.s or 0) > (observation.seen or 0) then
+			if not observation then
+				observation = { kind = row.k, npc = row.n }
+				table.insert(bucket[id], observation)
+			end
+			observation.faction, observation.seen, observation.build = row.f, row.s, row.b
+			observation.skill, observation.cost, observation.price = row.sk, row.c, row.p
+			observation.limited, observation.spellID = row.l, row.sp
+			changed = true
+		end
+		if row.i and not db.itemRecipe[row.i] then
+			db.pendingItems[row.i] = db.pendingItems[row.i] or { spellID = row.sp }
+		end
 	end
 	return changed
 end
@@ -190,17 +173,16 @@ StaticPopupDialogs.RECIPEVACUUM_EXPORT = {
 	end,
 }
 
+-- The export is an array of records, never a table with sparse numeric keys:
+-- C_EncodingUtil.SerializeJSON rejects those (measured in game, 2026-11-22).
+ns.EXPORT_FORMAT_VERSION = 2
+
 function ns.ExportFinds()
-	local observations = {}
-	for key, entries in pairs(ns.db.sources) do
-		for _, entry in ipairs(entries) do
-			if entry.origin == "self" then table.insert(observations, Observation(key, entry)) end
-		end
-	end
+	local rows = ns.FindsSince(0, math.huge)
 	local _, build = GetBuildInfo()
 	local json = C_EncodingUtil.SerializeJSON({
-		format = "RecipeVacuum", version = 1, exportBuild = build, locale = GetLocale(),
-		observations = observations,
+		format = "RecipeVacuum", version = ns.EXPORT_FORMAT_VERSION, exportBuild = build, locale = GetLocale(),
+		observations = rows,
 	})
 	StaticPopup_Show("RECIPEVACUUM_EXPORT", nil, nil, json)
 end

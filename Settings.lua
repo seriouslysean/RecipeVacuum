@@ -21,6 +21,13 @@ local options = {
 		tooltip = "Print one message in your chat window after a visit with new recipe sources.",
 		default = true,
 	},
+	{
+		key = "fullColorIcons",
+		name = "Full color source icons",
+		tooltip = "Show the source icons next to unlearned recipes in full color instead of dimmed.",
+		default = false,
+		onChange = function() ns.RefreshRows() end,
+	},
 }
 
 -- Called once the saved variables are loaded.
@@ -42,6 +49,9 @@ function ns.InitSettings()
 		local setting = Settings.RegisterAddOnSetting(category, addonName .. "_" .. option.key, option.key,
 			ns.db, Settings.VarType.Boolean, option.name, option.default)
 		Settings.CreateCheckbox(category, setting, option.tooltip)
+		if option.onChange then
+			setting:SetValueChangedCallback(option.onChange)
+		end
 	end
 	layout:AddInitializer(CreateSettingsButtonInitializer("Personal finds", "Export Finds", ns.ExportFinds,
 		"Copy your trainer and vendor observations as JSON to send to the toolkit maintainer.", true))

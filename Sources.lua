@@ -19,56 +19,54 @@ ns.sourceTypes = {
 	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   texture = "Interface\\GossipFrame\\VendorGossipIcon" },
 }
 
--- RecipeVacuumDB.sources is keyed the way another addon identifies recipes:
---   [recipeID]            trainer services, read from the trainer tooltip's spell ID;
---   ["item:" .. itemID]   recipe items sold by vendors, linked to a recipe ID in
---                         RecipeVacuumDB.itemRecipe once the item's profession is opened;
---   ["name:" .. name]     a trainer service whose tooltip had no ID (fallback).
-function ns.ItemKey(itemID)
-	return "item:" .. itemID
-end
-
+-- Lookups read the layers described in Core.lua. Recipes are keyed by recipe ID (trainer
+-- services, read from the trainer tooltip's spell ID the way another addon's Scanner.lua
+-- does); recipe items by item ID, linked to a recipe ID in RecipeVacuumDB.itemRecipe once
+-- the item's profession is opened. Everything shows the included and shared layers too;
+-- Self Found shows only the player's own finds.
 function ns.NameKey(recipeName)
-	return "name:" .. recipeName:lower()
+	return recipeName:lower()
 end
 
-local function Visible(entry)
-	return ns.db.shareWithFriends or entry.origin ~= "shared"
+local function VisibleLayers()
+	local db = ns.db
+	if db.shareWithFriends then
+		return db.found, db.shared, ns.included
+	end
+	return db.found
 end
 
-local function Append(list, entries)
-	for _, entry in ipairs(entries or {}) do
-		if Visible(entry) then table.insert(list, entry) end
+function ns.GetNPC(npcID)
+	return ns.db.npcs[npcID] or ns.included.npcs[npcID]
+end
+
+local function AppendLayer(list, layer, recipeInfo, itemIDs)
+	if not layer then return end
+	for _, observation in ipairs(layer.recipes[recipeInfo.recipeID] or {}) do
+		table.insert(list, observation)
+	end
+	for _, itemID in ipairs(itemIDs or {}) do
+		for _, observation in ipairs(layer.items[itemID] or {}) do
+			table.insert(list, observation)
+		end
+	end
+	-- Schema 1 trainer finds that are not linked to a recipe ID yet.
+	for _, observation in ipairs(layer.trainerNames[ns.NameKey(recipeInfo.name)] or {}) do
+		table.insert(list, observation)
 	end
 end
 
--- Every recorded source for a recipe, or nil when none is known.
+-- Every visible observation for a recipe, or nil when none is known.
 function ns.GetSources(recipeInfo)
-	local db = ns.db
-	if not db then
+	if not ns.db then
 		return nil
 	end
-	local trainers = db.sources[recipeInfo.recipeID]
-	local fallbacks = db.sources[ns.NameKey(recipeInfo.name)]
-	local items = db.recipeItems[recipeInfo.recipeID]
-	if not (trainers or fallbacks or items) then return nil end
 	local list = {}
-	Append(list, trainers)
-	for _, fallback in ipairs(fallbacks or {}) do
-		local duplicate = false
-		for _, exact in ipairs(trainers or {}) do
-			if Visible(exact) and exact.type == fallback.type and exact.npcID == fallback.npcID and exact.skill == fallback.skill then
-				duplicate = true
-				break
-			end
-		end
-		if not duplicate and Visible(fallback) then
-			table.insert(list, fallback)
-		end
-	end
-	for _, itemID in ipairs(items or {}) do
-		Append(list, db.sources[ns.ItemKey(itemID)])
-	end
+	local itemIDs = ns.db.recipeItems[recipeInfo.recipeID]
+	local found, shared, included = VisibleLayers()
+	AppendLayer(list, found, recipeInfo, itemIDs)
+	AppendLayer(list, shared, recipeInfo, itemIDs)
+	AppendLayer(list, included, recipeInfo, itemIDs)
 	return #list > 0 and list or nil
 end
 
@@ -83,7 +81,7 @@ function ns.SummarizeSources(recipeInfo)
 	end
 	local types = {}
 	for _, entry in ipairs(entries) do
-		types[entry.type] = true
+		types[entry.kind] = true
 	end
 	recipeInfo.sourceTypes = types
 	for _, sourceType in ipairs(ns.sourceOrder) do
@@ -126,24 +124,18 @@ for name, profession in pairs(Enum.Profession) do
 	recipeSubclass[profession] = Enum.ItemRecipeSubclass[name]
 end
 
-local function MatchItemByName(itemID, candidates, profession)
-	if not candidates or not recipeSubclass[profession] then
-		return nil
-	end
-	local _, _, _, _, _, class, subclass = C_Item.GetItemInfoInstant(itemID)
-	if class ~= Enum.ItemClass.Recipe or subclass ~= recipeSubclass[profession] then
-		return nil
-	end
-	local entries = ns.db.sources[ns.ItemKey(itemID)]
+-- Picks the one candidate recipe the observations' factions allow (vendors and trainers only
+-- offer their own faction's version); nil when that is not unique.
+local function MatchByFaction(candidates, observations)
 	local match
-	for _, candidate in ipairs(candidates) do
+	for _, candidate in ipairs(candidates or {}) do
 		local faction = ns.GetRecipeFaction(candidate)
 		if faction == nil then
 			return nil -- a missing tooltip could still distinguish two variants
 		end
 		local eligible = not faction
-		for _, entry in ipairs(entries or {}) do
-			if entry.faction == faction then
+		for _, observation in ipairs(observations) do
+			if observation.faction == faction then
 				eligible = true
 				break
 			end
@@ -158,21 +150,63 @@ local function MatchItemByName(itemID, candidates, profession)
 	return match
 end
 
-function ns.LinkPendingItems(byName, inProfession, profession)
+local function ItemObservations(itemID)
+	local list = {}
+	for _, layer in ipairs({ ns.db.found, ns.db.shared }) do
+		for _, observation in ipairs(layer.items[itemID] or {}) do
+			table.insert(list, observation)
+		end
+	end
+	return list
+end
+
+-- The recipe a pending item teaches, from its name ("Pattern: Red Linen Bag" teaches "Red
+-- Linen Bag"), read from the client so received items need no name on the wire.
+local function TaughtName(itemID, item)
+	if item.name then return item.name end
+	local itemName = C_Item.GetItemNameByID(itemID)
+	if not itemName then
+		C_Item.RequestLoadItemDataByID(itemID)
+		return nil
+	end
+	return (itemName:match("^.-:%s*(.+)$") or itemName):lower()
+end
+
+-- Links recorded vendor items and schema 1 trainer names to recipe IDs for the open
+-- profession. byName maps lowercase recipe names to recipe IDs; inProfession is the set of
+-- recipe IDs in the profession.
+function ns.LinkPending(byName, inProfession, profession)
 	local db = ns.db
 	for itemID, item in pairs(db.pendingItems) do
 		local recipeID = item.spellID and inProfession[item.spellID] and item.spellID
-		if not recipeID then
-			-- A donor may retain only a locally matched ID for a schema 1 vendor item.
-			-- Recover its name in this profession and run the normal subclass/faction checks.
-			local name = item.name or inProfession[item.linkedRecipeID]
-			recipeID = MatchItemByName(itemID, byName[name], profession)
+		if not recipeID and recipeSubclass[profession] then
+			local _, _, _, _, _, class, subclass = C_Item.GetItemInfoInstant(itemID)
+			local name = class == Enum.ItemClass.Recipe and subclass == recipeSubclass[profession] and TaughtName(itemID, item)
+			recipeID = name and MatchByFaction(byName[name], ItemObservations(itemID))
 		end
 		if recipeID then
 			db.itemRecipe[itemID] = recipeID
 			db.recipeItems[recipeID] = db.recipeItems[recipeID] or {}
-			table.insert(db.recipeItems[recipeID], itemID)
+			if not tContains(db.recipeItems[recipeID], itemID) then
+				table.insert(db.recipeItems[recipeID], itemID)
+			end
 			db.pendingItems[itemID] = nil
+		end
+	end
+	for _, layer in ipairs({ db.found, db.shared }) do
+		for name, observations in pairs(layer.trainerNames) do
+			local recipeID = byName[name] and MatchByFaction(byName[name], observations)
+			if recipeID then
+				layer.recipes[recipeID] = layer.recipes[recipeID] or {}
+				for _, observation in ipairs(observations) do
+					observation.name = nil
+					table.insert(layer.recipes[recipeID], observation)
+					if layer == db.found then
+						ns.MarkFind(observation, "recipe", recipeID)
+					end
+				end
+				layer.trainerNames[name] = nil
+			end
 		end
 	end
 end
@@ -207,13 +241,20 @@ function ns.AddSourceLines(tooltip, recipeInfo)
 		GameTooltip_AddDisabledLine(tooltip, ns.SOURCE_NOT_FOUND)
 		return
 	end
-	for _, entry in ipairs(entries) do
-		local mapInfo = entry.mapID and C_Map.GetMapInfo(entry.mapID)
-		local where = entry.npcName or UNKNOWN
+	for _, observation in ipairs(entries) do
+		local npc = ns.GetNPC(observation.npc)
+		local where = npc and npc.name or UNKNOWN
+		local newest, newestMap
+		for mapID, position in pairs(npc and npc.positions or {}) do
+			if not newest or (position.seen or 0) > (newest.seen or 0) then
+				newest, newestMap = position, mapID
+			end
+		end
+		local mapInfo = newestMap and C_Map.GetMapInfo(newestMap)
 		if mapInfo then
 			where = where .. ", " .. mapInfo.name
 		end
-		GameTooltip_AddNormalLine(tooltip, ns.sourceTypes[entry.type].label .. ": " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(where))
+		GameTooltip_AddNormalLine(tooltip, ns.sourceTypes[observation.kind].label .. ": " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(where))
 	end
 end
 

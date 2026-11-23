@@ -321,27 +321,111 @@ end
 -- Sizes of the account's firsthand finds as one export, to decide whether sharing needs
 -- paging or can send everything in one compressed message (the another addon pattern).
 local function ExportSize()
-	local rows = {}
-	for key, entries in pairs(ns.db.sources) do
-		for _, entry in ipairs(entries) do
-			if entry.origin == "self" then
-				local row = { key = key }
-				for field, value in pairs(entry) do
-					if field ~= "origin" and field ~= "shareRevision" then row[field] = value end
-				end
-				table.insert(rows, row)
-			end
-		end
-	end
+	local rows = ns.FindsSince(0, math.huge)
 	local json = C_EncodingUtil.SerializeJSON(rows)
 	local cbor = C_EncodingUtil.SerializeCBOR(rows)
 	local deflated = C_EncodingUtil.CompressString(cbor, Enum.CompressionMethod.Deflate)
 	local encoded = C_EncodingUtil.EncodeBase64(deflated)
-	print(("Recipe Vacuum: %d firsthand finds | JSON %d bytes | CBOR %d | Deflate %d | Base64 %d | ~%d addon messages of 255 bytes"):format(
+	print(("Recipe Vacuum: %d shareable finds | JSON %d bytes | CBOR %d | Deflate %d | Base64 %d | ~%d addon messages of 255 bytes"):format(
 		#rows, #json, #cbor, #deflated, #encoded, math.ceil(#encoded / 250)))
 end
 
+-- One-shot checks for the next build steps (research report, "Consolidated in-game tests"):
+-- saved data after the upgrade, Blizzard atlases we use, and which APIs Forever exposes.
+local function Checks()
+	local db = ns.db
+	print(("schema %s | revision %s | pending trainer names %d | pending items %d"):format(
+		tostring(db.schema), tostring(db.exchange and db.exchange.revision),
+		CountTable(db.found.trainerNames), CountTable(db.pendingItems)))
+	for _, atlas in ipairs({ "bags-junkcoin", "common-search-magnifyingglass", "common-icon-redx" }) do
+		print(("atlas %s: %s"):format(atlas, C_Texture.GetAtlasInfo(atlas) and "present" or "MISSING"))
+	end
+	for _, name in ipairs({ "GetLootSourceInfo", "IsFishingLoot", "GetQuestItemInfo", "issecretvalue" }) do
+		print(("%s: %s"):format(name, type(_G[name])))
+	end
+	print("C_Item.GetItemSpell:", type(C_Item.GetItemSpell), "| C_Map.OpenWorldMap:", type(C_Map.OpenWorldMap),
+		"| C_SuperTrack.SetSuperTrackedUserWaypoint:", type(C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint))
+	local mapID = C_Map.GetBestMapForUnit("player")
+	print("map", tostring(mapID), "| CanSetUserWaypointOnMap:", tostring(mapID and C_Map.CanSetUserWaypointOnMap(mapID)),
+		"| colorblindMode:", GetCVar("colorblindMode"))
+	-- Locale-independent recipe item link: does the item expose its recipe?
+	local itemID = next(db.itemRecipe) or next(db.pendingItems)
+	if itemID then
+		print(("recipe item %d (links to recipe %s):"):format(itemID, tostring(db.itemRecipe[itemID])))
+		print("  C_Item.GetItemSpell:", C_Item.GetItemSpell and strjoin(" ", tostringall(C_Item.GetItemSpell(itemID))) or "n/a")
+		local tooltip = C_TooltipInfo.GetItemByID(itemID)
+		for _, line in ipairs(tooltip and tooltip.lines or {}) do
+			print(("  line type %s | id %s | %s"):format(tostring(line.type), tostring(line.id), tostring(line.leftText)))
+		end
+	end
+end
+
+-- Toggles a logger for loot windows, quest dialogs and spell targets, to learn what Forever
+-- reports for mob, object, container and fishing loot and for quest givers and rewards.
+local watcher
+local function Watch()
+	if watcher then
+		watcher:UnregisterAllEvents()
+		watcher = nil
+		print("Recipe Vacuum: watch off.")
+		return
+	end
+	watcher = CreateFrame("Frame")
+	for _, event in ipairs({ "LOOT_OPENED", "QUEST_DETAIL", "QUEST_COMPLETE", "UNIT_SPELLCAST_SENT" }) do
+		watcher:RegisterEvent(event)
+	end
+	watcher:SetScript("OnEvent", function(_, event, ...)
+		local mapID = C_Map.GetBestMapForUnit("player")
+		local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+		local where = ("map %s pos %s | instance %s"):format(tostring(mapID),
+			position and ("%.3f,%.3f"):format(position:GetXY()) or "nil", tostring((IsInInstance())))
+		if event == "UNIT_SPELLCAST_SENT" then
+			local unit, target = ...
+			if unit == "player" and target and target ~= "" then
+				print(("%s target %q | %s"):format(event, target, where))
+			end
+		elseif event == "LOOT_OPENED" then
+			local _, isFromItem = ...
+			print(("%s | fromItem %s | fishing %s | target %s | %s"):format(event, tostring(isFromItem),
+				tostring(IsFishingLoot and IsFishingLoot()), tostring(UnitGUID("target")), where))
+			for slot = 1, GetNumLootItems() do
+				local sources = GetLootSourceInfo and { GetLootSourceInfo(slot) } or {}
+				print(("  slot %d type %s %s | sources %s"):format(slot, tostring(GetLootSlotType(slot)),
+					tostring(GetLootSlotLink(slot)), strjoin(" ", tostringall(unpack(sources)))))
+			end
+		else
+			print(("%s quest %s | questnpc %s %s | %s"):format(event, tostring(GetQuestID()),
+				tostring(UnitName("questnpc")), tostring(UnitGUID("questnpc")), where))
+			for _, kind in ipairs({ "reward", "choice" }) do
+				local count = kind == "reward" and GetNumQuestRewards() or GetNumQuestChoices()
+				for index = 1, count do
+					print(("  %s %d: %s"):format(kind, index, strjoin(" ", tostringall(GetQuestItemInfo(kind, index)))))
+				end
+			end
+		end
+	end)
+	print("Recipe Vacuum: watch on. Loot a mob, a chest, a container and a fish; open a quest with a recipe reward.")
+end
+
+-- Sets a waypoint at the player's position, super-tracks it and opens the map, to see which
+-- Show on Map calls work from addon code (OpenWorldMap is marked HasRestrictions).
+local function Waypoint()
+	local mapID = C_Map.GetBestMapForUnit("player")
+	local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+	if not (position and C_Map.CanSetUserWaypointOnMap(mapID)) then
+		print("Recipe Vacuum: no waypoint possible here (map", tostring(mapID), ").")
+		return
+	end
+	print("SetUserWaypoint:", pcall(C_Map.SetUserWaypoint, UiMapPoint.CreateFromCoordinates(mapID, position:GetXY())))
+	print("SetSuperTrackedUserWaypoint:", pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true))
+	print("OpenWorldMap:", pcall(C_Map.OpenWorldMap, mapID))
+	print("In combat:", tostring(InCombatLockdown()))
+end
+
 local actions = {
+	checks = Checks,
+	watch = Watch,
+	waypoint = Waypoint,
 	exportsize = ExportSize,
 	requirements = Requirements,
 	log = function() end, -- shows the last command's output again

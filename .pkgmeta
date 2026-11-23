@@ -1,0 +1,6 @@
+package-as: RecipeVacuum
+
+ignore:
+  - HANDOFF.md
+  - research_notes
+  - reports
