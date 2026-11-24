@@ -11,13 +11,14 @@ local TEXT_TOP, TEXT_INSET = -100, 12
 local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask" -- Blizzard's round portrait mask
 
 local CARDS = {
-	{ level = LEVEL.SELF, icon = "Interface\\Icons\\INV_Misc_Spyglass_03",
-		text = "Only what you see yourself: trainers, vendors, quests and loot. Sharing is paused." },
-	{ level = LEVEL.FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking",
-		text = "Also what your party, raid, guild and friends see, link or share." },
-	{ level = LEVEL.PUBLIC, icon = "Interface\\Icons\\Ability_Warrior_BattleShout",
-		text = "Also recipes linked in public chat." },
+	{ level = LEVEL.SELF, icon = "Interface\\Icons\\INV_Misc_Spyglass_03" },
+	{ level = LEVEL.FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking" },
+	{ level = LEVEL.PUBLIC, icon = "Interface\\Icons\\Ability_Warrior_BattleShout" },
 }
+-- The chosen card is lit and ticked; the others are dimmed, so the choice reads at a glance.
+local UNCHOSEN_ALPHA = 0.55
+local CHECK_TEXTURE, CHECK_SIZE, CHECK_INSET = "Interface\\Buttons\\UI-CheckBox-Check", 28, 4
+local CHOSEN_BACKGROUND = CreateColor(0.16, 0.13, 0.05) -- a warm dark behind the gold border
 
 local function CreateCard(parent, index, info, setting)
 	local card = CreateFrame("Button", nil, parent, "TooltipBackdropTemplate")
@@ -43,7 +44,14 @@ local function CreateCard(parent, index, info, setting)
 	text:SetPoint("RIGHT", -TEXT_INSET, 0)
 	text:SetJustifyH("CENTER")
 	text:SetJustifyV("TOP")
-	text:SetText(info.text)
+	text:SetText(ns.levelText[info.level])
+
+	local check = card:CreateTexture(nil, "OVERLAY")
+	check:SetSize(CHECK_SIZE, CHECK_SIZE)
+	check:SetPoint("TOPRIGHT", -CHECK_INSET, -CHECK_INSET)
+	check:SetTexture(CHECK_TEXTURE)
+	card.Title, card.Icon, card.Check = title, icon, check
+	card:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
 
 	card:SetScript("OnClick", function()
 		setting:SetValue(info.level)
@@ -51,11 +59,15 @@ local function CreateCard(parent, index, info, setting)
 	return card
 end
 
--- Gold border on the chosen card, the tooltip's own gray on the others.
 local function ShowChoice(frame, level)
 	for _, card in ipairs(frame.cards) do
-		local color = card.level == level and NORMAL_FONT_COLOR or TOOLTIP_DEFAULT_COLOR
-		card:SetBackdropBorderColor(color:GetRGB())
+		local chosen = card.level == level
+		card:SetBackdropBorderColor((chosen and NORMAL_FONT_COLOR or TOOLTIP_DEFAULT_COLOR):GetRGB())
+		card:SetBackdropColor((chosen and CHOSEN_BACKGROUND or TOOLTIP_DEFAULT_BACKGROUND_COLOR):GetRGB())
+		card.Title:SetTextColor((chosen and NORMAL_FONT_COLOR or DISABLED_FONT_COLOR):GetRGB())
+		card.Icon:SetDesaturated(not chosen)
+		card.Check:SetShown(chosen)
+		card:SetAlpha(chosen and 1 or UNCHOSEN_ALPHA)
 	end
 end
 

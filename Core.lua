@@ -13,6 +13,13 @@ ns.MAX_WIRE_NUMBER = 2^32
 
 ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 ns.levelNames = { "Self Found", "Friends", "Public" }
+-- Player-facing wording for each level (docs/voice.md, "Plain text"): the options cards and the help tip.
+ns.levelText = {
+	"Narrow nozzle. Keeps only what you see for yourself.",
+	"Wide nozzle. Also keeps what your party, guild and friends find.",
+	"Full suction. Also keeps recipes people link in chat.",
+}
+ns.levelHeard = { "only you", "you and your friends", "everyone nearby" }
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }

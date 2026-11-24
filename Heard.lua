@@ -112,12 +112,12 @@ local function ShowLevelTip()
 		return
 	end
 	HelpTip:Show(page, {
-		text = ("Recipe Vacuum lists recipes you come across. It is listening at the %s level; change that in its options.")
-			:format(ns.levelNames[ns.db.sourceLevel]),
+		text = ("Your Recipe Vacuum is humming! Recipes you come across land in this list. Right now it listens to %s. You can change that in Options.")
+			:format(ns.levelHeard[ns.db.sourceLevel]),
 		buttonStyle = HelpTip.ButtonStyle.Close,
 		targetPoint = HelpTip.Point.TopEdgeCenter,
 		onAcknowledgeCallback = function() ns.db.levelTipSeen = true end,
-	}, page.RecipeList)
+	}, page.RecipeList.FilterDropdown)
 end
 
 local frame = CreateFrame("Frame")
