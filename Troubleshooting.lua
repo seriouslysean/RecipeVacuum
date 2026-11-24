@@ -664,6 +664,14 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window too
 		Say(voice.perfNoScan)
 	end
 end })
+-- Sharing self-test for one account (Sharing.lua).
+table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode and whisper every reply to yourself", function()
+	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
+	ns.ShareSelfTest(function(line)
+		table.insert(ns.db.devShareTest, line)
+		ns.Log(line)
+	end)
+end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
 --@end-debug@

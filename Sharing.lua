@@ -445,3 +445,83 @@ frame:SetScript("OnEvent", function(_, event, index)
 	end
 	ScheduleRefresh()
 end)
+
+--@debug@
+-- /recipevacuum sharetest: checks sharing with one account. Every reply this character would send is
+-- built by the real code, checked against the limits, decoded and merged into a scratch copy (nothing
+-- real is written), then whispered to this same character over a test prefix and compared byte for
+-- byte on arrival. Not covered: choosing who to share with, and the probe exchange between two players.
+local TEST_PREFIX = "RecipeVacuum2T"
+local TEST_TIMEOUT = 60
+
+local function Count(layer)
+	local count = 0
+	for _, bucket in pairs({ layer.recipes, layer.items }) do
+		for _, observations in pairs(bucket) do
+			count = count + #observations
+		end
+	end
+	return count
+end
+
+function ns.ShareSelfTest(report)
+	local exchange, real = ns.db.exchange, ns.db
+	local scratch = { npcs = {}, objects = {}, shared = ns.NewLayer(), itemRecipe = {}, pendingItems = {} }
+	local messages, after, rowsSent, largest = {}, 0, 0, 0
+	wipe(cachedReplies)
+	while after < exchange.revision do
+		local message = Reply(after)
+		if not message then return report("FAIL: the reply after revision " .. after .. " could not be encoded") end
+		local kind, id, replyAfter, rest = ParseHeader(message)
+		local through, encoded = (rest or ""):match("^ (%d+) (%S+)$")
+		through = tonumber(through)
+		if kind ~= "D" or id ~= exchange.id or replyAfter ~= after or not through or through <= after then
+			return report("FAIL: the reply after revision " .. after .. " has a header the receiver would reject")
+		end
+		if #encoded > SEND_LIMIT then
+			report(("WARN: a reply is %d bytes, over the %d send limit (one row too large to split)"):format(#encoded, SEND_LIMIT))
+		end
+		local ok, rows = pcall(Decode, encoded)
+		if not (ok and rows) then return report("FAIL: the reply after revision " .. after .. " does not decode") end
+		ns.db = scratch
+		local merged, changed = pcall(ns.MergeFinds, rows, MAX_ROWS)
+		ns.db = real
+		if not merged or changed == nil then
+			return report("FAIL: the receiver's validation rejects the reply after revision " .. after)
+		end
+		messages[#messages + 1], rowsSent, largest = message, rowsSent + #rows, math.max(largest, #message)
+		after = through
+	end
+	wipe(cachedReplies)
+	local own, arrived = Count(real.found), Count(scratch.shared)
+	report(("Encode and decode: %d replies, %d rows, largest %d bytes; %d of this character's %d finds arrive%s"):format(
+		#messages, rowsSent, largest, arrived, own, arrived == own and "" or " (MISMATCH)"))
+	if #messages == 0 then return report("Nothing to send: no finds recorded yet") end
+
+	local received, started = 0, GetTime()
+	local timeout = C_Timer.NewTimer(TEST_TIMEOUT, function()
+		comm:UnregisterComm(TEST_PREFIX)
+		report(("FAIL: %d of %d replies came back within %d s (the game may not deliver a whisper to yourself)"):format(
+			received, #messages, TEST_TIMEOUT))
+	end)
+	comm:RegisterComm(TEST_PREFIX, function(_, message, channel)
+		received = received + 1
+		if channel ~= "WHISPER" or message ~= messages[received] then
+			timeout:Cancel()
+			comm:UnregisterComm(TEST_PREFIX)
+			return report("FAIL: reply " .. received .. " arrived changed")
+		end
+		if received == #messages then
+			timeout:Cancel()
+			comm:UnregisterComm(TEST_PREFIX)
+			report(("Through the game and back: %d of %d replies arrived unchanged in %.1f s"):format(
+				received, #messages, GetTime() - started))
+		end
+	end)
+	local me = UnitName("player")
+	for _, message in ipairs(messages) do
+		comm:SendCommMessage(TEST_PREFIX, message, "WHISPER", me, "BULK")
+	end
+	report(("Whispering %d replies to %s; the result follows"):format(#messages, me))
+end
+--@end-debug@
