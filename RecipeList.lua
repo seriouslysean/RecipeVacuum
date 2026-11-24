@@ -44,7 +44,7 @@ local function IconOnEnter(icon)
 	row:OnEnter()
 	RowOnEnter(row) -- the pointer left the row's own frame for this icon
 	GameTooltip:SetOwner(icon, "ANCHOR_RIGHT")
-	ns.AddSourceLines(GameTooltip, State(row).recipe)
+	ns.AddMarkLines(GameTooltip, State(row).recipe, icon.mark)
 	GameTooltip:Show()
 end
 
@@ -113,6 +113,7 @@ local function UpdateRow(row, node)
 		if mark then
 			icon:ClearAllPoints()
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
+			icon.mark = mark
 			ns.ApplyMark(icon, mark)
 			ns.SetMarkStrength(icon, row:IsMouseOver())
 			--@debug@

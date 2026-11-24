@@ -362,9 +362,40 @@ local function AddDetailLines(tooltip, observation)
 	end
 end
 
--- Source tooltip, shared by row marks and the Details button: the recipe as title, each source type
--- as a gold line, one white "who | where" line per source (as the Wardrobe sources tooltip,
--- CollectionsUtil.lua), and indented lines under it. detailed adds coordinates, skill and cost.
+-- One source type's lines: a gold header when asked, one white "who | where" line per source (as the
+-- Wardrobe sources tooltip, CollectionsUtil.lua), and indented lines under it. detailed adds
+-- coordinates, skill and cost.
+local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
+	for _, observation in ipairs(entries) do
+		if observation.kind == kind then
+			if withHeader then
+				GameTooltip_AddNormalLine(tooltip, ns.sourceTypes[kind].label)
+				withHeader = false
+			end
+			local name = ns.SourceInfo(observation)
+			local mapID, x, y = ns.SourcePosition(observation)
+			local mapInfo = mapID and C_Map.GetMapInfo(mapID)
+			local where = mapInfo and mapInfo.name or ""
+			if detailed and mapInfo and x then
+				where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
+			end
+			GameTooltip_AddColoredDoubleLine(tooltip, name or UNKNOWN, where, HIGHLIGHT_FONT_COLOR, GRAY_FONT_COLOR)
+			local questNPC = observation.quest and (ns.GetNPC(observation.npc) or ns.GetNPC(observation.finisher))
+			if questNPC and questNPC.name then
+				GameTooltip_AddColoredLine(tooltip, questNPC.name, GRAY_FONT_COLOR, false, SUBLINE_INDENT)
+			end
+			if detailed then
+				AddDetailLines(tooltip, observation)
+			end
+		end
+	end
+end
+
+local function UnknownSource()
+	return ns.SOURCE_LABEL .. " " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(UNKNOWN)
+end
+
+-- The whole source tooltip, for the recipe pane: the recipe as title, then every source type.
 function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	GameTooltip_SetTitle(tooltip, recipeInfo.name)
 	-- The game's own requirement line, shown as Blizzard shows a row's disabled reason
@@ -374,34 +405,24 @@ function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	end
 	local entries = ns.GetSources(recipeInfo)
 	if not entries then
-		GameTooltip_AddNormalLine(tooltip, ns.SOURCE_LABEL .. " " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(UNKNOWN))
+		GameTooltip_AddNormalLine(tooltip, UnknownSource())
 		return
 	end
 	for _, kind in ipairs(ns.sourceOrder) do
-		local header = false
-		for _, observation in ipairs(entries) do
-			if observation.kind == kind then
-				if not header then
-					GameTooltip_AddNormalLine(tooltip, ns.sourceTypes[kind].label)
-					header = true
-				end
-				local name = ns.SourceInfo(observation)
-				local mapID, x, y = ns.SourcePosition(observation)
-				local mapInfo = mapID and C_Map.GetMapInfo(mapID)
-				local where = mapInfo and mapInfo.name or ""
-				if detailed and mapInfo and x then
-					where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
-				end
-				GameTooltip_AddColoredDoubleLine(tooltip, name or UNKNOWN, where, HIGHLIGHT_FONT_COLOR, GRAY_FONT_COLOR)
-				local questNPC = observation.quest and (ns.GetNPC(observation.npc) or ns.GetNPC(observation.finisher))
-				if questNPC and questNPC.name then
-					GameTooltip_AddColoredLine(tooltip, questNPC.name, GRAY_FONT_COLOR, false, SUBLINE_INDENT)
-				end
-				if detailed then
-					AddDetailLines(tooltip, observation)
-				end
-			end
-		end
+		AddKindLines(tooltip, entries, kind, detailed, true)
+	end
+end
+
+-- A row mark's own tooltip: what the mark means as the title, then only what belongs to it.
+function ns.AddMarkLines(tooltip, recipeInfo, mark)
+	if mark == "locked" then
+		GameTooltip_SetTitle(tooltip, UNAVAILABLE)
+		GameTooltip_AddDisabledLine(tooltip, recipeInfo.lockReason)
+	elseif mark == "unknown" then
+		GameTooltip_SetTitle(tooltip, UnknownSource(), NORMAL_FONT_COLOR)
+	else
+		GameTooltip_SetTitle(tooltip, ns.sourceTypes[mark].label)
+		AddKindLines(tooltip, ns.GetSources(recipeInfo) or {}, mark)
 	end
 end
 
