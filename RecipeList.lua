@@ -24,6 +24,29 @@ local function State(row)
 	return state
 end
 
+--@debug@
+-- Hover trace for the saved file, to find why a row's tooltip goes missing: what ran, on which recipe,
+-- what the pointer was on, and what hid the tooltip. Remove once that is settled.
+local HOVER_LOG_LINES = 400
+function ns.HoverLog(what, row, extra)
+	local log = ns.db.devHoverLog or {}
+	ns.db.devHoverLog = log
+	local focus = GetMouseFoci and GetMouseFoci()[1]
+	local recipe = row and rowState[row] and rowState[row].recipe
+	log[#log + 1] = ("%.2f %s | %s | row %s | focus %s%s | tooltip %s%s"):format(GetTime(), what,
+		recipe and recipe.name or "no recipe", row and tostring(row):sub(-6) or "-",
+		focus == row and "row" or focus and (focus.GetDebugName and focus:GetDebugName() or "?"):sub(-40) or "none",
+		focus and focus ~= row and focus:GetParent() == row and " (child of row)" or "",
+		GameTooltip:IsShown() and "shown" or "hidden", extra or "")
+	if #log > HOVER_LOG_LINES then
+		table.remove(log, 1)
+	end
+end
+GameTooltip:HookScript("OnHide", function()
+	ns.HoverLog("tooltip hidden", nil, " | by " .. (debugstack(3, 2, 0) or ""):gsub("%s+", " "):sub(1, 160))
+end)
+--@end-debug@
+
 -- One hover for the whole row: its marks go to full strength and one tooltip lists every source.
 -- The marks take no mouse input, so the pointer and clicks reach Blizzard's row as usual.
 local function SetRowStrength(row, full)
@@ -37,10 +60,7 @@ end
 local function RowOnEnter(row)
 	local recipeInfo = State(row).recipe
 	--@debug@
-	-- Counts for the hover report in the saved file: how often a row is entered with and without a recipe.
-	ns.db.devHover = ns.db.devHover or {}
-	local key = recipeInfo and "entered" or "enteredWithoutRecipe"
-	ns.db.devHover[key] = (ns.db.devHover[key] or 0) + 1
+	ns.HoverLog("our OnEnter", row)
 	--@end-debug@
 	if recipeInfo then
 		SetRowStrength(row, true)
@@ -52,6 +72,9 @@ end
 
 -- Blizzard's OnLeave has already hidden the tooltip.
 local function RowOnLeave(row)
+	--@debug@
+	ns.HoverLog("our OnLeave", row)
+	--@end-debug@
 	if State(row).recipe then
 		SetRowStrength(row, false)
 	end
@@ -69,6 +92,11 @@ local function GetIcons(row)
 		end
 		row:HookScript("OnEnter", RowOnEnter)
 		row:HookScript("OnLeave", RowOnLeave)
+		--@debug@
+		-- Blizzard's child buttons call these methods directly, past the scripts hooked above.
+		hooksecurefunc(row, "OnEnter", function() ns.HoverLog("Blizzard OnEnter method", row) end)
+		hooksecurefunc(row, "OnLeave", function() ns.HoverLog("Blizzard OnLeave method", row) end)
+		--@end-debug@
 	end
 	return State(row).icons
 end
@@ -137,8 +165,7 @@ local function UpdateRow(row, node)
 	-- pointer is on gets its hover back here.
 	if row:IsMouseMotionFocus() then
 		--@debug@
-		ns.db.devHover = ns.db.devHover or {}
-		ns.db.devHover.restoredOnRedraw = (ns.db.devHover.restoredOnRedraw or 0) + 1
+		ns.HoverLog("redraw under pointer", row)
 		--@end-debug@
 		RowOnEnter(row)
 	end
