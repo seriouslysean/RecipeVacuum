@@ -668,6 +668,12 @@ table.insert(troubleshooting, { "locks", "Preview locks as if a specialization w
 	ns.RefreshList()
 	ns.Log("Lock preview " .. (ns.previewLocks and "on" or "off"))
 end, quiet = true })
+-- Mark comparison; remove with the lock preview.
+table.insert(troubleshooting, { "marks", "Show every mark on every unlearned row", function()
+	ns.previewMarks = not ns.previewMarks
+	ns.RefreshRows()
+	ns.Log("Mark preview " .. (ns.previewMarks and "on" or "off"))
+end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
 --@end-debug@

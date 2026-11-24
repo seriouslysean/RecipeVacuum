@@ -269,6 +269,16 @@ end
 -- Marks for a recipe in display order, filled into out; returns the count.
 function ns.GetMarks(recipeInfo, out)
 	wipe(out)
+	--@debug@
+	if ns.previewMarks then -- /recipevacuum marks: every mark on every row, to compare their sizes
+		out[1] = "locked"
+		for _, sourceType in ipairs(ns.sourceOrder) do
+			out[#out + 1] = sourceType
+		end
+		out[#out + 1] = "unknown"
+		return #out
+	end
+	--@end-debug@
 	-- The lock comes first, so it sits left of the source marks and they stay in line down the list.
 	if recipeInfo.lockReason then
 		out[1] = "locked"
