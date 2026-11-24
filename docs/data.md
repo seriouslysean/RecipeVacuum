@@ -50,7 +50,7 @@ A recipe item links to the recipe it teaches by ID, from three places kept apart
 - `faction[recipeID]`: `"Alliance"`, `"Horde"` or `false`.
 - `spec[recipeID]`: `true` when the item the recipe makes needs a specialization, `false` when it does not.
 
-Whether a specialization is met depends on the character, so those recipes are read again each session.
+Whether a specialization is met depends on the character, so those recipes are read again each session. The list build reads every recipe of the profession, learned ones included; `spec[recipeID] == false` spares the read, so only a profession's first open on a game build reads them all.
 
 ## Sharing
 

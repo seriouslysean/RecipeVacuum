@@ -180,17 +180,15 @@ do
   Enum.TooltipDataLineType.UsageRequirement = 1
   Enum.TooltipDataUsageRequirementType.Faction, Enum.TooltipDataUsageRequirementType.Skill = 1, 2
   local MADE = 5000 -- recipe N makes item MADE + N; recipe 5 makes nothing
+  -- A Gnomish engineer: its own specialization's line is met, the other's is not.
   local requirements = {
-    [1] = { { "Requires Gnomish Engineer", red } },
+    [1] = { { "Requires Goblin Engineer", red } },
     [2] = { { "Requires Engineering (300)", red } },
     [3] = { { "Requires Gnomish Engineer", white } },
     [4] = { { "Requires Engineering (260)", red }, { "Requires Goblin Engineer", red } },
   }
-  local ENGINEERING, GOBLIN = 202, 20222
-  local knownSpells = { [GOBLIN] = true }
   C_TradeSkillUI = { GetRecipeSchematic = function(id) return { outputItemID = id ~= 5 and MADE + id or nil } end,
-    GetTradeSkillLineForRecipe = function() return ENGINEERING end }
-  C_SpellBook = { IsSpellKnown = function(id) return knownSpells[id] == true end }
+    GetTradeSkillLineForRecipe = function() return 202 end }
   local itemLoaded, itemReads, loadCallbacks = {}, 0, {}
   C_Item.IsItemDataCachedByID = function(id) return itemLoaded[id] == true end
   Item = { CreateFromItemID = function(_, id) return { ContinueOnItemLoad = function(_, fn) loadCallbacks[id] = fn end } end }
@@ -206,23 +204,29 @@ do
     return { lines = lines }
   end }
   check("no answer while the made item loads", a.GetRecipeLock(1) == nil and itemReads == 0)
-  for id = 1, 4 do itemLoaded[MADE + id] = true end
+  itemLoaded[MADE + 1] = true
   loadCallbacks[MADE + 1]()
   check("rows redraw once the made item has loaded", refreshes == 1)
-  check("specialization lock uses the made item's requirement line", a.GetRecipeLock(1) == "Requires Gnomish Engineer"
+  check("no lock while no met specialization has been seen", a.GetRecipeLock(1) == false)
+  -- The list build reads every recipe of the profession; the met line on recipe 3 shows the pick.
+  for id = 2, 4 do itemLoaded[MADE + id] = true end
+  for id = 1, 5 do a.ReadSpecialization(id) end
+  check("specialization lock uses the made item's requirement line", a.GetRecipeLock(1) == "Requires Goblin Engineer"
     and a.GetRecipeLock(2) == false and a.GetRecipeLock(3) == false and a.GetRecipeLock(4) == "Requires Goblin Engineer"
     and a.GetRecipeLock(5) == false)
-  -- Before a specialization is picked nothing locks, and no made item is read to find out.
+  -- Before a specialization is picked every such line is unmet, and nothing locks.
   local a3 = boot(nil)
-  knownSpells[GOBLIN], itemReads = nil, 0
-  check("no lock before a specialization is picked", a3.GetRecipeLock(1) == false and itemReads == 0)
-  knownSpells[GOBLIN] = true
+  requirements[3][1][2] = red
+  for id = 1, 5 do a3.ReadSpecialization(id) end
+  check("no lock before a specialization is picked", a3.GetRecipeLock(1) == false and a3.GetRecipeLock(3) == false
+    and a3.GetRecipeLock(4) == false)
+  requirements[3][1][2] = white
   -- A later session: recipes known to need no specialization are not looked up again.
   local kept = db.recipeFacts
   local a2 = boot(nil); a2.db.recipeFacts = kept
   itemReads = 0
   check("kept facts spare the lookups", a2.GetRecipeLock(2) == false and a2.GetRecipeLock(5) == false and itemReads == 0
-    and a2.GetRecipeLock(1) == "Requires Gnomish Engineer" and itemReads == 1)
+    and a2.ReadSpecialization(3) == true and a2.GetRecipeLock(1) == "Requires Goblin Engineer" and itemReads == 2)
   local marks = {}
   local n = a.GetMarks({ lockReason = "x" }, marks)
   check("a locked recipe gets the lock mark first, left of the source marks", n == 2 and marks[1] == "locked" and marks[2] == "unknown")

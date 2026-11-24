@@ -388,7 +388,7 @@ end
 
 -- Faction comes from the recipe's tooltip, a specialization from the tooltip of the item it makes
 -- (docs/client-notes.md, "Requirements"). What is fixed for a game build is kept in recipeFacts.
-local recipeFactions, recipeLocks = {}, {}
+local recipeFactions, recipeSpecs = {}, {}
 
 local function Facts()
 	local build = select(2, GetBuildInfo())
@@ -442,26 +442,6 @@ local function IsUnmet(color)
 	return color ~= nil and color.g < UNMET_MAX_GREEN
 end
 
--- The spells a character learns on picking a specialization, by profession skill line. A recipe locks
--- only once one is picked: before that it is open to the character, whatever its made item says. The
--- requirement line names no ID (docs/client-notes.md, "Requirements"), so the spells are listed here.
-local BLACKSMITHING, LEATHERWORKING, ENGINEERING = 164, 165, 202
-local SPECIALIZATIONS = {
-	[BLACKSMITHING] = { 9787, 9788, 17039, 17040, 17041 }, -- Weaponsmith, Armorsmith, Sword-, Hammer-, Axesmith
-	[LEATHERWORKING] = { 10656, 10658, 10660 },            -- Dragonscale, Elemental, Tribal
-	[ENGINEERING] = { 20219, 20222 },                      -- Gnomish, Goblin
-}
-
-local function HasSpecialization(recipeID)
-	local line, _, parent = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID)
-	for _, spellID in ipairs(SPECIALIZATIONS[line] or SPECIALIZATIONS[parent] or {}) do
-		if C_SpellBook.IsSpellKnown(spellID) then
-			return true
-		end
-	end
-	return false
-end
-
 -- Rows waiting for a made item's data redraw once, shortly after the answers arrive.
 local LOCK_REFRESH_DELAY = 0.2
 local loadingItems, refreshQueued = {}, false
@@ -481,53 +461,81 @@ local function QueueRowRefresh()
 	end
 end
 
--- The game's requirement text when the character has picked a specialization other than the one needed
--- for what the recipe makes, false when there is no lock, nil while the made item's data loads. Asked for the
--- rows on screen only, so a profession's first open does not load every item it can make.
-function ns.GetRecipeLock(recipeID)
-	local lock = recipeLocks[recipeID]
-	if lock ~= nil then
-		return lock
+-- recipeSpecs: what a recipe's made item says this session: false for no specialization requirement,
+-- MET, or the game's requirement text when unmet. specialized: professions where the character meets
+-- at least one, which is how a picked specialization is told (docs/client-notes.md, "Requirements").
+local MET = true
+local specialized = {}
+
+local function Profession(recipeID)
+	local line, _, parent = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID)
+	return parent or line
+end
+
+-- Reads the specialization requirement of what a recipe makes; nil while that item's data loads.
+-- The list build asks for every recipe of the profession, learned ones too, so one met requirement
+-- anywhere is found. Recipes known to have none are skipped, so only a first open reads them all.
+function ns.ReadSpecialization(recipeID)
+	local state = recipeSpecs[recipeID]
+	if state ~= nil then
+		return state
 	end
 	local facts = Facts()
-	if facts.spec[recipeID] == false or not HasSpecialization(recipeID) then
-		recipeLocks[recipeID] = false
+	if facts.spec[recipeID] == false then
+		recipeSpecs[recipeID] = false
 		return false
 	end
 	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
 	local itemID = schematic and schematic.outputItemID
 	if not itemID then
-		facts.spec[recipeID], recipeLocks[recipeID] = false, false
+		facts.spec[recipeID], recipeSpecs[recipeID] = false, false
 		return false
 	end
 	if not C_Item.IsItemDataCachedByID(itemID) then
-		if not loadingItems[itemID] then
-			loadingItems[itemID] = true
+		local waiting = loadingItems[itemID]
+		if not waiting then
+			waiting = {}
+			loadingItems[itemID] = waiting
 			Item:CreateFromItemID(itemID):ContinueOnItemLoad(function()
 				loadingItems[itemID] = nil
+				for waitingRecipeID in pairs(waiting) do
+					ns.ReadSpecialization(waitingRecipeID)
+				end
 				QueueRowRefresh()
 			end)
 		end
+		waiting[recipeID] = true
 		return nil
 	end
 	local tooltip = C_TooltipInfo.GetItemByID(itemID)
-	local spec
-	lock = false
+	state = false
 	for _, line in ipairs(tooltip and tooltip.lines or {}) do
 		if line.type == Enum.TooltipDataLineType.UsageRequirement and line.leftText
 			and line.requirementType == Enum.TooltipDataUsageRequirementType.Skill
 			and not line.leftText:find("%d") then
-			spec = true
-			if IsUnmet(line.leftColor) then
-				lock = line.leftText
-			end
+			state = IsUnmet(line.leftColor) and line.leftText or MET
 		end
 	end
-	facts.spec[recipeID], recipeLocks[recipeID] = spec or false, lock
-	return lock
+	if state == MET then
+		specialized[Profession(recipeID)] = true
+	end
+	facts.spec[recipeID], recipeSpecs[recipeID] = state ~= false, state
+	return state
+end
+
+-- The game's requirement text when the character has picked a specialization other than the one the
+-- recipe's made item needs; false when there is no lock, nil while the made item's data loads. Nothing
+-- locks before a specialization is picked: every recipe is still open to the character.
+function ns.GetRecipeLock(recipeID)
+	local state = ns.ReadSpecialization(recipeID)
+	if state == nil then
+		return nil
+	end
+	return state ~= MET and state and specialized[Profession(recipeID)] and state or false
 end
 
 -- Choosing or dropping a specialization changes which requirements are met.
 function ns.ClearRecipeLocks()
-	wipe(recipeLocks)
+	wipe(recipeSpecs)
+	wipe(specialized)
 end

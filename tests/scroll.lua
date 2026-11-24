@@ -176,6 +176,7 @@ local ns = { Perf = function() end, PerfMs = function() end, db = { showUnlearne
 assert(loadfile((UNLEARNED:gsub("Unlearned%.lua$", "Sources.lua"))))("RecipeVacuum", ns)
 ns.GetRecipeFaction = function() return "Alliance" end -- no tooltip data offline
 ns.GetRecipeLock = function() return false end
+ns.ReadSpecialization = function() return false end
 assert(loadfile(UNLEARNED))("RecipeVacuum", ns)
 
 local MAX_REDRAWS = 20 -- a rebuild takes a handful; one per added row would be hundreds
