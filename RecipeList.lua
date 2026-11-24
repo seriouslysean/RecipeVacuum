@@ -95,6 +95,11 @@ local function UpdateRow(row, node)
 			icon:ClearAllPoints()
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
 			ns.ApplyMark(icon, mark)
+			--@debug@
+			if ns.PreviewLook then
+				ns.PreviewLook(icon.Texture, data, mark)
+			end
+			--@end-debug@
 			icon:Show()
 			anchor, anchorPoint = icon, "LEFT"
 		else
