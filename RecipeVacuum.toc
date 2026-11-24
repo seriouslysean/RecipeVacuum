@@ -24,7 +24,6 @@ Record.lua
 Filter.lua
 Unlearned.lua
 RecipeList.lua
+RecipePanel.lua
 
-#@debug@
-Dev.lua
-#@end-debug@
+Troubleshooting.lua

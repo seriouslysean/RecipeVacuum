@@ -5,9 +5,8 @@ local function IsShowUnlearnedChecked()
 	return ns.db.showUnlearned
 end
 
--- Forever turns the client's Show Unlearned off after every list rebuild, so turning it on
--- always changes it, which makes Blizzard rebuild the list. Unlearned.lua then adds the
--- unlearned recipes to match the player's choices.
+-- Forever turns Show Unlearned off after every list rebuild, so enabling it always makes Blizzard
+-- rebuild the list. Unlearned.lua then adds our recipes.
 function ns.RefreshList()
 	C_TradeSkillUI.SetShowUnlearned(true)
 end
@@ -17,15 +16,11 @@ local function ToggleShowUnlearned()
 	ns.RefreshList()
 end
 
--- The Sources submenu, laid out like Blizzard's own (Professions.InitSourcesFilter). It
--- filters the unlearned recipes, by the sources Recipe Vacuum knows for them.
-local sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown", "unobtainable" }
+-- Sources submenu, laid out like Blizzard's Professions.InitSourcesFilter.
+local sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown" }
 
--- Unobtainable is off unless checked; every other key is on unless unchecked.
+-- A key is on unless set to false.
 local function IsSourceChecked(key)
-	if key == "unobtainable" then
-		return ns.db.sourceFilter[key] == true
-	end
 	return ns.db.sourceFilter[key] ~= false
 end
 
@@ -51,8 +46,7 @@ local function AddSourcesSubmenu(rootDescription)
 	submenu:CreateButton(CHECK_ALL or "Check All", SetAllSources, true)
 	submenu:CreateButton(UNCHECK_ALL or "Uncheck All", SetAllSources, false)
 	for _, key in ipairs(sourceFilterKeys) do
-		local label = (key == "unknown" and UNKNOWN) or (key == "unobtainable" and ns.UNOBTAINABLE)
-			or ns.sourceTypes[key].label
+		local label = key == "unknown" and UNKNOWN or ns.sourceTypes[key].label
 		submenu:CreateCheckbox(label, IsSourceChecked, ToggleSource, key)
 	end
 end
@@ -66,4 +60,14 @@ Menu.ModifyMenu("MENU_PROFESSIONS_FILTER", function(_, rootDescription)
 	rootDescription:CreateCheckbox(PROFESSION_RECIPES_SHOW_UNLEARNED or "Show Unlearned",
 		IsShowUnlearnedChecked, ToggleShowUnlearned)
 	AddSourcesSubmenu(rootDescription)
+end)
+
+-- Blizzard's filter reset (red X) also resets ours. Forever shows the X whenever the menu opens,
+-- because its default check expects Show Unlearned on; left alone.
+EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
+	hooksecurefunc(Professions, "SetDefaultFilters", function()
+		ns.db.showUnlearned = true
+		wipe(ns.db.sourceFilter)
+		ns.RefreshList()
+	end)
 end)

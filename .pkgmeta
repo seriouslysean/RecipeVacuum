@@ -1,6 +1,10 @@
 package-as: RecipeVacuum
 
+# Repository-only files. Dotfiles are left out by the packager on its own.
 ignore:
+  - AGENTS.md
+  - CLAUDE.md
   - HANDOFF.md
+  - tests
   - research_notes
   - reports

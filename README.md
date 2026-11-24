@@ -4,7 +4,11 @@ A WoW Forever addon that shows the recipes you don't know yet in Blizzard's prof
 
 By default, **Everything** records trainer and vendor finds and quietly exchanges missing observations with friends, guildmates and group members running Recipe Vacuum. Choose **Self Found** under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum to pause sharing and show only firsthand finds. **Announce new finds** controls personal visit messages.
 
-To contribute discoveries collected while playing alone, choose **Export Finds**, copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
+To contribute discoveries collected while playing alone, type `/recipevacuum export` (or press Run next to it in the options), copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
+
+## Commands
+
+`/recipevacuum help` (or `/boltgrip recipevacuum help`) lists every command in chat. Player commands also appear in the options page's Commands section. Troubleshooting commands (`checks`, `watch`, `dump`, `requirements`, `perf` and others) print to chat, open their output in a copy window, and keep the last 2,000 lines in `RecipeVacuumDB.devLog` (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`, written on `/reload` or logout).
 
 ## Development
 
@@ -15,11 +19,6 @@ ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeV
 ```
 
 Forever's UI source, for reference: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
-
-Developer commands:
-
-- `/boltgrip recipevacuum dump`: prints what the client knows about the first unlearned recipe of the open profession.
-- `/boltgrip recipevacuum preview`: shows each source icon on unlearned rows, to check the layout.
 
 
 ## Jig Boltgrip's Toolkit

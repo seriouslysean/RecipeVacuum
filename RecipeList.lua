@@ -1,19 +1,15 @@
 local _, ns = ...
 
--- Marks on the right of unlearned rows, where Blizzard puts its own status icons (the lock).
--- One icon per known source type, in ns.sourceOrder; Blizzard's search glass when no source
--- is known yet; its red X when the character can never learn the recipe. Blizzard's skill-up
--- arrow on the left is left alone.
-local ICON_SIZE = 12
+-- Marks on the right of unlearned rows, where Blizzard puts its status icons. One icon per source type
+-- in ns.sourceOrder; the search glass when none is known, the red X when the character can never learn
+-- the recipe.
 local ICON_GAP = 4
--- Source marks use Blizzard's disabled look for things not yet had: desaturated at half
--- alpha, as the Classic mount journal draws empty and disabled entries
--- (Blizzard_MountCollection.lua). Every mark follows it, the red X included; the
--- "Full color source icons" option turns dimming off.
-local MARK_ALPHA = 0.5
+-- Marks are centered in equal-width slots so they line up down the list.
+local SLOT_SIZE = ns.MARK_SLOT_SIZE
+
 local MAX_ICONS = #ns.sourceOrder
 
--- Our per-row state, kept in a weak-keyed side table instead of on Blizzard's pooled rows.
+-- Per-row state in a weak-keyed table, not on Blizzard's pooled rows.
 local rowState = setmetatable({}, { __mode = "k" })
 
 local function State(row)
@@ -46,9 +42,9 @@ local function GetIcons(row)
 		State(row).icons = {}
 		for index = 1, MAX_ICONS do
 			local icon = CreateFrame("Button", nil, row)
-			icon:SetSize(ICON_SIZE, ICON_SIZE)
+			icon:SetSize(SLOT_SIZE, SLOT_SIZE)
 			icon.Texture = icon:CreateTexture(nil, "OVERLAY")
-			icon.Texture:SetAllPoints()
+			icon.Texture:SetPoint("CENTER")
 			icon:SetScript("OnEnter", IconOnEnter)
 			icon:SetScript("OnLeave", IconOnLeave)
 			icon:SetScript("OnClick", IconOnClick)
@@ -68,28 +64,7 @@ local function HideIcons(row)
 	end
 end
 
-local previewIndex = 0
 local marks = {}
-
--- The marks a row shows, filled into the shared marks list; returns how many.
-local function GetMarks(recipeInfo)
-	wipe(marks)
-	if recipeInfo.unobtainable then
-		marks[1] = "unobtainable"
-	elseif ns.preview then
-		previewIndex = previewIndex % #ns.sourceOrder + 1
-		marks[1] = ns.sourceOrder[previewIndex]
-	elseif recipeInfo.sourceTypes then
-		for _, sourceType in ipairs(ns.sourceOrder) do
-			if recipeInfo.sourceTypes[sourceType] then
-				marks[#marks + 1] = sourceType
-			end
-		end
-	else
-		marks[1] = "unknown"
-	end
-	return #marks
-end
 
 local function UpdateRow(row, node)
 	local data = node and node.GetData and node:GetData()
@@ -102,7 +77,7 @@ local function UpdateRow(row, node)
 		return
 	end
 
-	local count = GetMarks(recipeInfo)
+	local count = ns.GetMarks(recipeInfo, marks)
 	local icons = GetIcons(row)
 	local locked = row.LockedIcon:IsShown()
 	State(row).recipe = recipeInfo
@@ -113,14 +88,8 @@ local function UpdateRow(row, node)
 		local mark = marks[count - index + 1]
 		if mark then
 			icon:ClearAllPoints()
-			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -1, 0)
-			if icon.mark ~= mark then
-				ns.SetSourceTexture(icon.Texture, mark)
-				icon.mark = mark
-			end
-			local dimmed = not ns.db.fullColorIcons
-			icon.Texture:SetDesaturated(dimmed)
-			icon.Texture:SetAlpha(dimmed and MARK_ALPHA or 1)
+			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
+			ns.ApplyMark(icon, mark)
 			icon:Show()
 			anchor, anchorPoint = icon, "LEFT"
 		else
@@ -128,11 +97,11 @@ local function UpdateRow(row, node)
 		end
 	end
 
-	-- Blizzard sizes the label around its own right-side icons on every Init; leave room for ours.
+	-- Blizzard sizes the label around its own icons on every Init; leave room for ours.
 	State(row).labelWidth = State(row).labelWidth or row.Label:GetWidth()
 	local countWidth = row.Count:IsShown() and row.Count:GetStringWidth() or 0
 	local lockWidth = locked and row.LockedIcon:GetWidth() or 0
-	local iconsWidth = count * (ICON_SIZE + 1) + ICON_GAP
+	local iconsWidth = count * (SLOT_SIZE + ns.MARK_SPACING) + ICON_GAP
 	local maxWidth = row:GetWidth() - row.SkillUps:GetWidth() - lockWidth - countWidth - iconsWidth - 2 * ICON_GAP
 	row.Label:SetWidth(math.max(1, math.min(State(row).labelWidth, maxWidth)))
 end
@@ -145,7 +114,6 @@ end
 function ns.RefreshRows()
 	local scrollBox = GetScrollBox()
 	if scrollBox then
-		previewIndex = 0
 		scrollBox:ForEachFrame(UpdateRow)
 	end
 end
@@ -156,8 +124,8 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 		return
 	end
 	ScrollUtil.AddInitializedFrameCallback(scrollBox, function(_, row, node)
-		State(row).labelWidth = nil -- Init just restored Blizzard's width on this pooled row.
-		UpdateRow(row, node) -- the callback's first argument is the owner
+		State(row).labelWidth = nil -- Init restored Blizzard's width on this pooled row
+		UpdateRow(row, node) -- first callback argument is the owner
 	end, ns)
 	ns.RefreshRows()
 end)

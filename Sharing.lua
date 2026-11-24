@@ -2,17 +2,16 @@ local _, ns = ...
 local comm = {}
 LibStub("AceComm-3.0"):Embed(comm)
 
--- Sharing is automatic and invisible: hidden addon messages (CHAT_MSG_ADDON) only.
--- 1. Probe on PROBE_PREFIX: collection ID and revision, on joining a guild or group, on
---    reconnecting, or when a friend comes online. Replies follow another addon' version check.
+-- Sharing is silent: hidden addon messages (CHAT_MSG_ADDON) only.
+-- 1. Probe on PROBE_PREFIX (collection ID, revision) on joining a guild or group, reconnecting, or when a
+--    friend comes online. Replies follow another addon' version check.
 -- 2. A peer that is behind whispers on DATA_PREFIX: "G <collection> <after>".
--- 3. The owner replies with one AceComm BULK message: "D <collection> <after> <through> <payload>",
---    every observation after <after> up to <through>, capped near 4 kB encoded; the receiver
---    asks again from <through> until it reaches the tip. This is the request-plus-bulk shape
---    of another addon Transmission.lua, with data on its own prefix as another addon keeps its
---    progress messages on another addon. AceComm splits and reassembles; ChatThrottleLib
---    paces sends and requeues throttled ones, so no manual retry is needed.
--- The version is in both prefixes; messages from other versions are ignored.
+-- 3. The owner replies with one AceComm BULK message "D <collection> <after> <through> <payload>": every
+--    observation after <after> up to <through>, capped near 4 kB encoded. The receiver asks again from
+--    <through> until it reaches the tip. Request plus bulk as in another addon Transmission.lua, with data on
+--    its own prefix as another addon keeps progress on another addon. AceComm splits and reassembles;
+--    ChatThrottleLib paces sends and requeues throttled ones, so no manual retry.
+-- The version is in both prefixes; other versions are ignored.
 local PROBE_PREFIX = "RecipeVacuum2"
 local DATA_PREFIX = "RecipeVacuum2D"
 local SEND_LIMIT = 4000     -- encoded bytes per reply (about 16 AceComm chunks)
@@ -20,6 +19,7 @@ local RECEIVE_LIMIT = 6000  -- larger replies are rejected before decoding
 local EXPANDED_LIMIT = 65536 -- decompressed bytes accepted before CBOR decoding
 local MAX_ROWS = 64
 local REQUEST_TIMEOUT = 30
+local REQUEST_RETRIES = 2  -- re-asks after a timeout before giving up on a peer
 
 local enabled, inWorld, deferred
 local friends, waiting, replied = {}, {}, {}
@@ -78,7 +78,7 @@ end
 function ns.ScheduleFindOffer()
 	wipe(cachedReplies)
 	if not enabled or offerQueued then return end
-	-- Trainer and merchant scans may discover dozens of recipes in one visit.
+	-- A trainer or merchant visit can find dozens of recipes.
 	offerQueued = true
 	C_Timer.After(0, function()
 		offerQueued = nil
@@ -100,9 +100,8 @@ local function Decode(text)
 	return C_EncodingUtil.DeserializeCBOR(bytes)
 end
 
--- Builds the reply for one request, halving the row count until it fits SEND_LIMIT.
--- Replies are cached per starting revision, so several peers asking for the same range
--- after one guild probe cost one encode; any new find clears the cache.
+-- Builds the reply for one request, halving the row count until it fits SEND_LIMIT. Cached per starting
+-- revision, so peers asking after one guild probe cost one encode; any new find clears it.
 local function Reply(after)
 	local cached = cachedReplies[after]
 	if cached then return cached end
@@ -149,7 +148,7 @@ local function Ask(peer)
 	end)
 end
 
--- One outstanding request at a time; the rest wait.
+-- One request at a time; the rest wait.
 NextPeer = function()
 	if active or not Ready() then return end
 	for sender, peer in pairs(waiting) do
@@ -165,7 +164,7 @@ end
 
 local function QueuePeer(sender, id, tip)
 	local received = ns.db.exchange.received
-	-- A tip below what we saved means that collection was reset: start it again from zero.
+	-- Tip below what we saved: that collection was reset, restart from zero.
 	if received[id] and tip < received[id] then
 		received[id] = 0
 	end
@@ -174,17 +173,16 @@ local function QueuePeer(sender, id, tip)
 	if peer and peer.id == id then
 		peer.tip = math.max(peer.tip, tip)
 	else
-		waiting[sender] = { sender = sender, id = id, tip = tip, retries = 2 }
+		waiting[sender] = { sender = sender, id = id, tip = tip, retries = REQUEST_RETRIES }
 	end
 	NextPeer()
 end
 
 local discoveryChannels = { GUILD = true, PARTY = true, RAID = true, INSTANCE_CHAT = true }
 
--- Probe replies follow another addon' version check (Loader.lua, VersionCheck): a probe on a guild
--- or group channel starts a 3 second timer, restarted by further probes, and the reply goes
--- once to that channel, where every prober hears it. Several players arriving together cost
--- each member one reply instead of one whisper per arrival.
+-- another addon Loader.lua VersionCheck pattern: a probe on a guild or group channel starts a 3 second timer,
+-- restarted by further probes, then one reply goes to the channel. Players arriving together cost each
+-- member one reply, not one whisper per arrival.
 local REPLY_DELAY = 3
 local replyTimers = {}
 
@@ -216,7 +214,7 @@ local function OnProbe(_, message, channel, sender)
 	if not kind or rest ~= "" or id == ns.db.exchange.id then return end
 	if kind == "H" then
 		if channel == "WHISPER" then
-			-- Friends outside the guild and group: answer the prober directly.
+			-- Friends outside guild and group: answer the prober directly.
 			local now = GetTime()
 			if not replied[sender] or now - replied[sender] >= REPLY_DELAY then
 				replied[sender] = now
@@ -243,7 +241,7 @@ local function OnData(_, message, channel, sender)
 		local reply = Reply(after)
 		if reply then SendData(reply, sender) end
 	elseif kind == "D" then
-		-- Accept only the reply to our own outstanding request.
+		-- Accept only the reply to our own request.
 		local peer = active
 		if not peer or peer.sender ~= sender or peer.id ~= id or peer.after ~= after then return end
 		local through, encoded = rest:match("^ (%d+) (%S+)$")
@@ -258,10 +256,10 @@ local function OnData(_, message, channel, sender)
 		-- The owner may have found more since its probe.
 		peer.tip = math.max(peer.tip, through)
 		sourcesDirty = sourcesDirty or changed
-		-- The cursor moves only after the whole batch validated and merged.
+		-- Move the cursor only after the whole batch validated and merged.
 		exchange.received[id] = through
 		if through < peer.tip then
-			peer.after, peer.retries = through, 2
+			peer.after, peer.retries = through, REQUEST_RETRIES
 			Ask(peer)
 		else
 			FinishRequest()
@@ -269,8 +267,8 @@ local function OnData(_, message, channel, sender)
 	end
 end
 
--- Discovery is event driven. Broadcast once on joining each channel, and whisper only
--- newly online friends who won't already receive the group or guild probe.
+-- Event driven: broadcast once on joining each channel, whisper only newly online friends who won't get
+-- the group or guild probe.
 local function RefreshChannels(force)
 	local group = IsInGroup(LE_PARTY_CATEGORY_HOME) and
 		(IsInRaid(LE_PARTY_CATEGORY_HOME) and "RAID" or "PARTY")
@@ -294,8 +292,8 @@ end
 
 local bnetPresence, changedFriends = {}, {}
 local function BattleNetCharacters(index, online)
-	-- BN_FRIEND_INFO_CHANGED also fires for presence changes such as zone or status.
-	-- Compare just this friend's reachable character names before rebuilding the roster.
+	-- BN_FRIEND_INFO_CHANGED also fires for zone or status changes; compare this friend's reachable
+	-- character names before rebuilding the roster.
 	local names = ""
 	for j = 1, C_BattleNet.GetFriendNumGameAccounts(index) do
 		local game = C_BattleNet.GetFriendGameAccountInfo(index, j)

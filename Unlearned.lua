@@ -1,15 +1,14 @@
 local _, ns = ...
 
--- Forever's client leaves unlearned recipes out of C_TradeSkillUI.GetFilteredRecipeIDs()
--- even with Show Unlearned on, so Blizzard's list never gets them. After Blizzard builds the
--- list, add them to their own categories, after the learned recipes, as Blizzard's recipe
--- rows (which draw unlearned recipes gray).
+-- Forever's client leaves unlearned recipes out of C_TradeSkillUI.GetFilteredRecipeIDs() even with Show
+-- Unlearned on. After Blizzard builds the list, add them to their own categories after the learned
+-- recipes, as rows Blizzard draws gray.
 
--- Mirrors the local Group enum in Blizzard_ProfessionsTemplates/Blizzard_Professions.lua
--- (Favorite, Learned, UnlearnedDivider, Unlearned).
+-- Copied from the local Group enum in Blizzard_Professions.lua (Favorite, Learned, UnlearnedDivider,
+-- Unlearned).
 local GROUP_LEARNED = 2
 
--- Whether the open profession view is one where the player's own unlearned recipes belong.
+-- Whether the open view is one where the player's own unlearned recipes belong.
 function ns.CanShowUnlearned()
 	return not (C_TradeSkillUI.IsNPCCrafting() or C_TradeSkillUI.IsTradeSkillGuild()
 		or C_TradeSkillUI.IsTradeSkillLinked())
@@ -21,9 +20,8 @@ local function IsListFilteredToCraftable()
 		or C_TradeSkillUI.AreAnyInventorySlotsFiltered()
 end
 
--- The unlearned recipes for each profession only change when the player learns something,
--- so look them up once and keep them until then. Blizzard rebuilds the list on every
--- TRADE_SKILL_LIST_UPDATE, which fires often.
+-- Unlearned recipes only change when the player learns something, so cache them. Blizzard rebuilds on
+-- every TRADE_SKILL_LIST_UPDATE, which fires often.
 local cache = {}
 
 local cacheFrame = CreateFrame("Frame")
@@ -34,7 +32,7 @@ cacheFrame:SetScript("OnEvent", function()
 	wipe(cache)
 end)
 
--- New recorded sources change the cached source summaries.
+-- New recorded sources invalidate the cached source summaries.
 function ns.ClearUnlearnedCache()
 	wipe(cache)
 end
@@ -62,8 +60,8 @@ local function SortRecipeRows(a, b)
 	return left.recipeID < right.recipeID
 end
 
--- Returns this profession's unlearned recipes as categories in Blizzard's order, each
--- holding its recipes sorted by ascending trivial skill, or nil while the client loads.
+-- This profession's unlearned recipes as categories in Blizzard's order, each sorted by ascending
+-- trivial skill; nil while the client loads.
 local function GetUnlearnedCategories(professionInfo)
 	local professionID = professionInfo.professionID
 	if not C_TradeSkillUI.IsTradeSkillReady() then
@@ -73,10 +71,10 @@ local function GetUnlearnedCategories(professionInfo)
 		return cache[professionID]
 	end
 
-	-- One pass over the profession: unlearned recipes, flagged when another faction's, plus,
-	-- only while recorded vendor items wait to be linked, a name and ID index to link them.
+	-- One pass: unlearned recipes (flagged when another faction's), plus a name and ID index only while
+	-- recorded vendor items wait to be linked.
 	local db = ns.db
-	local pending = next(db.pendingItems) or next(db.found.trainerNames) or next(db.shared.trainerNames)
+	local pending = next(db.pendingItems)
 	local byName, inProfession = pending and {}, pending and {}
 	local unlearned = {}
 	local playerFaction = UnitFactionGroup("player")
@@ -98,15 +96,16 @@ local function GetUnlearnedCategories(professionInfo)
 				if faction == nil then
 					factionsComplete = false
 				end
-				-- Recipes the character can never learn stay in the list, marked, so the
-				-- Unobtainable filter (off by default) can show them.
-				recipeInfo.unobtainable = (faction and faction ~= playerFaction) or nil
-				table.insert(unlearned, recipeInfo)
+				-- Other-faction versions are left out, as Blizzard never lists them.
+				if not (faction and faction ~= playerFaction) then
+					table.insert(unlearned, recipeInfo)
+				end
 			end
 		end
 	end
+	local linksComplete = true
 	if pending and indexComplete then
-		ns.LinkPending(byName, inProfession, professionInfo.profession)
+		linksComplete = ns.LinkPending(byName, inProfession, professionInfo.profession)
 	end
 
 	local categories, byID, seen = {}, {}, {}
@@ -136,28 +135,28 @@ local function GetUnlearnedCategories(professionInfo)
 	table.sort(categories, SortCategories)
 	for _, category in ipairs(categories) do
 		table.sort(category.recipes, SortRecipeRows)
-		-- SortCategoryData compares order first. Keep each cached position between
-		-- Blizzard's learned rows (0) and bottom padding (1), including after filtering.
+		-- SortCategoryData compares order first: keep cached positions between learned rows (0) and
+		-- bottom padding (1), including after filtering.
 		local divisor = #category.recipes + 1
 		for index, row in ipairs(category.recipes) do
 			row.order = index / divisor
 		end
 	end
-	if indexComplete and factionsComplete then
+	if indexComplete and factionsComplete and linksComplete then
 		cache[professionID] = categories
 	end
 	return categories
 end
 
--- The recipes of each category that match the search, or nil when none match. Blizzard's
--- search box also takes item level ranges ("~30", "10-20"); unlearned recipes are left out
--- of those searches.
+-- Recipes of each category matching the search, or nil. Blizzard's search also takes item level ranges
+-- ("~30", "10-20"); unlearned recipes are left out of those.
 local function GetMatches(categories, searchText)
 	local nameFilter = C_TradeSkillUI.GetRecipeItemNameFilter()
 	if searchText ~= "" and (nameFilter == nil or nameFilter == "") then
 		return nil
 	end
-	local filteringSources = false
+	-- Self Found lists only witnessed recipes, so it filters even with every source checked.
+	local filteringSources = not ns.db.shareWithFriends
 	for _, enabled in pairs(ns.db.sourceFilter) do
 		if enabled == false then
 			filteringSources = true
@@ -184,19 +183,34 @@ local function GetMatches(categories, searchText)
 	return #matches > 0 and matches or nil
 end
 
--- Data providers this addon has already added to. A weak-keyed side table keeps our state
--- off Blizzard's objects.
+-- Data providers already added to; weak-keyed to keep our state off Blizzard's objects.
 local added = setmetatable({}, { __mode = "k" })
 
+-- A ScrollBox keeps its scroll offset across a new data provider, cut off at the new list's end
+-- (ScrollBoxBaseMixin:FullUpdateInternal). Blizzard's rebuilt list lacks our recipes and is shorter, so
+-- the offset is read before Init swaps that list in and put back once ours are added.
+local offsetBeforeRebuild = 0
+-- Profession of the last build, to tell a rebuild from a newly opened list as Init does.
+local listProfessionID
+
+-- Init builds its list with this just before handing it to the ScrollBox.
+local function SaveScrollOffset()
+	offsetBeforeRebuild = ProfessionsFrame.CraftingPage.RecipeList.ScrollBox:GetDerivedScrollOffset()
+end
+
 local function AddUnlearnedRecipes(page)
+	local scrollBox = page.RecipeList.ScrollBox
+	local professionID = page.professionInfo and page.professionInfo.professionID
+	-- Init keeps the scroll position unless searching or the profession changed; so does this.
+	local keepScroll = professionID == listProfessionID and not page.RecipeList.SearchBox:HasText()
+	listProfessionID = professionID
+
 	if not ns.db.showUnlearned or not ns.CanShowUnlearned() or IsListFilteredToCraftable() then
 		return
 	end
 
-	local scrollBox = page.RecipeList.ScrollBox
 	local dataProvider = scrollBox:GetDataProvider()
-	local professionID = page.professionInfo and page.professionInfo.professionID
-	-- Init returns early for recrafting without building a new list; never add twice.
+	-- Init returns early for recrafting without a new list; never add twice.
 	if not (professionID and dataProvider and dataProvider.GetRootNode) or added[dataProvider] then
 		return
 	end
@@ -208,11 +222,11 @@ local function AddUnlearnedRecipes(page)
 		return
 	end
 
-	-- Every insert into a data provider that a ScrollBox is showing makes it redraw at once.
-	-- Detach it while adding, then reattach it, so the list redraws once.
+	-- Each insert into a data provider a ScrollBox shows redraws at once. Detach it while adding, then
+	-- reattach, so the list redraws once. Detaching empties the view, which scrolls it to the top.
 	scrollBox:RemoveDataProvider()
 
-	-- Blizzard's category nodes, so unlearned recipes join the category they belong to.
+	-- Blizzard's category nodes, so unlearned recipes join their own category.
 	local categoryNodes = {}
 	for _, node in dataProvider:EnumerateEntireRange() do
 		local categoryInfo = node:GetData().categoryInfo
@@ -227,7 +241,7 @@ local function AddUnlearnedRecipes(page)
 		local categoryNode = categoryNodes[category.info.categoryID]
 		local newCategory = not categoryNode
 		if newCategory then
-			-- No learned recipes here: a gray header, sorted among Blizzard's categories.
+			-- No learned recipes here: gray header, sorted among Blizzard's categories.
 			categoryNode = root:Insert({ categoryInfo = category.info, group = GROUP_LEARNED })
 			categoryNode:Insert({ topPadding = true, order = -1 })
 		end
@@ -244,13 +258,18 @@ local function AddUnlearnedRecipes(page)
 	added[dataProvider] = true
 
 	scrollBox:SetDataProvider(dataProvider, ScrollBoxConstants.RetainScrollPosition)
+	if keepScroll then
+		-- Save the offset, change the list, reapply: as ScrollBoxDragBehavior does in ScrollUtil.lua.
+		scrollBox:ScrollToOffset(offsetBeforeRebuild, ScrollBoxConstants.NoScrollInterpolation)
+	end
 
-	-- Reattaching clears the list's selection, and Blizzard showed "No results" before the
-	-- unlearned recipes were added. Put both back the way Blizzard's Init leaves them.
+	-- Reattaching clears the selection, and Blizzard showed "No results" before our recipes were added.
+	-- Put both back as Blizzard's Init leaves them, including its scroll to a recipe opened from a link.
 	page.RecipeList.NoResultsText:Hide() -- at least one match was inserted
 	local selected = page.SchematicForm:GetRecipeInfo()
 	if selected then
-		page.RecipeList:SelectRecipe(Professions.GetFirstRecipe(selected) or selected, false)
+		local scrollToRecipe = page.professionInfo.openRecipeID ~= nil
+		page.RecipeList:SelectRecipe(Professions.GetFirstRecipe(selected) or selected, scrollToRecipe)
 	end
 
 	ns.lastUnlearnedMs = debugprofilestop() - startTime
@@ -258,5 +277,6 @@ local function AddUnlearnedRecipes(page)
 end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
+	hooksecurefunc(Professions, "GenerateCraftingDataProvider", SaveScrollOffset)
 	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", AddUnlearnedRecipes)
 end)
