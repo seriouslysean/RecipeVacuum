@@ -119,6 +119,13 @@ function ns.GetSources(recipeInfo)
 	return #list > 0 and list or nil
 end
 
+-- The recipe that makes an item, when known: this session's scan first, then the seed. Seeing a
+-- crafted item is coming across its recipe (docs/data.md, "Come across").
+function ns.GetMadeRecipe(itemID)
+	local made = ns.scannedMade and ns.scannedMade[itemID]
+	return made or (ns.seed and ns.seed.made and ns.seed.made[itemID]) or nil
+end
+
 -- The item ID when an item (ID or link) is a recipe item, else nil. One instant lookup, no server.
 function ns.IsRecipeItem(item)
 	local itemID, _, _, _, _, classID = C_Item.GetItemInfoInstant(item)
@@ -433,7 +440,7 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 			local name = ns.SourceInfo(observation)
 			local mapID, x, y = ns.SourcePosition(observation)
 			local mapInfo = mapID and C_Map.GetMapInfo(mapID)
-			local where = mapInfo and mapInfo.name or ""
+			local where = mapInfo and mapInfo.name or UNKNOWN -- known how, not yet where
 			if detailed and mapInfo and x then
 				where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
 			end

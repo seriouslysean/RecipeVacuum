@@ -147,6 +147,14 @@ local function MapTargets(recipeInfo)
 			})
 		end
 	end
+	-- The zone the player is in first, then by label.
+	local here = C_Map.GetBestMapForUnit("player")
+	table.sort(targets, function(left, right)
+		if (left.mapID == here) ~= (right.mapID == here) then
+			return left.mapID == here
+		end
+		return strcmputf8i(left.label, right.label) < 0
+	end)
 	return targets
 end
 
@@ -169,9 +177,13 @@ local function OnMapClick(button)
 end
 
 -- Several places: the same arrow dropdown as the window's Filter button, one entry per source.
+-- About twelve entries show before the menu scrolls (20 per entry, as Blizzard's menu guide sizes it).
+local MAP_MENU_ENTRY_HEIGHT, MAP_MENU_ENTRIES = 20, 12
+local MAP_MENU_MAX_HEIGHT = MAP_MENU_ENTRY_HEIGHT * MAP_MENU_ENTRIES
 local function MapMenu(dropdown, rootDescription)
 	-- SetupMenu builds the menu once right away, before any recipe is selected.
 	if not dropdown.recipeInfo then return end
+	rootDescription:SetScrollMode(MAP_MENU_MAX_HEIGHT) -- Blizzard's own menu scrolling, past this height
 	for _, target in ipairs(MapTargets(dropdown.recipeInfo)) do
 		rootDescription:CreateButton(target.label, function() ShowOnMap(target) end)
 	end

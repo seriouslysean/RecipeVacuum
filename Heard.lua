@@ -45,7 +45,8 @@ local function OnChat(event, message)
 	end
 	local level = CHAT_LEVELS[event]
 	for id in message:gmatch("|Hitem:(%d+)") do
-		local itemID = ns.IsRecipeItem(tonumber(id))
+		local linkedID = tonumber(id)
+		local itemID = ns.IsRecipeItem(linkedID)
 		if itemID then
 			local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]
 			if recipeID then
@@ -54,9 +55,14 @@ local function OnChat(event, message)
 				Note("items", itemID, level)
 				ns.db.pendingItems[itemID] = ns.db.pendingItems[itemID] or {} -- linked by ns.LinkPending
 			end
+		else
+			-- Something a profession makes: its recipe exists, though not yet where to learn it.
+			local madeBy = ns.GetMadeRecipe(linkedID)
+			if madeBy then
+				Note("recipes", madeBy, level)
+			end
 		end
 	end
-	-- A recipe linked from a profession window.
 	-- A profession link names its owner; where it was seen decides how near the profession counts
 	-- when opened. Kept for the session only.
 	for guid in message:gmatch("|Htrade:([^:|]+)") do
@@ -65,6 +71,7 @@ local function OnChat(event, message)
 			linkLevels[name] = level
 		end
 	end
+	-- A recipe linked from a profession window.
 	for id in message:gmatch("|Henchant:(%d+)") do
 		local spellID = tonumber(id)
 		if C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID) then

@@ -343,6 +343,7 @@ end
 --@debug@
 -- A scan kept from this game build is used from the start of each session, ahead of the seed.
 local function UseKeptScan()
+	ns.scannedMade = ns.db.devMade -- what recipes make, from the `made` command
 	local scan = ns.db.devScan
 	if scan and scan.teaches and scan.build == select(2, GetBuildInfo()) then
 		UseScan(scan)
@@ -662,6 +663,39 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window too
 		Say(voice.perfNoScan)
 	end
 end })
+-- Made-item scan: what each recipe of the open profession makes, saved for the generator and used at
+-- once as ns.scannedMade. Spread over frames, a batch at a time.
+local MADE_BATCH = 50
+table.insert(troubleshooting, { "made", "Scan what the open profession's recipes make", function()
+	local recipeIDs = C_TradeSkillUI.IsTradeSkillReady() and C_TradeSkillUI.GetAllRecipeIDs()
+	if not recipeIDs then
+		return ns.Log(ns.voice.scanNoWindow)
+	end
+	ns.db.devMade = ns.db.devMade or {}
+	local made, index, found, shared = ns.db.devMade, 0, 0, 0
+	local function Batch()
+		for _ = 1, MADE_BATCH do
+			index = index + 1
+			local recipeID = recipeIDs[index]
+			if not recipeID then
+				ns.scannedMade = made
+				return ns.Log(("Made-item scan: %d recipes, %d make an item, %d items made by more than one recipe")
+					:format(#recipeIDs, found, shared))
+			end
+			local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
+			local itemID = schematic and schematic.outputItemID
+			if itemID then
+				found = found + 1
+				if made[itemID] and made[itemID] ~= recipeID then
+					shared = shared + 1
+				end
+				made[itemID] = math.min(made[itemID] or recipeID, recipeID) -- the lowest ID, to be stable
+			end
+		end
+		C_Timer.After(0, Batch)
+	end
+	Batch()
+end, quiet = true })
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode and whisper every reply to yourself", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }

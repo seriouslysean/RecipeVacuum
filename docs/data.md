@@ -85,10 +85,15 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 | A recipe item or recipe link in party, raid, instance, guild, officer or whisper chat | Friends |
 | A recipe item in a loot line (someone nearby looting) | Friends |
 | A recipe item or recipe link in say, yell or a numbered channel | Public |
+| An item a recipe makes, linked or in a loot line | The level of the line it was seen in |
 | The guild's profession view | Friends |
 | A linked profession the player opens | The level its link was seen at this session, else Public |
 
 A recipe with no known source is listed, with the unknown mark, once it has been come across within the chosen level. Recipes never come across stay hidden unless Unknown is ticked in the Sources filter.
+
+The made-item table (`ns.GetMadeRecipe`: `ns.seed.made`, with a checkout scan over it) is not shipped yet: the `made` command scans what the open profession's recipes make into `RecipeVacuumDB.devMade`, to measure its size before the generator writes it into the seed. Hovering an item is not a sighting yet; its cost per tooltip is unmeasured.
+
+A source can be known in part. The tooltip shows "Unknown" in the place column for a source whose location is not known (a roll in a zone, a peer's report without a position), and Show Map lists only places with a position.
 
 Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe, and the first-run dialog.
 

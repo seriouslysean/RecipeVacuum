@@ -367,6 +367,11 @@ do
   local onlyLevels = true
   for _, bucket in pairs(met) do for _, value in pairs(bucket) do onlyLevels = onlyLevels and type(value) == "number" end end
   check("nothing about who or where is kept", onlyLevels)
+  -- Seeing something a profession makes is coming across its recipe. Fails if a made item is ignored.
+  h.scannedMade = { [778] = 6001 }
+  nonRecipes[778] = true
+  chat("CHAT_MSG_PARTY", "nice |Hitem:778::::|h[Blue Overalls]|h")
+  check("a linked crafted item brings its recipe", met.recipes[6001] == 2 and met.items[778] == nil)
   chat("CHAT_MSG_GUILD", "mine |Henchant:5555|h[Engineering: Gizmo]|h")
   check("a nearer sighting replaces a farther one", met.recipes[5555] == 2)
   h.db.recipeItems[99] = { 1000 }
