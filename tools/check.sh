@@ -8,6 +8,10 @@
 # upgrade and simulation tests are skipped. A skipped test is reported, never counted as passed.
 set -eu
 
+# Absolute paths: the release-build tests run from another directory.
+absolute() { case "$1" in /*) echo "$1" ;; "") echo "" ;; *) echo "$PWD/$1" ;; esac; }
+ui=$(absolute "${1:-}"); old_save=$(absolute "${2:-}"); new_save=$(absolute "${3:-}")
+
 ours() { git ls-files '*.lua' | grep -v '^Libs/AceComm-3.0/\|^Libs/CallbackHandler-1.0/\|^Libs/LibStub/'; }
 
 echo "== syntax (Lua 5.1, via LuaJIT)"
@@ -26,25 +30,25 @@ for file in $(ours); do
 done
 
 skipped=0
-if [ -n "${1:-}" ]; then
+if [ -n "$ui" ]; then
 	echo "== scroll test"
-	luajit tests/scroll.lua "$1/Interface/AddOns" Unlearned.lua
+	luajit tests/scroll.lua "$ui/Interface/AddOns" Unlearned.lua
 	echo "== scroll test, release build"
-	(cd "$stripped" && luajit tests/scroll.lua "$1/Interface/AddOns" Unlearned.lua)
+	(cd "$stripped" && luajit tests/scroll.lua "$ui/Interface/AddOns" Unlearned.lua)
 else
 	echo "-- SKIPPED scroll test: no ui-source given"; skipped=1
 fi
-if [ -n "${2:-}" ]; then
+if [ -n "$old_save" ]; then
 	echo "== upgrade test"
-	luajit tests/upgrade.lua . "$2"
+	luajit tests/upgrade.lua . "$old_save"
 else
 	echo "-- SKIPPED upgrade test: no schema 1 save given"; skipped=1
 fi
-if [ -n "${3:-}" ]; then
+if [ -n "$new_save" ]; then
 	echo "== simulation"
-	luajit tests/simulate.lua . "$3"
+	luajit tests/simulate.lua . "$new_save"
 	echo "== simulation, release build"
-	(cd "$stripped" && luajit tests/simulate.lua . "$3")
+	(cd "$stripped" && luajit tests/simulate.lua . "$new_save")
 else
 	echo "-- SKIPPED simulation: no current save given"; skipped=1
 fi

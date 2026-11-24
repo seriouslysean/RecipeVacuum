@@ -1,7 +1,7 @@
 -- Lint for the client's Lua 5.1; vendored libraries are excluded, as another addon does.
 -- `globals` lists the only globals the addon sets; add each game global it reads to `read_globals`.
 std = "lua51"
-exclude_files = { "Libs/AceComm-3.0", "Libs/CallbackHandler-1.0", "Libs/LibStub" }
+exclude_files = { "Libs/AceComm-3.0", "Libs/CallbackHandler-1.0", "Libs/LibStub", ".ui-source" } -- .ui-source: Blizzard's code, checked out by CI
 globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER_JIGBOLTGRIPTOOLKIT" }
 max_line_length = false
 ignore = { "21./self", "212" }
