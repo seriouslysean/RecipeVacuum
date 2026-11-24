@@ -1,13 +1,13 @@
 local _, ns = ...
 
 -- Marks on the right of unlearned rows, where Blizzard puts its status icons. One icon per source type
--- in ns.sourceOrder; the search glass when none is known, the red X when the character can never learn
--- the recipe.
+-- in ns.sourceOrder, or the search glass when none is known, with Blizzard's lock to their left when
+-- the recipe needs a specialization the character lacks.
 local ICON_GAP = 4
 -- Marks are centered in equal-width slots so they line up down the list.
 local SLOT_SIZE = ns.MARK_SLOT_SIZE
 
-local MAX_ICONS = #ns.sourceOrder
+local MAX_ICONS = #ns.sourceOrder + 1 -- every source type, plus the lock
 
 -- Per-row state in a weak-keyed table, not on Blizzard's pooled rows.
 local rowState = setmetatable({}, { __mode = "k" })
@@ -77,6 +77,8 @@ local function UpdateRow(row, node)
 		return
 	end
 
+	-- Asked as the row is drawn, so only recipes scrolled into view have their made item looked up.
+	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
 	local count = ns.GetMarks(recipeInfo, marks)
 	local icons = GetIcons(row)
 	local locked = row.LockedIcon:IsShown()
@@ -105,6 +107,18 @@ local function UpdateRow(row, node)
 	local maxWidth = row:GetWidth() - row.SkillUps:GetWidth() - lockWidth - countWidth - iconsWidth - 2 * ICON_GAP
 	row.Label:SetWidth(math.max(1, math.min(State(row).labelWidth, maxWidth)))
 end
+
+--@debug@
+-- Timed in a checkout build (ns.Perf, Troubleshooting.lua); released builds call UpdateRow directly.
+do
+	local inner = UpdateRow
+	UpdateRow = function(row, node)
+		local started = debugprofilestop()
+		inner(row, node)
+		ns.Perf("row marks", started)
+	end
+end
+--@end-debug@
 
 local function GetScrollBox()
 	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage

@@ -47,10 +47,7 @@ function ns.InitFinds()
 	end
 end
 
--- Wire rows carry IDs only; each client reads item, recipe and quest names in its own language.
--- NPC and object names are sent (no client lookup by ID). Keys: k kind, r recipe, i item; source: n npc,
--- o object, ci container, fi fishing zone, q quest; nm/on names; m x y place; f faction, s seen, b build;
--- details: sk skill, c cost, p price, l limited, sp spellID, ch choice, fn finisher, gi giver item.
+-- Wire rows carry IDs; names are sent only for NPCs and objects. Keys: docs/data.md, "Sharing".
 local MAX_NAME_LENGTH = 64   -- caps what a peer can send
 
 -- Names a receiver would reject are left out, so one long name never stalls a peer's sync.
@@ -69,8 +66,9 @@ local function WireRow(row)
 	return {
 		k = observation.kind, r = row.ref == "recipe" and row.id or nil, i = row.ref == "item" and row.id or nil,
 		n = observation.npc, nm = not observation.object and WireName(named.name) or nil,
+		nf = not observation.object and named.faction or nil,
 		o = observation.object, on = observation.object and WireName(named.name) or nil,
-		ci = observation.container, fi = observation.fishing, q = observation.quest,
+		ci = observation.container, fi = observation.fishing, z = observation.zone, q = observation.quest,
 		m = mapID or observation.map, x = position and position.x, y = position and position.y,
 		f = observation.faction, s = observation.seen, b = observation.build,
 		sk = observation.skill, c = observation.cost, p = observation.price, l = observation.limited,
@@ -106,6 +104,7 @@ local function Coordinate(value)
 end
 
 local FACTIONS = { Alliance = true, Horde = true }
+local NPC_FACTIONS = { Alliance = true, Horde = true, Neutral = true }
 local CLOCK_SKEW = 300       -- seconds a peer's clock may run ahead of ours
 
 local function ValidName(value)
@@ -126,7 +125,7 @@ local function SourceField(row)
 		return PositiveID(row.i) and row.r == nil and PositiveID(row.q) and "q"
 	elseif row.k == "drop" and PositiveID(row.i) and row.r == nil then
 		local field
-		for _, key in ipairs({ "n", "o", "ci", "fi" }) do
+		for _, key in ipairs({ "n", "o", "ci", "fi", "z" }) do
 			if row[key] ~= nil then
 				if field or not PositiveID(row[key]) then return nil end
 				field = key
@@ -138,14 +137,16 @@ end
 
 local function ValidRow(row)
 	if type(row) ~= "table" or not SourceField(row) then return false end
-	if row.k ~= "quest" and row.k ~= "drop" and (row.q or row.o or row.ci or row.fi) then return false end
-	if row.k == "quest" and (row.o or row.ci or row.fi) then return false end
+	if row.k ~= "quest" and row.k ~= "drop" and (row.q or row.o or row.ci or row.fi or row.z) then return false end
+	if row.k == "quest" and (row.o or row.ci or row.fi or row.z) then return false end
 	if not (ValidName(row.nm) and ValidName(row.on)) then return false end
 	if not (OptionalID(row.n) and OptionalID(row.fn) and OptionalID(row.gi)) then return false end
 	if row.m ~= nil and not (PositiveID(row.m) and C_Map.GetMapInfo(row.m)) then return false end
 	if row.fi ~= nil and not C_Map.GetMapInfo(row.fi) then return false end
+	if row.z ~= nil and not C_Map.GetMapInfo(row.z) then return false end
 	if not (Coordinate(row.x) and Coordinate(row.y)) then return false end
 	if row.f ~= nil and not FACTIONS[row.f] then return false end
+	if row.nf ~= nil and not NPC_FACTIONS[row.nf] then return false end
 	if row.s ~= nil and not (PositiveID(row.s) and row.s <= GetServerTime() + CLOCK_SKEW) then return false end
 	for _, field in ipairs({ "b", "sk", "c", "p", "sp" }) do
 		local value = row[field]
@@ -158,7 +159,7 @@ local function ValidRow(row)
 end
 
 -- Wire key of each identifying field, and the observation field it fills.
-local IDENTITY = { n = "npc", o = "object", ci = "container", fi = "fishing", q = "quest" }
+local IDENTITY = { n = "npc", o = "object", ci = "container", fi = "fishing", z = "zone", q = "quest" }
 
 -- Merges valid rows into the shared layer, newest per source. Returns true if anything changed, false
 -- if not, nil for an invalid batch (nothing written).
@@ -174,7 +175,11 @@ function ns.MergeFinds(rows, maxRows)
 	for _, row in ipairs(rows) do
 		local wireField = SourceField(row)
 		local field, value = IDENTITY[wireField], row[wireField]
-		if row.n then ns.NoteNPC(db.npcs, row.n, row.nm, not row.o and row.m, row.x, row.y, row.s, true) end
+		if row.n then
+			ns.NoteNPC(db.npcs, row.n, row.nm, not row.o and row.m, row.x, row.y, row.s, true)
+			-- A peer only fills in a faction we have not seen ourselves.
+			if not db.npcs[row.n].faction then ns.NoteNPCFaction(row.n, row.nf) end
+		end
 		if row.o then ns.NoteNPC(db.objects, row.o, row.on, row.m, row.x, row.y, row.s, true) end
 		local bucket, id = row.r and db.shared.recipes or db.shared.items, row.r or row.i
 		bucket[id] = bucket[id] or {}
@@ -191,7 +196,7 @@ function ns.MergeFinds(rows, maxRows)
 				table.insert(bucket[id], observation)
 			end
 			observation.npc, observation.object, observation.container = row.n, row.o, row.ci
-			observation.fishing, observation.quest = row.fi, row.q
+			observation.fishing, observation.zone, observation.quest = row.fi, row.z, row.q
 			observation.faction, observation.seen, observation.build = row.f, row.s, row.b
 			observation.skill, observation.cost, observation.price = row.sk, row.c, row.p
 			observation.limited, observation.spellID, observation.choice = row.l, row.sp, row.ch
@@ -199,8 +204,8 @@ function ns.MergeFinds(rows, maxRows)
 			if row.fi then observation.x, observation.y = row.x, row.y end
 			changed = true
 		end
-		if row.i and not db.itemRecipe[row.i] then
-			db.pendingItems[row.i] = db.pendingItems[row.i] or { spellID = row.sp }
+		if row.i and not db.itemRecipe[row.i] and not ns.GetSeededRecipe(row.i) then
+			db.pendingItems[row.i] = db.pendingItems[row.i] or {}
 		end
 	end
 	return changed
@@ -217,5 +222,5 @@ function ns.ExportFinds()
 		observations = rows,
 	})
 	LibStub("JigBoltgripToolkit-1.0"):ShowText(
-		"Recipe Vacuum: copy your finds and send them to the maintainer as a .json file", json)
+		C_AddOns.GetAddOnMetadata("RecipeVacuum", "Title") .. ": " .. ns.voice.exportTitle, json)
 end

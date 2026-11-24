@@ -2,15 +2,7 @@ local _, ns = ...
 local comm = {}
 LibStub("AceComm-3.0"):Embed(comm)
 
--- Sharing is silent: hidden addon messages (CHAT_MSG_ADDON) only.
--- 1. Probe on PROBE_PREFIX (collection ID, revision) on joining a guild or group, reconnecting, or when a
---    friend comes online. Replies follow another addon' version check.
--- 2. A peer that is behind whispers on DATA_PREFIX: "G <collection> <after>".
--- 3. The owner replies with one AceComm BULK message "D <collection> <after> <through> <payload>": every
---    observation after <after> up to <through>, capped near 4 kB encoded. The receiver asks again from
---    <through> until it reaches the tip. Request plus bulk as in another addon Transmission.lua, with data on
---    its own prefix as another addon keeps progress on another addon. AceComm splits and reassembles;
---    ChatThrottleLib paces sends and requeues throttled ones, so no manual retry.
+-- Sharing uses hidden addon messages only: probe, request, batched reply (docs/data.md, "Sharing").
 -- The version is in both prefixes; other versions are ignored.
 local PROBE_PREFIX = "RecipeVacuum2"
 local DATA_PREFIX = "RecipeVacuum2D"
@@ -36,13 +28,46 @@ local function Ready()
 	return true
 end
 
+-- A whisper to someone the game cannot reach is answered with the system line "No player named '%s'
+-- is currently playing." Nothing is hidden from chat. The line is only read, so a name that failed is
+-- not whispered again until it has been offline; who gets a whisper at all is decided before sending
+-- (BattleNetCharacters, RefreshFriends).
+local WHISPER_ERROR_WINDOW = 10 -- seconds after a send in which the line counts as ours
+local NOT_FOUND_PATTERN = "^" .. ERR_CHAT_PLAYER_NOT_FOUND_S:gsub("[%^%$%(%)%.%[%]%*%+%-%?]", "%%%0"):gsub("%%s", "(.+)") .. "$"
+local whispered, unreachable = {}, {}
+
+-- AceComm calls this as each piece really leaves, which can be later than the request (ChatThrottleLib).
+local function WhisperSent(target)
+	whispered[target] = GetTime()
+end
+
 local function Send(text, channel, target)
-	comm:SendCommMessage(PROBE_PREFIX, text, channel, target, "BULK")
+	if channel == "WHISPER" then
+		if unreachable[target] then return end
+		comm:SendCommMessage(PROBE_PREFIX, text, channel, target, "BULK", WhisperSent, target)
+	else
+		comm:SendCommMessage(PROBE_PREFIX, text, channel, target, "BULK")
+	end
 end
 
 local function SendData(text, target)
-	comm:SendCommMessage(DATA_PREFIX, text, "WHISPER", target, "BULK")
+	if unreachable[target] then return end
+	comm:SendCommMessage(DATA_PREFIX, text, "WHISPER", target, "BULK", WhisperSent, target)
 end
+
+local failures = CreateFrame("Frame")
+failures:RegisterEvent("CHAT_MSG_SYSTEM")
+failures:SetScript("OnEvent", function(_, _, message)
+	if not next(whispered) or issecretvalue(message) then return end
+	local name = message:match(NOT_FOUND_PATTERN)
+	local sent = name and whispered[name]
+	if sent then
+		whispered[name] = nil
+		if GetTime() - sent <= WHISPER_ERROR_WINDOW then
+			unreachable[name] = true
+		end
+	end
+end)
 
 local function Offer(kind)
 	local exchange = ns.db.exchange
@@ -297,8 +322,11 @@ local function BattleNetCharacters(index, online)
 	local names = ""
 	for j = 1, C_BattleNet.GetFriendNumGameAccounts(index) do
 		local game = C_BattleNet.GetFriendGameAccountInfo(index, j)
+		-- A whisper only goes to a character it can reach: online in this game, on this realm and of
+		-- this faction. Anyone the game gives no realm or faction for is left out.
 		if game and game.isOnline and game.isInCurrentRegion and game.clientProgram == BNET_CLIENT_WOW
-			and game.wowProjectID == WOW_PROJECT_ID and game.characterName and game.characterName ~= "" then
+			and game.wowProjectID == WOW_PROJECT_ID and game.characterName and game.characterName ~= ""
+			and game.realmID == GetRealmID() and game.factionName == UnitFactionGroup("player") then
 			local name = Ambiguate(game.characterName, "none")
 			names = names .. "\n" .. name
 			if online then online[name] = true end
@@ -315,6 +343,10 @@ local function RefreshFriends(force)
 	end
 	wipe(bnetPresence)
 	for i = 1, BNGetNumFriends() do bnetPresence[i] = BattleNetCharacters(i, online) end
+	-- A name the game couldn't reach is tried again once it has been offline.
+	for name in pairs(unreachable) do
+		if not online[name] then unreachable[name], whispered[name] = nil, nil end
+	end
 	local probe = Offer("H")
 	local previous = friends
 	friends = online

@@ -1,4 +1,4 @@
--- Offline checks for schema 4, drop and quest recording, and sharing of the new kinds.
+-- Offline checks for the current schema, drop and quest recording, and sharing of the new kinds.
 -- luajit tests/simulate.lua . <a RecipeVacuum saved-variables file>
 local repo, savedFile = arg[1], arg[2]
 local now = 1795470000
@@ -15,6 +15,7 @@ C_Map = { GetMapInfo = function(id) return id and id > 0 and id ~= UNKNOWN_MAP a
   GetBestMapForUnit = function() return 1429 end,
   GetPlayerMapPosition = function() return { GetXY = function() return 0.5, 0.25 end } end }
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
+function tDeleteItem(t, v) for i = #t, 1, -1 do if t[i] == v then table.remove(t, i) end end end
 function tContains(t, v) for _, x in ipairs(t) do if x == v then return true end end end
 function CopyTable(t) local c = {} for k, v in pairs(t) do c[k] = v end return c end
 function strsplit(sep, s) local out = {} for part in (s .. sep):gmatch("(.-)%" .. sep) do out[#out + 1] = part end return unpack(out) end
@@ -36,10 +37,15 @@ UnitFactionGroup = function() return "Alliance", "Alliance" end
 local target = {}
 UnitGUID = function(unit) return target[unit] end
 UnitName = function(unit) return target[unit .. "name"] end
-ChatTypeInfo = { SYSTEM = { r = 1, g = 1, b = 0 } }
+ChatTypeInfo = { SYSTEM = { r = 1, g = 1, b = 0 }, MONSTER_SAY = { r = 1, g = 1, b = 0.62 } }
 local messages = {}
 DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) messages[#messages + 1] = text end }
-C_Timer = { NewTimer = function() return { Cancel = function() end } end }
+C_Timer = { NewTimer = function() return { Cancel = function() end } end, After = function(_, fn) fn() end }
+local clock = 1000
+GetTime = function() return clock end
+UNKNOWN = "Unknown"
+local rollLinks = {}
+GetLootRollItemLink = function(rollID) return rollLinks[rollID] end
 CreateFrame = function() local f = { events = {} }
   function f:RegisterEvent(e) self.events[e] = true end
   function f:UnregisterEvent(e) self.events[e] = nil end
@@ -59,12 +65,13 @@ GetNumQuestChoices = function() return #quest.choices end
 GetQuestItemInfo = function(kind, i) local id = (kind == "reward" and quest.rewards or quest.choices)[i]
   return "", 1, 1, 1, true, id end
 
+debugprofilestop = function() return 0 end -- the checkout build times itself
 local function load(file, ns) local f = assert(loadfile(repo .. "/" .. file)); f("RecipeVacuum", ns) end
 local function boot(saved)
   RecipeVacuumDB = nil; loaded = {}; frames = {}
   if saved then dofile(saved) end
-  local ns = { InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
-  for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, ns) end
+  local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
+  for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, ns) end
   ns.SourcesChanged = function() end
   for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
   return ns
@@ -77,8 +84,25 @@ local beforeRecipes, beforeItems = count(before.found)
 local beforeRevision = before.exchange.revision
 local a = boot(savedFile)
 local db = a.db
-check("schema is 4", db.schema == 4)
+check("schema is 6", db.schema == 6)
 check("trainerNames dropped", db.found.trainerNames == nil and db.shared.trainerNames == nil)
+-- Fails if the upgrade keeps NPCs no source names (earlier versions saved every vendor opened), or
+-- drops one a source does name.
+local named, strays, missing = {}, 0, 0
+for _, layer in ipairs({ db.found, db.shared }) do
+  for _, bucket in ipairs({ layer.recipes, layer.items }) do
+    for _, list in pairs(bucket) do for _, o in ipairs(list) do
+      if o.npc then named[o.npc] = true end
+      if o.finisher then named[o.finisher] = true end
+    end end
+  end
+end
+for id in pairs(db.npcs) do if not named[id] then strays = strays + 1 end end
+for id in pairs(named) do if not db.npcs[id] then missing = missing + 1 end end
+local savedNPCs = 0 for _ in pairs(before.npcs) do savedNPCs = savedNPCs + 1 end
+local keptNPCs = 0 for _ in pairs(db.npcs) do keptNPCs = keptNPCs + 1 end
+print(("  NPCs: %d saved before, %d kept"):format(savedNPCs, keptNPCs))
+check("only NPCs a source names are kept, and none of those is lost", strays == 0 and missing == 0 and keptNPCs > 0)
 local r, i = count(db.found)
 check(("found kept (%d recipes, %d items)"):format(r, i), r == beforeRecipes and i == beforeItems)
 check("revision unchanged by migration", db.exchange.revision == beforeRevision)
@@ -119,6 +143,24 @@ target.questnpc, target.questnpcname = "Creature-0-1-1-1-1444-EEEE", "Brother Kr
 fire("QUEST_COMPLETE")
 local q = db.found.items[2000]
 check("quest saved once with giver and finisher", q and #q == 1 and q[1].quest == 1199 and q[1].npc == 4784 and q[1].finisher == 1444 and q[1].choice == true)
+-- Fails if a quest giver is saved for a quest with no recipe reward.
+target.questnpc, target.questnpcname = "Creature-0-1-1-1-9999-FFFF", "Innkeeper Farley"
+quest = { id = 77, rewards = {}, choices = { 7 } }
+fire("QUEST_DETAIL")
+check("quest NPCs are saved only with a recipe reward", db.npcs[4784] ~= nil and db.npcs[1444] ~= nil and db.npcs[9999] == nil)
+
+-- 3b. Group rolls: a recipe someone else looted is kept by zone; one the player looted adds nothing.
+-- Fails if a roll records no find, names a mob it cannot know, or doubles the player's own loot.
+recipeItems[3000] = true
+rollLinks[1], rollLinks[2] = "item:3000", "item:1000"
+fire("START_LOOT_ROLL", 1)
+fire("START_LOOT_ROLL", 2) -- item 1000 was in the player's own loot window above
+local rolled = db.found.items[3000]
+check("a roll is kept by zone", rolled and #rolled == 1 and rolled[1].kind == "drop" and rolled[1].zone == 1429
+  and rolled[1].npc == nil and select(1, a.SourceInfo(rolled[1])) == UNKNOWN)
+local zoneRows = 0
+for _, o in ipairs(db.found.items[1000]) do if o.zone then zoneRows = zoneRows + 1 end end
+check("a roll on an item the player looted adds nothing", zoneRows == 0)
 
 -- 4. SourceInfo names each kind
 local function info(o) local n, p, m = a.SourceInfo(o); return n, p and next(p), m end
@@ -127,6 +169,55 @@ check("SourceInfo object", info(db.found.items[1000][2]) == "Battered Chest")
 check("SourceInfo container", info(db.found.items[1000][3]) == "A Bulging Coin Purse")
 check("SourceInfo fishing", select(1, info(f4)) == "Fishing" and select(2, info(f4)) == 1429)
 check("SourceInfo quest", info(q[1]) == "Quest Title 1199")
+
+-- 4b. Specialization lock: read from the item a recipe makes. An unmet skill requirement with no rank
+-- locks, in the game's own words. Fails if a rank requirement locks (nearly every unlearned recipe
+-- has one), a met one does, the answer is given before the item has loaded, or a later session reads
+-- items it already knows need no specialization.
+do
+  -- The tooltip's own red and white, as measured in game (ffff2020, ffffffff).
+  local red, white = { r = 1, g = 0.125, b = 0.125 }, { r = 1, g = 1, b = 1 }
+  Enum.TooltipDataLineType.UsageRequirement = 1
+  Enum.TooltipDataUsageRequirementType.Faction, Enum.TooltipDataUsageRequirementType.Skill = 1, 2
+  local MADE = 5000 -- recipe N makes item MADE + N; recipe 5 makes nothing
+  local requirements = {
+    [1] = { { "Requires Gnomish Engineer", red } },
+    [2] = { { "Requires Engineering (300)", red } },
+    [3] = { { "Requires Gnomish Engineer", white } },
+    [4] = { { "Requires Engineering (260)", red }, { "Requires Goblin Engineer", red } },
+  }
+  C_TradeSkillUI = { GetRecipeSchematic = function(id) return { outputItemID = id ~= 5 and MADE + id or nil } end }
+  local itemLoaded, itemReads, loadCallbacks = {}, 0, {}
+  C_Item.IsItemDataCachedByID = function(id) return itemLoaded[id] == true end
+  Item = { CreateFromItemID = function(_, id) return { ContinueOnItemLoad = function(_, fn) loadCallbacks[id] = fn end } end }
+  C_Timer.After = function(_, fn) fn() end
+  local refreshes = 0
+  a.RefreshRows = function() refreshes = refreshes + 1 end
+  C_TooltipInfo = { GetItemByID = function(id)
+    itemReads = itemReads + 1
+    local lines = { { leftText = "Name" } }
+    for _, l in ipairs(requirements[id - MADE] or {}) do
+      table.insert(lines, { type = 1, requirementType = 2, leftText = l[1], leftColor = l[2] })
+    end
+    return { lines = lines }
+  end }
+  check("no answer while the made item loads", a.GetRecipeLock(1) == nil and itemReads == 0)
+  for id = 1, 4 do itemLoaded[MADE + id] = true end
+  loadCallbacks[MADE + 1]()
+  check("rows redraw once the made item has loaded", refreshes == 1)
+  check("specialization lock uses the made item's requirement line", a.GetRecipeLock(1) == "Requires Gnomish Engineer"
+    and a.GetRecipeLock(2) == false and a.GetRecipeLock(3) == false and a.GetRecipeLock(4) == "Requires Goblin Engineer"
+    and a.GetRecipeLock(5) == false)
+  -- A later session: recipes known to need no specialization are not looked up again.
+  local kept = db.recipeFacts
+  local a2 = boot(nil); a2.db.recipeFacts = kept
+  itemReads = 0
+  check("kept facts spare the lookups", a2.GetRecipeLock(2) == false and a2.GetRecipeLock(5) == false and itemReads == 0
+    and a2.GetRecipeLock(1) == "Requires Gnomish Engineer" and itemReads == 1)
+  local marks = {}
+  local n = a.GetMarks({ lockReason = "x" }, marks)
+  check("a locked recipe gets the lock mark first, left of the source marks", n == 2 and marks[1] == "locked" and marks[2] == "unknown")
+end
 
 -- 5. Sharing: every new kind round-trips, re-merge is a no-op
 local rows = a.FindsSince(0, math.huge)
@@ -140,19 +231,55 @@ check("shared object name", b.db.objects[106318] and b.db.objects[106318].name =
 local sq = b.db.shared.items[2000]
 check("shared quest intact", sq and sq[1].quest == 1199 and sq[1].npc == 4784 and sq[1].finisher == 1444)
 check("re-merge changes nothing", b.MergeFinds(rows, #rows) == false)
+-- Fails if the quest giver's own faction is not saved, not shared, or a bad value is accepted.
+check("NPC faction saved and shared", db.npcs[4784].faction == "Alliance" and b.db.npcs[4784].faction == "Alliance")
+local badFaction = CopyTable(rows[1]); badFaction.nf = "Pirates"
+check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction }, 1) == nil)
 -- A source both received and seen firsthand is listed once
 b.db.shareWithFriends, b.db.recipeItems[99] = true, { 1000 }
 b.db.found.items[1000] = { { kind = "drop", npc = 732, seen = now } }
 check("own and shared find of one source listed once", #b.GetSources({ recipeID = 99 }) == #s)
--- A received recipe item links to its recipe once the client has loaded the item's name
+-- A received recipe item links to the recipe its tooltip data names, once the item has loaded.
+-- Fails if a link is made before the data loads, from anything but that ID, or for an item that
+-- teaches nothing.
 local RED_LINEN_BAG = 501
-local byName, inProfession = { ["red linen bag"] = { RED_LINEN_BAG } }, { [RED_LINEN_BAG] = "red linen bag" }
-b.GetRecipeFaction = function() return false end -- a recipe both factions learn
-itemNames[1000], itemNames[6342] = "Pattern: Something Else", "Pattern: Another"
-check("link waits while an item name loads", b.LinkPending(byName, inProfession, TAILORING) == false and b.db.itemRecipe[2000] == nil)
-itemNames[2000] = "Pattern: Red Linen Bag"
-check("link made once the name is loaded", b.LinkPending(byName, inProfession, TAILORING) == true and b.db.itemRecipe[2000] == RED_LINEN_BAG
-  and b.db.pendingItems[2000] == nil and b.db.pendingItems[1000] ~= nil)
+local cached = {}
+C_Item.IsItemDataCachedByID = function(id) return cached[id] == true end
+Enum.TooltipDataLineType.ItemSpellTriggerLearn = 38
+local teaches = { [2000] = RED_LINEN_BAG }
+C_TooltipInfo.GetItemByID = function(id)
+  return { lines = { { type = 22, leftText = "Pattern" }, teaches[id] and { type = 38, spellID = teaches[id] } or nil } }
+end
+check("link waits while an item's data loads", b.LinkPending() == false and b.db.itemRecipe[2000] == nil)
+for id in pairs(b.db.pendingItems) do cached[id] = true end
+check("link made from the recipe ID in the item's tooltip", b.LinkPending() == true and b.db.itemRecipe[2000] == RED_LINEN_BAG
+  and b.db.recipeItems[RED_LINEN_BAG][1] == 2000 and b.db.pendingItems[2000] == nil)
+check("an item that teaches nothing stays unlinked and is not asked again", b.db.itemRecipe[1000] == nil and b.db.pendingItems[1000].none == true)
+
+-- Seed data answers before any item data loads, gives a recipe its items, and stays out of the saved
+-- data. Fails if a seeded pair is ignored, or a seeded item gets a saved link or waits in pending.
+local seedSave = { schema = 6, found = { recipes = {}, items = {} }, shared = { recipes = {}, items = {} },
+  itemRecipe = { [7777] = 888, [9999] = 111 }, recipeItems = { [888] = { 7777 }, [111] = { 9999 } },
+  pendingItems = { [7778] = {} }, npcs = {}, objects = {} }
+local seedFile = os.tmpname()
+local handle = io.open(seedFile, "w"); handle:write("RecipeVacuumDB = ..."); handle:close()
+RecipeVacuumDB = nil
+local d
+do
+  loaded = {}; frames = {}
+  local nsd = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end,
+    ScheduleFindOffer = function() end, SourcesChanged = function() end, seed = { build = 71037, taught = { [7777] = 888, [7778] = 888 } } }
+  RecipeVacuumDB = seedSave
+  for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, nsd) end
+  for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
+  d = nsd
+end
+os.remove(seedFile)
+check("seed links an item with no item data loaded", d.GetSeededRecipe(7777) == 888)
+local seededItems = d.GetRecipeItems(888)
+check("seed gives a recipe its items", seededItems and #seededItems == 2 and seededItems[1] == 7777)
+check("saved data keeps no link or waiting item the seed covers", d.db.itemRecipe[7777] == nil and d.db.recipeItems[888] == nil
+  and d.db.pendingItems[7778] == nil and d.db.itemRecipe[9999] == 111)
 
 -- 6. Validation rejects malformed new rows
 check("reject drop with two sources", b.MergeFinds({ { k = "drop", i = 1, n = 1, o = 2 } }, 10) == nil)
@@ -160,14 +287,16 @@ check("reject quest without quest id", b.MergeFinds({ { k = "quest", i = 1 } }, 
 check("reject vendor carrying a quest", b.MergeFinds({ { k = "vendor", i = 1, n = 1, q = 5 } }, 10) == nil)
 check("reject bad object name", b.MergeFinds({ { k = "drop", i = 1, o = 2, on = "x|cff" } }, 10) == nil)
 check("reject unknown fishing zone", b.MergeFinds({ { k = "drop", i = 1, fi = UNKNOWN_MAP } }, 10) == nil)
+check("reject unknown roll zone", b.MergeFinds({ { k = "drop", i = 1, z = UNKNOWN_MAP } }, 10) == nil)
+check("shared roll keeps its zone", b.db.shared.items[3000] and b.db.shared.items[3000][1].zone == 1429)
 check("reject more rows than the limit", b.MergeFinds(rows, #rows - 1) == nil)
 
 -- 7. Reload is stable
 local savedDB = a.db
 RecipeVacuumDB = savedDB; loaded = {}
-local c = { InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
-for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
+local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
+for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-check("reload keeps schema and revision", c.db.schema == 4 and c.db.exchange.revision == savedDB.exchange.revision)
+check("reload keeps schema and revision", c.db.schema == 6 and c.db.exchange.revision == savedDB.exchange.revision)
 print(FAILED and "SOME CHECKS FAILED" or "ALL CHECKS PASSED")
 os.exit(FAILED and 1 or 0)

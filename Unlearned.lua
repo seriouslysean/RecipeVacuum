@@ -8,6 +8,10 @@ local _, ns = ...
 -- Unlearned).
 local GROUP_LEARNED = 2
 
+-- A category keeps its own header when a recipe in it is learned or has a known source. The rest
+-- share MISCELLANEOUS, last. The ID is ours; the game's category IDs are positive.
+local MISCELLANEOUS_CATEGORY_ID = -1
+
 -- Whether the open view is one where the player's own unlearned recipes belong.
 function ns.CanShowUnlearned()
 	return not (C_TradeSkillUI.IsNPCCrafting() or C_TradeSkillUI.IsTradeSkillGuild()
@@ -30,6 +34,7 @@ cacheFrame:RegisterEvent("SKILL_LINES_CHANGED")
 cacheFrame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 cacheFrame:SetScript("OnEvent", function()
 	wipe(cache)
+	ns.ClearRecipeLocks()
 end)
 
 -- New recorded sources invalidate the cached source summaries.
@@ -71,12 +76,16 @@ local function GetUnlearnedCategories(professionInfo)
 		return cache[professionID]
 	end
 
-	-- One pass: unlearned recipes (flagged when another faction's), plus a name and ID index only while
-	-- recorded vendor items wait to be linked.
-	local db = ns.db
-	local pending = next(db.pendingItems)
-	local byName, inProfession = pending and {}, pending and {}
-	local unlearned = {}
+	-- Phase timings of an uncached build, for the perf command: recipes, sources, grouping.
+	local phaseStart = debugprofilestop()
+	local phases = {}
+	ns.coldBuildPhases = phases
+
+	-- Recorded recipe items link to their recipes first, so their sources count below.
+	local linksComplete = not next(ns.db.pendingItems) or ns.LinkPending()
+
+	-- One pass: unlearned recipes, leaving out another faction's.
+	local unlearned, established = {}, {}
 	local playerFaction = UnitFactionGroup("player")
 	local indexComplete, factionsComplete = true, true
 	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
@@ -84,14 +93,10 @@ local function GetUnlearnedCategories(professionInfo)
 		if not recipeInfo then
 			indexComplete = false
 		elseif C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID) then
-			if pending then
-				local nameKey = ns.NameKey(recipeInfo.name)
-				byName[nameKey] = byName[nameKey] or {}
-				table.insert(byName[nameKey], recipeInfo.recipeID)
-				inProfession[recipeInfo.recipeID] = nameKey
-			end
 			recipeInfo = Professions.GetFirstRecipe(recipeInfo)
-			if recipeInfo and not recipeInfo.learned then
+			if recipeInfo and recipeInfo.learned then
+				established[recipeInfo.categoryID] = true
+			elseif recipeInfo then
 				local faction = ns.GetRecipeFaction(recipeInfo.recipeID)
 				if faction == nil then
 					factionsComplete = false
@@ -103,32 +108,45 @@ local function GetUnlearnedCategories(professionInfo)
 			end
 		end
 	end
-	local linksComplete = true
-	if pending and indexComplete then
-		linksComplete = ns.LinkPending(byName, inProfession, professionInfo.profession)
-	end
+	phases.recipes = debugprofilestop() - phaseStart
+	phaseStart = debugprofilestop()
 
-	local categories, byID, seen = {}, {}, {}
+	-- Sources first, since one known source keeps its whole category's header.
+	local seen, rows = {}, {}
 	for _, recipeInfo in ipairs(unlearned) do
 		if not seen[recipeInfo.recipeID] then
 			seen[recipeInfo.recipeID] = true
-			local category = byID[recipeInfo.categoryID]
-			if not category then
-				local categoryInfo = C_TradeSkillUI.GetCategoryInfo(recipeInfo.categoryID)
-				if categoryInfo then
-					categoryInfo.group = GROUP_LEARNED
-					categoryInfo.unlearned = true -- gray header when the category has no learned recipes
-					category = { info = categoryInfo, recipes = {} }
-					byID[recipeInfo.categoryID] = category
-					table.insert(categories, category)
-				end
+			recipeInfo.searchName = recipeInfo.name:lower()
+			ns.SummarizeSources(recipeInfo)
+			if recipeInfo.sourceTypes then
+				established[recipeInfo.categoryID] = true
 			end
-			if category then
-				recipeInfo.searchName = recipeInfo.name:lower()
-				ns.SummarizeSources(recipeInfo)
-				-- Insert creates a fresh tree node around this reusable element data.
-				table.insert(category.recipes, { recipeInfo = recipeInfo })
+			table.insert(rows, recipeInfo)
+		end
+	end
+
+	phases.sources, phases.unlearned = debugprofilestop() - phaseStart, #rows
+	phaseStart = debugprofilestop()
+
+	local categories, byID = {}, {}
+	for _, recipeInfo in ipairs(rows) do
+		local categoryID = established[recipeInfo.categoryID] and recipeInfo.categoryID or MISCELLANEOUS_CATEGORY_ID
+		local category = byID[categoryID]
+		if not category then
+			local categoryInfo = categoryID == MISCELLANEOUS_CATEGORY_ID
+				and { categoryID = categoryID, name = MISCELLANEOUS, uiOrder = math.huge }
+				or C_TradeSkillUI.GetCategoryInfo(categoryID)
+			if categoryInfo then
+				categoryInfo.group = GROUP_LEARNED
+				categoryInfo.unlearned = true -- gray header when the category has no learned recipes
+				category = { info = categoryInfo, recipes = {} }
+				byID[categoryID] = category
+				table.insert(categories, category)
 			end
+		end
+		if category then
+			-- Insert creates a fresh tree node around this reusable element data.
+			table.insert(category.recipes, { recipeInfo = recipeInfo })
 		end
 	end
 
@@ -142,6 +160,7 @@ local function GetUnlearnedCategories(professionInfo)
 			row.order = index / divisor
 		end
 	end
+	phases.grouping = debugprofilestop() - phaseStart
 	if indexComplete and factionsComplete and linksComplete then
 		cache[professionID] = categories
 	end
@@ -273,6 +292,20 @@ local function AddUnlearnedRecipes(page)
 	end
 
 	ns.lastUnlearnedMs = debugprofilestop() - startTime
+	--@debug@
+	local phases = ns.coldBuildPhases
+	if phases and not phases.counted and phases.grouping then
+		phases.counted = true
+		ns.PerfMs("list build, cold", ns.lastUnlearnedMs)
+		ns.PerfMs("  cold: recipes", phases.recipes)
+		ns.PerfMs("  cold: sources", phases.sources)
+		ns.PerfMs("  cold: grouping", phases.grouping)
+	else
+		ns.PerfMs("list build, warm", ns.lastUnlearnedMs)
+	end
+	--@end-debug@
+	-- The slowest is the first build after a reload or a change, before the cache is filled.
+	ns.slowestUnlearnedMs = math.max(ns.slowestUnlearnedMs or 0, ns.lastUnlearnedMs)
 	ns.unlearnedBuilds = (ns.unlearnedBuilds or 0) + 1
 end
 

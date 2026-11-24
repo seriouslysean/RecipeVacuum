@@ -1,15 +1,7 @@
 local addonName, ns = ...
 
--- Saved data layout, schema 4. Layers: game data (session memory only, Unlearned.lua),
--- ns.included (Data/Included.lua), RecipeVacuumDB.found (self), RecipeVacuumDB.shared (peers).
--- found and shared: { recipes = { [recipeID] = { observation, ... } }, items = { [recipe itemID] = { ... } } }
--- Observation: { kind = "trainer" | "vendor" | "drop" | "quest", one id field, faction, seen (server
--- time), build, rev (found only), details }:
---   trainer, vendor: npc; skill, cost | price, limited, spellID
---   drop: npc | object | container (itemID) | fishing (mapID); map, x, y
---   quest: quest; npc (giver), finisher, giverItem, choice, map
--- NPCs and objects are stored once: npcs[npcID], objects[objectID] = { name, positions = { [mapID] = { x, y, seen } } }
-local SCHEMA = 4
+-- Saved data layout and migrations: docs/data.md.
+local SCHEMA = 6
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }
@@ -21,12 +13,24 @@ local defaults = {
 	sourceFilter = {},     -- [sourceType or "unknown"] = false when unchecked in the Sources filter
 	npcs = {},
 	objects = {},
-	itemRecipe = {},       -- [recipe itemID] = recipeID, linked when the profession is opened
+	-- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:
+	itemRecipe = {},       -- [recipe itemID] = recipeID
 	recipeItems = {},      -- [recipeID] = { recipe itemIDs }
-	pendingItems = {},     -- [recipe itemID] = { name, spellID } until linked to a recipe
+	pendingItems = {},     -- [recipe itemID] = {} until its data loads and names the recipe it teaches
+	-- recipeFacts: per-build facts read from recipe tooltips (Sources.lua), rebuilt on a new game build
 }
 
 -- Keeps the newest position per map.
+-- The addon's chat lines are a log for the player: the addon's name, a colon, the text, all in the
+-- color the game gives an NPC's speech (ChatTypeInfo.MONSTER_SAY), since the Vacuum is a machine
+-- talking, as the game's gnomish machines do. One color throughout, as an NPC's line is. Only the
+-- color is shared: no "says:", and no brackets, which Forever uses for player names.
+function ns.Log(text)
+	local color = ChatTypeInfo.MONSTER_SAY
+	DEFAULT_CHAT_FRAME:AddMessage(("%s: %s"):format(C_AddOns.GetAddOnMetadata(addonName, "Title"), text),
+		color.r, color.g, color.b)
+end
+
 function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, keepName)
 	local npc = npcs[npcID]
 	if not npc then
@@ -41,6 +45,13 @@ function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, keepName)
 			npc.positions[mapID] = { x = x, y = y, seen = seen }
 		end
 	end
+end
+
+-- The side an NPC belongs to, so the map never points a player at the other faction's trainer or
+-- vendor (owner: sources stay listed, "no map pins cross faction"). Unknown stays nil.
+function ns.NoteNPCFaction(npcID, faction)
+	local npc = ns.db.npcs[npcID]
+	if npc and faction then npc.faction = faction end
 end
 
 -- Ordered migrations, one per schema number, as other addons OnInitialize do.
@@ -107,6 +118,40 @@ migrations[4] = function(db)
 	end
 end
 
+-- Schema 5 keeps only the NPCs and objects a saved source names. Earlier versions saved every vendor
+-- opened and every quest giver spoken to.
+migrations[5] = function(db)
+	local used = { npcs = {}, objects = {} }
+	for _, layer in ipairs({ db.found, db.shared }) do
+		for _, bucket in ipairs({ layer.recipes, layer.items }) do
+			for _, observations in pairs(bucket) do
+				for _, observation in ipairs(observations) do
+					if observation.npc then used.npcs[observation.npc] = true end
+					if observation.finisher then used.npcs[observation.finisher] = true end
+					if observation.object then used.objects[observation.object] = true end
+				end
+			end
+		end
+	end
+	for kind, keep in pairs(used) do
+		for id in pairs(db[kind] or {}) do
+			if not keep[id] then db[kind][id] = nil end
+		end
+	end
+end
+
+-- Schema 6 links recipe items to recipes by the ID in the item's tooltip data. Earlier links came from
+-- matching names, which paired a few items wrongly, so every link is made again.
+migrations[6] = function(db)
+	for itemID in pairs(db.itemRecipe or {}) do
+		db.pendingItems[itemID] = {}
+	end
+	for _, pending in pairs(db.pendingItems) do
+		pending.name, pending.spellID = nil, nil
+	end
+	db.itemRecipe, db.recipeItems = {}, {}
+end
+
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	local db = RecipeVacuumDB or {}
 	local version = db.schema or (db.sources and 1) or SCHEMA
@@ -129,6 +174,22 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 		if db[key] == nil then
 			db[key] = value
 		end
+	end
+	-- Saved links only cover items the seed does not have. A newer seed can take one over, so each
+	-- load drops the saved links and waiting items it now covers.
+	local seeded = ns.seed and ns.seed.taught or {}
+	for itemID, recipeID in pairs(db.itemRecipe) do
+		if seeded[itemID] then
+			db.itemRecipe[itemID] = nil
+			local items = db.recipeItems[recipeID]
+			if items then
+				tDeleteItem(items, itemID)
+				if #items == 0 then db.recipeItems[recipeID] = nil end
+			end
+		end
+	end
+	for itemID in pairs(db.pendingItems) do
+		if seeded[itemID] then db.pendingItems[itemID] = nil end
 	end
 	db.found = db.found or ns.NewLayer()
 	db.shared = db.shared or ns.NewLayer()

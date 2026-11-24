@@ -2,24 +2,20 @@
 
 A WoW Forever addon that shows the recipes you don't know yet in Blizzard's profession window, and where they come from. It builds on the window Forever ships and follows Blizzard's design language.
 
-By default, **Everything** records trainer and vendor finds and quietly exchanges missing observations with friends, guildmates and group members running Recipe Vacuum. Choose **Self Found** under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum to pause sharing and show only firsthand finds. **Announce new finds** controls personal visit messages.
+By default, **Everything** records recipe sources from trainers, vendors, quests and loot, and quietly exchanges missing finds with friends, guildmates and group members running Recipe Vacuum. Choose **Self Found** under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum to pause sharing and show only firsthand finds. **Announce New Finds** controls the chat line after a visit with new sources.
 
 To contribute discoveries collected while playing alone, type `/recipevacuum export` (or press Run next to it in the options), copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
 
 ## Commands
 
-`/recipevacuum help` (or `/boltgrip recipevacuum help`) lists every command in chat. Player commands also appear in the options page's Commands section. Troubleshooting commands (`checks`, `watch`, `dump`, `requirements`, `perf` and others) print to chat, open their output in a copy window, and keep the last 2,000 lines in `RecipeVacuumDB.devLog` (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`, written on `/reload` or logout).
+`/recipevacuum help` (or `/boltgrip recipevacuum help`) lists the commands in chat. Player commands also appear in the options page's Commands section. Two troubleshooting commands help when reporting a problem: `watch on` logs where loot, quest rewards, vendor stock and trainer lists come from as you play, and `log` shows that log in a window to copy from. The log keeps its last 2,000 lines in `RecipeVacuumDB.devLog` (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`, written on `/reload` or logout).
 
 ## Development
 
-Link the repository into the Forever client, then `/reload` after each change:
-
-```
-ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeVacuum"
-```
-
-Forever's UI source, for reference: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
-
+- [docs/development.md](docs/development.md): setup, checks, the working build and seeding.
+- [docs/data.md](docs/data.md): where each kind of data lives.
+- [docs/client-notes.md](docs/client-notes.md): what the Forever client does, as measured.
+- [docs/voice.md](docs/voice.md): the chat voice.
 
 ## Jig Boltgrip's Toolkit
 

@@ -1,3 +1,4 @@
+function tDeleteItem(t, v) for i = #t, 1, -1 do if t[i] == v then table.remove(t, i) end end end
 -- Upgrades an old save (schema 1 or 2) to the current schema and checks nothing recorded by ID is lost.
 -- luajit tests/upgrade.lua . <saved file>
 local repo, saved = arg[1], arg[2]
@@ -17,23 +18,24 @@ for key in pairs(RecipeVacuumDB.sources or {}) do
 end
 for itemID, recipeID in pairs(RecipeVacuumDB.itemRecipe or {}) do oldLinks[itemID] = recipeID end
 
-local ns = { InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end }
-for _, f in ipairs({ "Data/Included.lua", "Core.lua", "Finds.lua" }) do assert(loadfile(repo .. "/" .. f))("RecipeVacuum", ns) end
+local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end }
+for _, f in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Finds.lua" }) do assert(loadfile(repo .. "/" .. f))("RecipeVacuum", ns) end
 for _, fn in ipairs(loaded) do fn() end
 local db = ns.db
 
 local failed = false
 local function check(label, ok) print((ok and "PASS " or "FAIL ") .. label); failed = failed or not ok end
 
-check("schema is current, old tables gone", db.schema == 4 and db.sources == nil and db.found.trainerNames == nil)
+check("schema is current, old tables gone", db.schema == 6 and db.sources == nil and db.found.trainerNames == nil)
 local itemsKept = next(oldItems) ~= nil
 for itemID in pairs(oldItems) do
 	itemsKept = itemsKept and (db.found.items[itemID] or db.shared.items[itemID]) ~= nil
 end
 check("every recipe item recorded by ID is kept", itemsKept)
-local linksKept = true
-for itemID, recipeID in pairs(oldLinks) do linksKept = linksKept and db.itemRecipe[itemID] == recipeID end
-check("item to recipe links are kept", linksKept)
+-- Links made from names are queued to be made again from the item's tooltip data (schema 6).
+local linksQueued = next(db.itemRecipe) == nil
+for itemID in pairs(oldLinks) do linksQueued = linksQueued and db.pendingItems[itemID] ~= nil end
+check("old item to recipe links are queued for relinking by ID", linksQueued)
 
 -- Every self-found observation names a known NPC and has its own revision, up to the counter.
 local count, sound, revisions = 0, true, {}

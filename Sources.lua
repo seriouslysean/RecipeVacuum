@@ -1,6 +1,10 @@
 local _, ns = ...
 
+-- Counts changes to the known sources, so anything computed from them can tell when it is stale.
+ns.sourcesVersion = 0
+
 function ns.SourcesChanged()
+	ns.sourcesVersion = ns.sourcesVersion + 1
 	ns.ClearUnlearnedCache()
 	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
 	if page and page:IsVisible() and ns.db.showUnlearned and ns.CanShowUnlearned() then
@@ -19,14 +23,7 @@ ns.sourceTypes = {
 	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   texture = "Interface\\GossipFrame\\VendorGossipIcon", size = 16 },
 }
 
--- Lookups read the layers in Core.lua. Recipes are keyed by recipe ID (trainer spell ID from the
--- tooltip, as another addon Scanner.lua does); recipe items by item ID, linked in
--- RecipeVacuumDB.itemRecipe once the profession opens. Everything shows included and shared layers;
--- Self Found shows only the player's own finds.
-function ns.NameKey(recipeName)
-	return recipeName:lower()
-end
-
+-- Lookups read the data layers (docs/data.md). Self Found shows only the player's own finds.
 local function VisibleLayers()
 	local db = ns.db
 	if db.shareWithFriends then
@@ -59,6 +56,9 @@ function ns.SourceInfo(observation)
 	elseif observation.fishing then
 		local positions = observation.x and { [observation.fishing] = { x = observation.x, y = observation.y, seen = observation.seen } }
 		return C_Spell.GetSpellName(ns.FISHING_SPELL_ID), positions, observation.fishing
+	elseif observation.zone then
+		-- A drop seen only as a group roll: the zone is known, what dropped it is not.
+		return UNKNOWN, nil, observation.zone
 	end
 	local npc = ns.GetNPC(observation.npc)
 	return npc and npc.name, npc and npc.positions, observation.map
@@ -80,6 +80,7 @@ local function SameSource(a, b)
 	if a.kind ~= b.kind then return false end
 	if a.quest or b.quest then return a.quest == b.quest end
 	return a.npc == b.npc and a.object == b.object and a.container == b.container and a.fishing == b.fishing
+		and a.zone == b.zone
 end
 
 -- A source the player and a peer both found is in two layers; the first layer read wins.
@@ -108,7 +109,7 @@ function ns.GetSources(recipeInfo)
 		return nil
 	end
 	local list = {}
-	local itemIDs = ns.db.recipeItems[recipeInfo.recipeID]
+	local itemIDs = ns.GetRecipeItems(recipeInfo.recipeID)
 	local found, shared, included = VisibleLayers()
 	AppendLayer(list, found, recipeInfo, itemIDs)
 	AppendLayer(list, shared, recipeInfo, itemIDs)
@@ -141,7 +142,7 @@ end
 -- checked.
 function ns.PassesSourceFilter(recipeInfo)
 	local filter = ns.db.sourceFilter
-	-- Self Found shows only recipes the player witnessed (trainer, vendor or quest); shared sources are
+	-- Self Found shows only recipes the player witnessed; shared sources are
 	-- already hidden in that mode.
 	if not ns.db.shareWithFriends and not recipeInfo.sourceTypes then
 		return false
@@ -158,84 +159,83 @@ function ns.PassesSourceFilter(recipeInfo)
 	return false
 end
 
--- Enum.Profession and Enum.ItemRecipeSubclass number the same trades differently.
-local recipeSubclass = {}
-for name, profession in pairs(Enum.Profession) do
-	recipeSubclass[profession] = Enum.ItemRecipeSubclass[name]
+-- The recipe a recipe item teaches, by ID: the seed, a session scan, or the item's own tooltip data
+-- (docs/data.md, "Recipe items").
+
+-- From the seed or this session's scan; nil when neither knows the item.
+function ns.GetSeededRecipe(itemID)
+	local scanned = ns.scanned and ns.scanned[itemID]
+	return scanned or (ns.seed and ns.seed.taught[itemID]) or nil
 end
 
--- The one candidate recipe the observations' factions allow (vendors and trainers only offer their own
--- faction's version); nil if not unique.
-local function MatchByFaction(candidates, observations)
-	local match
-	for _, candidate in ipairs(candidates or {}) do
-		local faction = ns.GetRecipeFaction(candidate)
-		if faction == nil then
-			return nil -- a missing tooltip could still distinguish two variants
-		end
-		local eligible = not faction
-		for _, observation in ipairs(observations) do
-			if observation.faction == faction then
-				eligible = true
-				break
-			end
-		end
-		if eligible then
-			if match and match ~= candidate then
-				return nil
-			end
-			match = candidate
-		end
-	end
-	return match
-end
-
-local function ItemObservations(itemID)
-	local list = {}
-	for _, layer in ipairs({ ns.db.found, ns.db.shared }) do
-		for _, observation in ipairs(layer.items[itemID] or {}) do
-			table.insert(list, observation)
-		end
-	end
-	return list
-end
-
--- The recipe a pending item teaches, from its name, read from the client so received items need no name
--- on the wire.
-local function TaughtName(itemID, item)
-	if item.name then return item.name end
-	local itemName = C_Item.GetItemNameByID(itemID)
-	if not itemName then
+-- From the item's tooltip data: the recipe ID, false when the item teaches nothing, or nil while the
+-- item's data loads.
+function ns.GetTaughtRecipe(itemID)
+	if not C_Item.IsItemDataCachedByID(itemID) then
 		C_Item.RequestLoadItemDataByID(itemID)
 		return nil
 	end
-	return (itemName:match("^.-:%s*(.+)$") or itemName):lower()
-end
-
--- Links recorded recipe items (vendor, drop, quest) to recipe IDs for the open profession. byName maps
--- lowercase recipe names to IDs; inProfession is the set of recipe IDs. Returns false while an item's
--- name is still loading, so the caller links again on a later build.
-function ns.LinkPending(byName, inProfession, profession)
-	local db = ns.db
-	local namesLoaded = true
-	for itemID, item in pairs(db.pendingItems) do
-		local recipeID = item.spellID and inProfession[item.spellID] and item.spellID
-		if not recipeID and recipeSubclass[profession] then
-			local _, _, _, _, _, class, subclass = C_Item.GetItemInfoInstant(itemID)
-			local name = class == Enum.ItemClass.Recipe and subclass == recipeSubclass[profession] and TaughtName(itemID, item)
-			if name == nil then namesLoaded = false end
-			recipeID = name and MatchByFaction(byName[name], ItemObservations(itemID))
-		end
-		if recipeID then
-			db.itemRecipe[itemID] = recipeID
-			db.recipeItems[recipeID] = db.recipeItems[recipeID] or {}
-			if not tContains(db.recipeItems[recipeID], itemID) then
-				table.insert(db.recipeItems[recipeID], itemID)
-			end
-			db.pendingItems[itemID] = nil
+	local tooltip = C_TooltipInfo.GetItemByID(itemID)
+	for _, line in ipairs(tooltip and tooltip.lines or {}) do
+		if line.type == Enum.TooltipDataLineType.ItemSpellTriggerLearn and line.spellID then
+			return line.spellID
 		end
 	end
-	return namesLoaded
+	return false
+end
+
+-- The recipe items that teach a recipe: the seed and this session's scan turned around once, then
+-- the links saved in play for items they do not have.
+local seededItems
+
+function ns.ResetRecipeItems()
+	seededItems = nil
+end
+
+function ns.GetRecipeItems(recipeID)
+	if not seededItems then
+		seededItems = {}
+		for _, source in ipairs({ ns.seed and ns.seed.taught or {}, ns.scanned or {} }) do
+			for itemID, taughtID in pairs(source) do
+				seededItems[taughtID] = seededItems[taughtID] or {}
+				if not tContains(seededItems[taughtID], itemID) then
+					table.insert(seededItems[taughtID], itemID)
+				end
+			end
+		end
+		for _, items in pairs(seededItems) do
+			table.sort(items)
+		end
+	end
+	return seededItems[recipeID] or ns.db.recipeItems[recipeID]
+end
+
+-- Links recorded recipe items (vendor, drop, quest) to the recipes they teach. An item the seed knows
+-- needs no saved link. Returns false while an item's data is still loading, so the caller links again
+-- on a later build.
+function ns.LinkPending()
+	local db = ns.db
+	local loaded = true
+	for itemID, item in pairs(db.pendingItems) do
+		if ns.GetSeededRecipe(itemID) then
+			db.pendingItems[itemID] = nil
+		elseif not item.none then
+			local recipeID = ns.GetTaughtRecipe(itemID)
+			if recipeID == nil then
+				loaded = false
+			elseif recipeID then
+				db.itemRecipe[itemID] = recipeID
+				db.recipeItems[recipeID] = db.recipeItems[recipeID] or {}
+				if not tContains(db.recipeItems[recipeID], itemID) then
+					table.insert(db.recipeItems[recipeID], itemID)
+				end
+				db.pendingItems[itemID] = nil
+			else
+				item.none = true -- teaches nothing; not asked again
+			end
+		end
+	end
+	return loaded
 end
 
 -- The Fishing spell; the client localizes its name for fishing sources.
@@ -256,6 +256,9 @@ ns.SOURCE_LABEL = SOURCE or "Source:"
 -- eye, since the Gossip files draw their art smaller than the atlases.
 ns.marks = {
 	unknown = { atlas = "common-search-magnifyingglass", size = 11 },
+	-- Blizzard's own row lock, copied from LockedIcon in Blizzard_ProfessionsRecipeList.xml (file and
+	-- size). Drawn in full, as Blizzard draws it.
+	locked = { texture = "Interface\\LFGFrame\\UI-LFG-ICON-LOCK", size = 16, plain = true },
 }
 
 function ns.GetMarkSize(mark)
@@ -265,6 +268,10 @@ end
 -- Marks for a recipe in display order, filled into out; returns the count.
 function ns.GetMarks(recipeInfo, out)
 	wipe(out)
+	-- The lock comes first, so it sits left of the source marks and they stay in line down the list.
+	if recipeInfo.lockReason then
+		out[1] = "locked"
+	end
 	if recipeInfo.sourceTypes then
 		for _, sourceType in ipairs(ns.sourceOrder) do
 			if recipeInfo.sourceTypes[sourceType] then
@@ -272,7 +279,7 @@ function ns.GetMarks(recipeInfo, out)
 			end
 		end
 	else
-		out[1] = "unknown"
+		out[#out + 1] = "unknown"
 	end
 	return #out
 end
@@ -287,11 +294,13 @@ local MARK_DESATURATION = 0.7
 function ns.ApplyMark(icon, mark)
 	local size = ns.GetMarkSize(mark)
 	icon.Texture:SetSize(size, size)
-	if icon.mark ~= mark then
+	-- Compared by the art's own table, so a mark whose art is replaced redraws.
+	local info = ns.sourceTypes[mark] or ns.marks[mark]
+	if icon.markInfo ~= info then
 		ns.SetSourceTexture(icon.Texture, mark)
-		icon.mark = mark
+		icon.markInfo = info
 	end
-	local dimmed = not ns.db.fullColorIcons
+	local dimmed = not ns.db.fullColorIcons and not (ns.marks[mark] and ns.marks[mark].plain)
 	icon.Texture:SetDesaturation(dimmed and MARK_DESATURATION or 0)
 	icon.Texture:SetAlpha(dimmed and MARK_ALPHA or 1)
 end
@@ -305,11 +314,6 @@ function ns.SetSourceTexture(texture, sourceType)
 	end
 end
 
--- Tooltip lines for a recipe's sources, laid out like Blizzard's source tooltips: recipe name as title,
--- a gold line per source type, one white "who | where" double line per source (as the Wardrobe sources
--- tooltip, CollectionsUtil.lua).
--- A source's place to show: its position on the player's current map if seen there, else the newest.
--- Returns mapID, x, y; mapID alone for sources without a position (drops inside instances).
 function ns.SourcePosition(observation)
 	local _, positions, fallbackMap = ns.SourceInfo(observation)
 	local here = C_Map.GetBestMapForUnit("player")
@@ -344,6 +348,11 @@ end
 -- CollectionsUtil.lua), and indented lines under it. detailed adds coordinates, skill and cost.
 function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	GameTooltip_SetTitle(tooltip, recipeInfo.name)
+	-- The game's own requirement line, shown as Blizzard shows a row's disabled reason
+	-- (Blizzard_ProfessionsRecipeList.lua, LockedIcon OnEnter).
+	if recipeInfo.lockReason then
+		GameTooltip_AddDisabledLine(tooltip, recipeInfo.lockReason)
+	end
 	local entries = ns.GetSources(recipeInfo)
 	if not entries then
 		GameTooltip_AddNormalLine(tooltip, ns.SOURCE_LABEL .. " " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(UNKNOWN))
@@ -377,31 +386,135 @@ function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	end
 end
 
--- Whether the player's faction can learn a recipe. Forever marks the other faction's versions only in
--- tooltip data, a UsageRequirement line of the Faction type ("Horde Only"), as Blizzard's Perks UI
--- reads it. Cached: recipes don't change.
-local recipeFactions = {}
+-- Faction comes from the recipe's tooltip, a specialization from the tooltip of the item it makes
+-- (docs/client-notes.md, "Requirements"). What is fixed for a game build is kept in recipeFacts.
+local recipeFactions, recipeLocks = {}, {}
+
+local function Facts()
+	local build = select(2, GetBuildInfo())
+	local facts = ns.db.recipeFacts
+	if not facts or facts.build ~= build then
+		facts = { build = build, faction = {}, spec = {} }
+		ns.db.recipeFacts = facts
+	end
+	return facts
+end
 
 function ns.GetRecipeFaction(recipeID)
-	if recipeFactions[recipeID] ~= nil then
-		return recipeFactions[recipeID]
+	local faction = recipeFactions[recipeID]
+	if faction ~= nil then
+		return faction
 	end
-	local tooltip = C_TooltipInfo.GetSpellByID(recipeID)
-	if not (tooltip and tooltip.lines and tooltip.lines[1]) then
-		return nil
-	end
-	for _, line in ipairs(tooltip.lines) do
-		if line.type == Enum.TooltipDataLineType.UsageRequirement
-			and line.requirementType == Enum.TooltipDataUsageRequirementType.Faction then
-			for faction, label in pairs(FACTION_LABELS_FROM_STRING) do
-				if line.leftText and line.leftText:find(label, 1, true) then
-					recipeFactions[recipeID] = faction
-					return faction
-				end
-			end
+	local facts = Facts()
+	faction = facts.faction[recipeID]
+	if faction == nil then
+		local tooltip = C_TooltipInfo.GetSpellByID(recipeID)
+		if not (tooltip and tooltip.lines and tooltip.lines[1]) then
 			return nil
 		end
+		faction = false
+		for _, line in ipairs(tooltip.lines) do
+			if line.type == Enum.TooltipDataLineType.UsageRequirement and line.leftText
+				and line.requirementType == Enum.TooltipDataUsageRequirementType.Faction then
+				faction = nil -- unreadable until a label matches
+				for name, label in pairs(FACTION_LABELS_FROM_STRING) do
+					if line.leftText:find(label, 1, true) then
+						faction = name
+						break
+					end
+				end
+			end
+		end
+		if faction == nil then
+			return nil
+		end
+		facts.faction[recipeID] = faction
 	end
-	recipeFactions[recipeID] = false
-	return false
+	recipeFactions[recipeID] = faction
+	return faction
+end
+
+-- A met requirement is drawn white and an unmet one red, a red of the tooltip's own, so the test is
+-- on the channels: a red line has little green (docs/client-notes.md, "Requirements").
+local UNMET_MAX_GREEN = 0.5
+
+local function IsUnmet(color)
+	return color ~= nil and color.g < UNMET_MAX_GREEN
+end
+
+-- Rows waiting for a made item's data redraw once, shortly after the answers arrive.
+local LOCK_REFRESH_DELAY = 0.2
+local loadingItems, refreshQueued = {}, false
+
+local function QueueRowRefresh()
+	if not refreshQueued then
+		refreshQueued = true
+		C_Timer.After(LOCK_REFRESH_DELAY, function()
+			refreshQueued = false
+			ns.RefreshRows()
+		end)
+	end
+end
+
+-- The game's requirement text when the character lacks the specialization needed for what the recipe
+-- makes, false when there is none or it is met, nil while the made item's data loads. Asked for the
+-- rows on screen only, so a profession's first open does not load every item it can make.
+function ns.GetRecipeLock(recipeID)
+	local lock = recipeLocks[recipeID]
+	if lock ~= nil then
+		return lock
+	end
+	local facts = Facts()
+	if facts.spec[recipeID] == false then
+		recipeLocks[recipeID] = false
+		return false
+	end
+	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
+	local itemID = schematic and schematic.outputItemID
+	if not itemID then
+		facts.spec[recipeID], recipeLocks[recipeID] = false, false
+		return false
+	end
+	if not C_Item.IsItemDataCachedByID(itemID) then
+		if not loadingItems[itemID] then
+			loadingItems[itemID] = true
+			Item:CreateFromItemID(itemID):ContinueOnItemLoad(function()
+				loadingItems[itemID] = nil
+				QueueRowRefresh()
+			end)
+		end
+		return nil
+	end
+	local tooltip = C_TooltipInfo.GetItemByID(itemID)
+	local spec
+	lock = false
+	for _, line in ipairs(tooltip and tooltip.lines or {}) do
+		if line.type == Enum.TooltipDataLineType.UsageRequirement and line.leftText
+			and line.requirementType == Enum.TooltipDataUsageRequirementType.Skill
+			and not line.leftText:find("%d") then
+			spec = true
+			if IsUnmet(line.leftColor) then
+				lock = line.leftText
+			end
+			--@debug@
+			-- Which fields this line carries, to learn whether it names the specialization by ID.
+			local fields = {}
+			for key, value in pairs(line) do
+				if type(value) ~= "table" then
+					fields[#fields + 1] = key .. "=" .. tostring(value)
+				end
+			end
+			table.sort(fields)
+			ns.db.devSpecLines = ns.db.devSpecLines or {}
+			ns.db.devSpecLines[recipeID] = ("item %d | %s"):format(itemID, table.concat(fields, " | "))
+			--@end-debug@
+		end
+	end
+	facts.spec[recipeID], recipeLocks[recipeID] = spec or false, lock
+	return lock
+end
+
+-- Choosing or dropping a specialization changes which requirements are met.
+function ns.ClearRecipeLocks()
+	wipe(recipeLocks)
 end

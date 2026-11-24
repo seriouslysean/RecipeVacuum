@@ -1,14 +1,49 @@
--- Troubleshooting commands. Shipped in every build and listed in the chat help, not on the settings page
--- (as other addons list theirs). Nothing runs until a command does, apart from the
--- profession-open timer below.
+-- Troubleshooting commands. watch and log ship in every build; development commands sit between the
+-- packager's debug markers (docs/development.md, "Working build").
 local _, ns = ...
 
--- Command output is also kept in RecipeVacuumDB.devLog and shown in a copyable popup.
+--@debug@
+local UseScan -- defined with the scan code below
+--@end-debug@
+
+--@debug@
+-- Performance record: each named piece keeps its run count, total and slowest run, written to the
+-- saved log when the session ends.
+local perfRecord, perfOrder = {}, {}
+
+function ns.PerfMs(name, ms)
+	local entry = perfRecord[name]
+	if not entry then
+		entry = { count = 0, total = 0, max = 0 }
+		perfRecord[name] = entry
+		perfOrder[#perfOrder + 1] = name
+	end
+	entry.count, entry.total = entry.count + 1, entry.total + ms
+	if ms > entry.max then entry.max = ms end
+end
+
+function ns.Perf(name, started)
+	ns.PerfMs(name, debugprofilestop() - started)
+end
+
+local function PerfLines()
+	local lines = {}
+	for _, name in ipairs(perfOrder) do
+		local entry = perfRecord[name]
+		lines[#lines + 1] = ("PERF %-24s runs %5d | average %7.2f ms | slowest %7.2f ms | total %8.1f ms"):format(
+			name, entry.count, entry.total / entry.count, entry.max, entry.total)
+	end
+	return lines
+end
+--@end-debug@
+
+--@debug@
+-- Times the profession window's opening for the perf command.
 local openStarted, openMs
-local timing = CreateFrame("Frame")
-timing:RegisterEvent("TRADE_SKILL_SHOW")
-timing:RegisterEvent("TRADE_SKILL_CLOSE")
-timing:SetScript("OnEvent", function(_, event)
+local openTimer = CreateFrame("Frame")
+openTimer:RegisterEvent("TRADE_SKILL_SHOW")
+openTimer:RegisterEvent("TRADE_SKILL_CLOSE")
+openTimer:SetScript("OnEvent", function(_, event)
 	if event == "TRADE_SKILL_SHOW" then
 		openStarted, openMs = debugprofilestop(), nil
 	else
@@ -19,179 +54,102 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", function()
 		if openStarted and C_TradeSkillUI.IsTradeSkillReady() then
 			openMs, openStarted = debugprofilestop() - openStarted, nil
+			ns.PerfMs("profession window open", openMs)
 		end
 	end)
 end)
+--@end-debug@
 
--- Keeps the last LOG_LINES lines across commands, so a toggle such as watch keeps what it recorded.
+-- Keeps the last LOG_LINES lines across commands and reloads. The copy window shows the current run:
+-- the lines since the last command, or since watch was turned on (another addon shows the current session
+-- the same way and keeps earlier ones). "log all" shows everything kept.
 local LOG_LINES = 2000
 local toolkit = LibStub("JigBoltgripToolkit-1.0")
 
-local function ShowLog()
-	toolkit:ShowText("Recipe Vacuum: select all, then copy", table.concat(ns.db.devLog or {}, "\n"))
+-- A command's window shows that command's own lines (viewStart), even while a watch run is going;
+-- "log" goes back to the run.
+local viewStart
+
+local function ShowLog(all)
+	local log = ns.db.devLog or {}
+	local first = all and 1 or math.min(viewStart or ns.db.devLogRun or 1, #log + 1)
+	toolkit:ShowText(C_AddOns.GetAddOnMetadata("RecipeVacuum", "Title") .. ": " .. ns.voice.logTitle, table.concat(log, "\n", first))
 end
 
--- Lines are timestamped, so a long watch reads as a timeline.
-local function Append(line)
+-- Lines are timestamped, so a long watch reads as a timeline; a dated line is kept as it is.
+local function Append(line, dated)
 	ns.db.devLog = ns.db.devLog or {}
-	table.insert(ns.db.devLog, line ~= "" and date("%H:%M:%S ") .. line or line)
+	table.insert(ns.db.devLog, (dated or line == "") and line or date("%H:%M:%S ") .. line)
 	while #ns.db.devLog > LOG_LINES do
 		table.remove(ns.db.devLog, 1)
+		ns.db.devLogRun = math.max((ns.db.devLogRun or 1) - 1, 1)
+		if viewStart then viewStart = math.max(viewStart - 1, 1) end
 	end
+end
+
+-- The next line starts a new run. A running watch keeps its run, so other commands don't cut it short.
+local function StartRun(force)
+	if force or not ns.db.watch then
+		ns.db.devLogRun = #(ns.db.devLog or {}) + 1
+	end
+end
+
+-- Watch lines go to the log only: it runs while playing, and chat stays clear.
+local logOnly
+
+-- A line from Voice.lua goes to chat through ns.Log, which tags it, and to the saved log with the
+-- same tag.
+local LOG_TAG = "Recipe Vacuum: "
+local voice = ns.voice
+
+local function Chat(line)
+	ns.Log(line)
 end
 
 local function print(...)
 	local line = strjoin(" ", tostringall(...))
 	Append(line)
-	_G.print(line)
+	if not logOnly then _G.print(line) end
 	if toolkit:IsTextShown() then
 		ShowLog()
 	end
 end
 
-local function Dump()
-	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
-		print("Recipe Vacuum: open a profession first.")
-		return
-	end
-
-	local recipeID
-	for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
-		local info = C_TradeSkillUI.GetRecipeInfo(id)
-		if info and not info.learned then
-			recipeID = id
-			break
-		end
-	end
-	if not recipeID then
-		print("Recipe Vacuum: no unlearned recipes in this profession.")
-		return
-	end
-
-	local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
-	print(("Recipe Vacuum: %d %s"):format(recipeID, info.name or "?"))
-	local keys = {}
-	for key in pairs(info) do
-		table.insert(keys, key)
-	end
-	table.sort(keys)
-	for _, key in ipairs(keys) do
-		if type(info[key]) ~= "table" then
-			print("  " .. key .. " = " .. tostring(info[key]))
-		end
-	end
-	-- Parenthesized: on Forever the call returns no value, which tostring rejects.
-	print("  sourceText = " .. tostring((C_TradeSkillUI.GetRecipeSourceText(recipeID))))
-
-	-- Unlearned recipes per sourceType.
-	local professionID = Professions.GetProfessionInfo().professionID
-	local counts, total = {}, 0
-	for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
-		local recipe = C_TradeSkillUI.GetRecipeInfo(id)
-		if recipe and not recipe.learned and C_TradeSkillUI.IsRecipeInSkillLine(id, professionID) then
-			local key = recipe.sourceType and ((_G["BATTLE_PET_SOURCE_" .. recipe.sourceType] or "?") .. " (" .. recipe.sourceType .. ")") or "none"
-			counts[key] = (counts[key] or 0) + 1
-			total = total + 1
-		end
-	end
-	local parts = {}
-	for key, count in pairs(counts) do
-		table.insert(parts, key .. ": " .. count)
-	end
-	table.sort(parts)
-	print(("  sourceType across %d unlearned: %s"):format(total, table.concat(parts, ", ")))
-
-	local fromSources = {}
-	for index = 1, C_PetJournal.GetNumPetSources() do
-		if C_TradeSkillUI.IsAnyRecipeFromSource(index) then
-			table.insert(fromSources, (_G["BATTLE_PET_SOURCE_" .. index] or "?") .. " (" .. index .. ")")
-		end
-	end
-	print("  sources with recipes: " .. (#fromSources > 0 and table.concat(fromSources, ", ") or "none"))
-end
-
-
-
-
--- Requirement lines on the open profession's unlearned recipes, grouped by type, to see how Forever
--- marks recipes a character can never learn.
-local function Requirements()
-	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
-		print("Recipe Vacuum: open a profession first.")
-		return
-	end
-	local professionID = Professions.GetProfessionInfo().professionID
-	local seen, count = {}, 0
-	for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
-		local info = C_TradeSkillUI.GetRecipeInfo(id)
-		if info and not info.learned and C_TradeSkillUI.IsRecipeInSkillLine(id, professionID) then
-			local tooltip = C_TooltipInfo.GetSpellByID(id)
-			for _, line in ipairs(tooltip and tooltip.lines or {}) do
-				if line.type == Enum.TooltipDataLineType.UsageRequirement and line.leftText then
-					local color = line.leftColor and line.leftColor:GenerateHexColor() or "?"
-					local key = tostring(line.requirementType) .. "|" .. line.leftText:gsub("%d+", "#") .. "|" .. color
-					if not seen[key] then
-						seen[key] = true
-						count = count + 1
-						print(("  requirementType %s | color %s | %s | e.g. %d %s"):format(
-							tostring(line.requirementType), color, line.leftText, id, info.name))
-					end
-				end
-			end
-		end
-	end
-	print(("Recipe Vacuum: %d distinct requirement lines."):format(count))
-end
-
--- Size of the account's finds as one export, to decide whether sharing needs paging (another addon sends
--- one compressed message).
-local function ExportSize()
-	local rows = ns.FindsSince(0, math.huge)
-	local json = C_EncodingUtil.SerializeJSON(rows)
-	local cbor = C_EncodingUtil.SerializeCBOR(rows)
-	local deflated = C_EncodingUtil.CompressString(cbor, Enum.CompressionMethod.Deflate)
-	local encoded = C_EncodingUtil.EncodeBase64(deflated)
-	print(("Recipe Vacuum: %d shareable finds | JSON %d bytes | CBOR %d | Deflate %d | Base64 %d | ~%d addon messages of 255 bytes"):format(
-		#rows, #json, #cbor, #deflated, #encoded, math.ceil(#encoded / 250)))
-end
-
--- One-shot checks: saved data after the upgrade, Blizzard atlases we use, and which APIs Forever
--- exposes.
-local function Checks()
-	local db = ns.db
-	print(("schema %s | revision %s | pending items %d"):format(
-		tostring(db.schema), tostring(db.exchange and db.exchange.revision), CountTable(db.pendingItems)))
-	for _, atlas in ipairs({ "bags-junkcoin", "common-search-magnifyingglass" }) do
-		print(("atlas %s: %s"):format(atlas, C_Texture.GetAtlasInfo(atlas) and "present" or "MISSING"))
-	end
-	for _, name in ipairs({ "GetLootSourceInfo", "IsFishingLoot", "GetQuestItemInfo", "issecretvalue" }) do
-		print(("%s: %s"):format(name, type(_G[name])))
-	end
-	print("C_Item.GetItemSpell:", type(C_Item.GetItemSpell), "| C_Map.OpenWorldMap:", type(C_Map.OpenWorldMap),
-		"| C_SuperTrack.SetSuperTrackedUserWaypoint:", type(C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint))
-	local mapID = C_Map.GetBestMapForUnit("player")
-	print("map", tostring(mapID), "| CanSetUserWaypointOnMap:", tostring(mapID and C_Map.CanSetUserWaypointOnMap(mapID)),
-		"| colorblindMode:", GetCVar("colorblindMode"))
-	-- Locale-independent recipe item link: does the item expose its recipe?
-	local itemID = next(db.itemRecipe) or next(db.pendingItems)
-	if itemID then
-		print(("recipe item %d (links to recipe %s):"):format(itemID, tostring(db.itemRecipe[itemID])))
-		print("  C_Item.GetItemSpell:", C_Item.GetItemSpell and strjoin(" ", tostringall(C_Item.GetItemSpell(itemID))) or "n/a")
-		local tooltip = C_TooltipInfo.GetItemByID(itemID)
-		-- Every field of every line: a nested block may name the crafted item, linking recipe items
-		-- without English names.
-		for index, line in ipairs(tooltip and tooltip.lines or {}) do
-			local fields = {}
-			for key, value in pairs(line) do
-				if type(value) ~= "table" and key ~= "leftText" then
-					table.insert(fields, key .. "=" .. tostring(value))
-				end
-			end
-			table.sort(fields)
-			print(("  %d %s | %s"):format(index, tostring(line.leftText), table.concat(fields, " ")))
-		end
+-- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
+local function Say(line, ...)
+	line = select("#", ...) > 0 and line:format(...) or line
+	Append(LOG_TAG .. line)
+	if not logOnly then Chat(line) end
+	if toolkit:IsTextShown() then
+		ShowLog()
 	end
 end
+
+-- The one chat line a watch event may print: it found recipes. Everything else stays in the log.
+-- Chat lines speak like the game's gnomish machines, in the vacuum's own words: a state, then what it
+-- is doing (Homing Robot OOX-17/TN: "Flight systems online! Engaging rockets for transport to Booty Bay!").
+local function WatchFound(count)
+	if count > 0 then
+		local line = voice.detected:format(count, count == 1 and "recipe" or "recipes")
+		Append(LOG_TAG .. line)
+		Chat(line)
+	end
+end
+
+local function IsRecipeItem(itemID)
+	return itemID and select(6, C_Item.GetItemInfoInstant(itemID)) == Enum.ItemClass.Recipe
+end
+
+-- Wraps a watch callback so its lines skip chat; the flag is cleared even when the callback errors.
+local function LogOnly(callback)
+	return function(...)
+		logOnly = true
+		local ok, problem = pcall(callback, ...)
+		logOnly = nil
+		if not ok then Say(voice.malfunction, "the watch", tostring(problem)) end
+	end
+end
+
 
 -- Logs loot windows, quest dialogs and spell targets, to learn what Forever reports for mob, object,
 -- container and fishing loot and for quest givers and rewards.
@@ -235,7 +193,12 @@ local handlers = {
 		lootLogged = true
 		print(("LOOT %s | cast target %s | fishing %s | unit target %s | %s"):format(DescribeAll(...),
 			Describe(castTarget), Describe(IsFishingLoot()), Describe(UnitGUID("target")), Where()))
+		local recipes = 0
 		for slot = 1, GetNumLootItems() do
+			local link = GetLootSlotLink(slot)
+			if link and not (issecretvalue and issecretvalue(link)) and IsRecipeItem(C_Item.GetItemInfoInstant(link)) then
+				recipes = recipes + 1
+			end
 			local source = GetLootSourceInfo(slot)
 			-- Containers opened from bags report an Item GUID with no item ID in it.
 			local container = type(source) == "string" and not (issecretvalue and issecretvalue(source))
@@ -244,6 +207,7 @@ local handlers = {
 				Describe(GetLootSlotLink(slot)), DescribeAll(GetLootSourceInfo(slot)),
 				container and (" | container item " .. Describe(container)) or ""))
 		end
+		WatchFound(recipes)
 	end,
 	QUEST_DETAIL = function() end, -- filled below
 }
@@ -251,14 +215,95 @@ handlers.LOOT_OPENED = handlers.LOOT_READY
 local function Quest(event)
 	print(("%s quest %s | questnpc %s %s | %s"):format(event, Describe(GetQuestID()),
 		Describe(UnitName("questnpc")), Describe(UnitGUID("questnpc")), Where()))
+	local recipes = 0
 	for _, kind in ipairs({ "reward", "choice" }) do
 		local count = kind == "reward" and GetNumQuestRewards() or GetNumQuestChoices()
 		for index = 1, count do
 			print(("  %s %d: %s"):format(kind, index, DescribeAll(GetQuestItemInfo(kind, index))))
+			if IsRecipeItem((select(6, GetQuestItemInfo(kind, index)))) then recipes = recipes + 1 end
 		end
 	end
+	WatchFound(recipes)
 end
 handlers.QUEST_DETAIL = function() Quest("QUEST_DETAIL") end
+-- A group roll names the item but not what dropped it. The loot handle is logged in case it turns
+-- out to match something that does (a corpse's GUID in a later loot line, for one).
+handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
+	local link = GetLootRollItemLink(rollID)
+	print(("ROLL %s | item %s | handle %s | time %s | unit target %s | %s"):format(Describe(rollID), Describe(link),
+		Describe(lootHandle), Describe(rollTime), Describe(UnitGUID("target")), Where()))
+	local itemID = link and not (issecretvalue and issecretvalue(link)) and C_Item.GetItemInfoInstant(link)
+	WatchFound(IsRecipeItem(itemID) and 1 or 0)
+end
+-- Vendors and trainers are recorded when their window opens, not on a purchase, so the watch logs the
+-- visit: who it is and how many items or services they list.
+handlers.MERCHANT_SHOW = function()
+	print(("VENDOR %s %s | faction %s | %d items | %s"):format(Describe(UnitName("npc")), Describe(UnitGUID("npc")),
+		Describe((UnitFactionGroup("npc"))), GetMerchantNumItems(), Where()))
+	-- Each item with its class, since only the Recipe class (9) is recorded. Log only, to keep chat clear.
+	local recipes = 0
+	for index = 1, GetMerchantNumItems() do
+		local itemID = GetMerchantItemID(index)
+		if IsRecipeItem(itemID) then recipes = recipes + 1 end
+		Append(("  item %d %s %s | class %s"):format(index, Describe(itemID), Describe(GetMerchantItemLink(index)),
+			Describe(itemID and select(6, C_Item.GetItemInfoInstant(itemID)))))
+	end
+	WatchFound(recipes)
+end
+-- A plain conversation, to tell an NPC that only talks from one that sells, trains or gives quests.
+handlers.GOSSIP_SHOW = function()
+	local options = {}
+	for _, option in ipairs(C_GossipInfo.GetOptions()) do
+		table.insert(options, Describe(option.name))
+	end
+	print(("GOSSIP %s %s | %d available quests | options: %s | %s"):format(Describe(UnitName("npc")),
+		Describe(UnitGUID("npc")), C_GossipInfo.GetNumAvailableQuests(),
+		#options > 0 and table.concat(options, "; ") or "none", Where()))
+end
+-- Services can arrive after the window opens and the window's filter hides some, so list them a moment
+-- later with every filter on, then put the player's filter back.
+local TRAINER_LIST_DELAY = 0.5
+local TRAINER_FILTERS = { "available", "unavailable", "used" }
+handlers.TRAINER_SHOW = function()
+	print(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
+		Describe(UnitGUID("npc")), Describe((UnitFactionGroup("npc"))), Describe(IsTradeskillTrainer()), GetNumTrainerServices(), Where()))
+	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function()
+		local shown = {}
+		for _, filter in ipairs(TRAINER_FILTERS) do
+			shown[filter] = GetTrainerServiceTypeFilter(filter)
+			SetTrainerServiceTypeFilter(filter, true)
+		end
+		print(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
+			GetNumTrainerServices(), Describe(shown.available), Describe(shown.unavailable), Describe(shown.used)))
+		-- Recipes have a category and ranks have none, which is how the recorder tells them apart.
+		-- Anything skipped is named, so a real recipe without a category would show up here.
+		local recipes, skipped = 0, {}
+		for index = 1, GetNumTrainerServices() do
+			local tooltip = C_TooltipInfo.GetTrainerService(index)
+			local name, _, _, _, _, category = GetTrainerServiceInfo(index)
+			if tooltip and tooltip.id and C_TradeSkillUI.GetTradeSkillLineForRecipe(tooltip.id) then
+				if category and category ~= "" then
+					recipes = recipes + 1
+				else
+					table.insert(skipped, Describe(name))
+				end
+			end
+			Append(("  service %d %s | spell %s | profession line %s"):format(index, DescribeAll(GetTrainerServiceInfo(index)),
+				Describe(tooltip and tooltip.id),
+				tooltip and tooltip.id and DescribeAll(C_TradeSkillUI.GetTradeSkillLineForRecipe(tooltip.id)) or "nil")
+				-- Does the game know the spell as a recipe? Ranks ("Journeyman Fishing") should not be.
+				.. " | recipe info " .. Describe(tooltip and tooltip.id and C_TradeSkillUI.GetRecipeInfo(tooltip.id) ~= nil)
+				.. " | step " .. Describe(GetTrainerServiceStepIndex()))
+		end
+		for _, filter in ipairs(TRAINER_FILTERS) do
+			SetTrainerServiceTypeFilter(filter, shown[filter])
+		end
+		if #skipped > 0 then
+			print("  skipped as ranks (no category): " .. table.concat(skipped, "; "))
+		end
+		WatchFound(recipes)
+	end))
+end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
 
 -- watch on | off (no word toggles). Saved, so it resumes after /reload; the log reaches disk on /reload
@@ -270,9 +315,11 @@ local function StartWatch()
 	end
 	watcher:SetScript("OnEvent", function(_, event, ...)
 		-- Log errors: script errors may be hidden in the client.
+		logOnly = true
 		local ok, problem = pcall(handlers[event], ...)
+		logOnly = nil
 		if not ok then
-			print(("watch error in %s: %s"):format(event, Describe(problem)))
+			Say(voice.malfunction, event, Describe(problem))
 		end
 	end)
 end
@@ -286,19 +333,277 @@ local function Watch(word)
 		watcher:UnregisterAllEvents()
 		watcher = nil
 	end
+	if on and not ns.db.watch then
+		StartRun(true)
+		Append(date("%Y-%m-%d %H:%M:%S") .. " /recipevacuum watch on", true)
+	end
 	ns.db.watch = on or nil
-	print(on and "Recipe Vacuum: watching loot and quests (/recipevacuum watch off to stop). Saved to disk on /reload or logout."
-		or "Recipe Vacuum: watch off.")
+	Say(on and voice.watchOn or voice.watchOff)
 end
 
 -- Called by Core once saved data is loaded (an ADDON_LOADED callback here could run before it).
+--@debug@
+-- A scan kept from this game build is used from the start of each session, ahead of the seed.
+local function UseKeptScan()
+	local scan = ns.db.devScan
+	if scan and scan.teaches and scan.build == select(2, GetBuildInfo()) then
+		UseScan(scan)
+	end
+end
+--@end-debug@
+
 function ns.ResumeWatch()
+	--@debug@
+	UseKeptScan()
+	--@end-debug@
 	if ns.db.watch and not watcher then
 		StartWatch()
 		Append("watch resumed after reload")
 	end
 end
 
+
+--@debug@
+-- Seeding scan: finds every recipe item and the recipe it teaches (docs/development.md, "Seeding").
+local SCAN_FRAME_MS = 4        -- work per frame, so the game stays smooth
+local SCAN_STEP = 500          -- IDs between clock checks
+local SCAN_GAP = 50000         -- stop after this many IDs in a row with no item
+local SCAN_CAP = 2000000
+local LOAD_BATCH = 50          -- items requested per tick (500 a second)
+local LOAD_INTERVAL = 0.1
+local LOAD_TIMEOUT = 5         -- seconds to wait for the last answers
+local NO_ANSWER = 0            -- saved for an item the game never answered, so it is not asked again
+local ITEM_LIMIT = 10000       -- more recipe items than this means the walk went wrong; load nothing
+local MISSING_LINES = 200      -- unlearned recipes without an item listed in the log
+
+-- Makes a scan this session's layer over the seed (ns.scanned): only the items that teach a recipe.
+-- Nothing is written to the seed or to the saved links.
+function UseScan(scan)
+	local scanned = {}
+	for itemID, recipeID in pairs(scan.teaches) do
+		if type(recipeID) == "number" and recipeID > 0 then
+			scanned[itemID] = recipeID
+		end
+	end
+	ns.scanned = scanned
+	ns.ResetRecipeItems()
+end
+
+local scanning
+-- When the running scan began, and its phases' timings (kept in devScan.timing for the perf command).
+local scanStarted
+
+local function Timing(scan)
+	scan.timing = scan.timing or {}
+	return scan.timing
+end
+
+-- The open profession's unlearned recipes against the table: how many have a recipe item.
+local function Report(scan)
+	scanning = nil
+	local reportStart = debugprofilestop()
+	local taught, known, none = {}, 0, 0
+	for itemID, recipeID in pairs(scan.teaches) do
+		if recipeID and recipeID ~= NO_ANSWER then
+			taught[recipeID] = itemID
+			known = known + 1
+		elseif recipeID == false then
+			none = none + 1
+		end
+	end
+	Append(("SCAN %d recipe items: %d name the recipe they teach, %d teach nothing, %d unanswered"):format(
+		#scan.items, known, none, #scan.items - known - none))
+	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
+		Say(voice.scanNoWindow)
+		return
+	end
+	local profession = Professions.GetProfessionInfo()
+	local unlearned, withItem, without = 0, 0, {}
+	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
+		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
+		if info and not info.learned and C_TradeSkillUI.IsRecipeInSkillLine(recipeID, profession.professionID) then
+			unlearned = unlearned + 1
+			if taught[recipeID] then
+				withItem = withItem + 1
+			else
+				table.insert(without, ("%d %s"):format(recipeID, info.name or "?"))
+			end
+		end
+	end
+	Append(("  %s: %d unlearned | %d have a recipe item, %d do not (a trainer teaches those):"):format(
+		profession.professionName or "?", unlearned, withItem, #without))
+	table.sort(without)
+	for index = 1, math.min(#without, MISSING_LINES) do
+		Append("    " .. without[index])
+	end
+	-- What the scan learned is used at once, as this session's layer over the seed: the list redraws
+	-- with the recipe items it found.
+	UseScan(scan)
+	ns.SourcesChanged()
+	local timing = Timing(scan)
+	timing.reportMs, timing.totalSeconds = debugprofilestop() - reportStart, GetTime() - scanStarted
+	timing.profession = profession.professionName
+	Say(voice.scanDone, withItem, unlearned, profession.professionName or UNKNOWN, timing.totalSeconds)
+end
+
+-- Loads each unanswered recipe item and reads the recipe it teaches. An item is asked once per build.
+local function ReadTaught(scan)
+	local pending = {}
+	for _, itemID in ipairs(scan.items) do
+		if scan.teaches[itemID] == nil then
+			pending[#pending + 1] = itemID
+		end
+	end
+	local timing = Timing(scan)
+	timing.asked, timing.answered, timing.loadSeconds = #pending, 0, 0
+	if #pending == 0 then
+		Report(scan)
+		return
+	end
+	local requested, answered, finished, started = 0, 0, false, GetTime()
+	-- Loads still waiting at the end are cancelled, so no callback stays registered, and remembered
+	-- as unanswered.
+	local waiting = {}
+	local function Finish()
+		if finished then return end
+		finished = true
+		for itemID, cancel in pairs(waiting) do
+			cancel()
+			-- An item already loaded answers at once, before its cancel handle is stored here.
+			if scan.teaches[itemID] == nil then scan.teaches[itemID] = NO_ANSWER end
+		end
+		timing.answered, timing.loadSeconds = answered, GetTime() - started
+		Append(("SCAN asked for %d items, %d answered, in %.1f s"):format(#pending, answered, timing.loadSeconds))
+		local ok, problem = pcall(Report, scan)
+		if not ok then
+			scanning = nil
+			Say(voice.scanFailed, Describe(problem))
+		end
+	end
+	local ticker
+	ticker = C_Timer.NewTicker(LOAD_INTERVAL, function()
+		for _ = 1, LOAD_BATCH do
+			requested = requested + 1
+			local itemID = pending[requested]
+			if not itemID then
+				ticker:Cancel()
+				C_Timer.After(LOAD_TIMEOUT, Finish)
+				return
+			end
+			local item = Item:CreateFromItemID(itemID)
+			waiting[itemID] = item:ContinueWithCancelOnItemLoad(function()
+				waiting[itemID] = nil
+				-- An answer that still carries no data counts as none, so the item is not asked again.
+				local recipeID = ns.GetTaughtRecipe(itemID)
+				scan.teaches[itemID] = recipeID == nil and NO_ANSWER or recipeID
+				answered = answered + 1
+				if answered == #pending then Finish() end
+			end)
+		end
+	end)
+end
+
+local function WalkItems()
+	local found = {}
+	local id, lastItem, existing, cpu, started = 0, 0, 0, 0, GetTime()
+	-- One slice of the walk. Every pass of the outer loop ends on the clock or on done, and done is
+	-- certain by SCAN_CAP, so the walk cannot run away.
+	local function Walk()
+		local frameStart = debugprofilestop()
+		local done = false
+		while not done and debugprofilestop() - frameStart < SCAN_FRAME_MS do
+			for _ = 1, SCAN_STEP do
+				id = id + 1
+				local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(id)
+				if classID then
+					existing, lastItem = existing + 1, id
+					if classID == Enum.ItemClass.Recipe then
+						found[#found + 1] = id
+					end
+				end
+			end
+			done = id - lastItem > SCAN_GAP or id >= SCAN_CAP
+		end
+		cpu = cpu + (debugprofilestop() - frameStart)
+		return done
+	end
+	local ticker
+	ticker = C_Timer.NewTicker(0, function()
+		-- An error must end the walk, not repeat every frame.
+		local ok, done = pcall(Walk)
+		if ok and not done then return end
+		ticker:Cancel()
+		if not ok then
+			scanning = nil
+			Say(voice.scanFailed, Describe(done))
+			return
+		end
+		Append(("SCAN walked %d IDs | %d items exist | highest item %d | %d recipe items | %.0f ms of work over %.1f s"):format(
+			id, existing, lastItem, #found, cpu, GetTime() - started))
+		-- Loading costs a server request per item, so it only starts when the count is believable.
+		if #found == 0 or #found > ITEM_LIMIT then
+			scanning = nil
+			Say(voice.scanBadCount)
+			return
+		end
+		ns.db.devScan = { build = select(2, GetBuildInfo()), items = found, teaches = {},
+			timing = { walkMs = cpu, walkSeconds = GetTime() - started, walkedIDs = id } }
+		ReadTaught(ns.db.devScan)
+	end)
+end
+
+-- Runs only with a profession open. The item list and what each item teaches are kept per game
+-- build, so a second profession reuses them and asks the server nothing.
+local function Scan()
+	if scanning then
+		Say(voice.scanBusy)
+		return
+	end
+	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
+		Say(voice.scanNoWindow)
+		return
+	end
+	Say(voice.scanStart, Professions.GetProfessionInfo().professionName or UNKNOWN)
+	scanning, scanStarted = true, GetTime()
+	local scan = ns.db.devScan
+	if scan and scan.build == select(2, GetBuildInfo()) and scan.items and scan.teaches then
+		-- The item walk is reused, so this run's walk cost is nothing.
+		Timing(scan).walkMs, Timing(scan).walkSeconds, Timing(scan).walkedIDs = 0, 0, 0
+		ReadTaught(scan)
+	else
+		WalkItems()
+	end
+end
+
+--@end-debug@
+
+--@debug@
+-- Shared functions timed from here, and the record written out when the session ends.
+for name, label in pairs({ AddSourceLines = "source tooltip", MergeFinds = "merge shared finds", LinkPending = "link recipe items" }) do
+	local inner = ns[name]
+	ns[name] = function(...)
+		local started = debugprofilestop()
+		local first, second, third = inner(...)
+		ns.Perf(label, started)
+		return first, second, third
+	end
+end
+
+local perfWriter = CreateFrame("Frame")
+perfWriter:RegisterEvent("PLAYER_LOGOUT")
+perfWriter:SetScript("OnEvent", function()
+	local lines = PerfLines()
+	if #lines > 0 then
+		local version, build = GetBuildInfo()
+		Append("")
+		Append(("%s PERF session on %s (%s), %s level %d"):format(date("%Y-%m-%d %H:%M:%S"), version, build,
+			UnitName("player") or UNKNOWN, UnitLevel("player") or 0), true)
+		for _, line in ipairs(lines) do
+			Append(line)
+		end
+	end
+end)
+--@end-debug@
 
 -- Each command logs a header (time, client build, character, open profession), runs, then shows the log
 -- in the copy window; "log" only shows it.
@@ -308,9 +613,11 @@ local function Logged(run)
 		local _, faction = UnitFactionGroup("player")
 		local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
 		local profession = page and page:IsVisible() and Professions.GetProfessionInfo()
+		Append("")
+		StartRun()
+		viewStart = #ns.db.devLog + 1
+		Append(date("%Y-%m-%d %H:%M:%S") .. " /recipevacuum " .. (arguments.action or ""), true)
 		for _, line in ipairs({
-			"",
-			date("%Y-%m-%d %H:%M:%S") .. " /recipevacuum " .. (arguments.action or ""),
 			("client %s (%s) | addon %s | %s, %s, level %d"):format(version, build,
 				tostring(C_AddOns.GetAddOnMetadata("RecipeVacuum", "Version")),
 				UnitName("player"), tostring(faction), UnitLevel("player")),
@@ -326,20 +633,58 @@ local function Logged(run)
 end
 
 
-
 local troubleshooting = {
-	{ "checks", "Check saved data, icons and the game functions Recipe Vacuum uses", Checks },
-	{ "watch", "Log where loot and quest rewards come from: watch on, watch off", Watch, quiet = true },
-	{ "dump", "Show what the game reports for one unlearned recipe of the open profession", Dump },
-	{ "requirements", "List the requirement lines on the open profession's unlearned recipes", Requirements },
-	{ "perf", "Show how long the profession window took to open", function()
-		print("Recipe Vacuum: trade skill show to first ready crafting Init:",
-			openMs and ("%.1f ms"):format(openMs) or "no sample")
-		print(("Last list with unlearned recipes: %s, %d such builds since reload."):format(
-			ns.lastUnlearnedMs and ("%.1f ms"):format(ns.lastUnlearnedMs) or "no sample", ns.unlearnedBuilds or 0))
-	end },
-	{ "exportsize", "Show how large your finds are when shared", ExportSize },
+	{ "watch", "Log loot, quest, vendor and trainer sources as you play: watch on, watch off", Watch, quiet = true },
 }
+
+--@debug@
+-- Each goes once its question is answered.
+-- Backs the performance claims; part of the release regression checks.
+table.insert(troubleshooting, { "perf", "Show how long the profession window took to open", function()
+	local function Ms(value)
+		return value and ("%.1f ms"):format(value) or voice.noSample
+	end
+	for _, line in ipairs(PerfLines()) do
+		Append(line)
+	end
+	Say(voice.perfWindow, Ms(openMs))
+	Say(voice.perfList, Ms(ns.lastUnlearnedMs), Ms(ns.slowestUnlearnedMs), ns.unlearnedBuilds or 0)
+	local phases = ns.coldBuildPhases
+	if phases and phases.grouping then
+		Say(voice.perfCold, phases.unlearned or 0, phases.recipes or 0, phases.sources or 0, phases.grouping)
+	end
+	local timing = ns.db.devScan and ns.db.devScan.timing
+	if timing and timing.totalSeconds then
+		Say(voice.perfScan, timing.profession or UNKNOWN, timing.totalSeconds, timing.walkMs or 0,
+			timing.walkSeconds or 0, timing.walkedIDs or 0)
+		Say(voice.perfRequests, timing.asked or 0, timing.answered or 0, timing.loadSeconds or 0, timing.reportMs or 0)
+	else
+		Say(voice.perfNoScan)
+	end
+end })
+-- Padlock comparison; remove once the owner has chosen. Each run puts the next candidate on the
+-- locked rows: Blizzard's recipe row lock, its profession specialization lock, its reagent slot lock.
+local LOCK_ART = {
+	{ name = "recipe row lock", texture = "Interface\\LFGFrame\\UI-LFG-ICON-LOCK" },
+	{ name = "specialization lock", atlas = "Professions_Specialization_Lock" },
+	{ name = "reagent slot lock", atlas = "AdventureMapIcon-Lock" },
+}
+local lockArt = 1
+table.insert(troubleshooting, { "locks", "Show the next padlock candidate on locked rows", function()
+	lockArt = lockArt % #LOCK_ART + 1
+	local art = LOCK_ART[lockArt]
+	local exists = not art.atlas or C_Texture.GetAtlasInfo(art.atlas) ~= nil
+	ns.marks.locked = { texture = art.texture, atlas = exists and art.atlas or nil, size = ns.marks.locked.size, plain = true }
+	if not exists then
+		ns.marks.locked.texture = LOCK_ART[1].texture
+	end
+	ns.RefreshRows()
+	ns.Log(("Padlock %d of %d: %s%s"):format(lockArt, #LOCK_ART, art.name,
+		exists and "" or " (this client lacks the art; showing the recipe row lock)"))
+end, quiet = true })
+-- Seeding test; remove with the scan code once seeding is decided.
+table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
+--@end-debug@
 
 ns.commands = ns.commands or {}
 for _, command in ipairs(troubleshooting) do
@@ -351,12 +696,14 @@ for _, command in ipairs(troubleshooting) do
 			if logged then logged({ action = action, text = text }) else run(text) end
 		end })
 end
-table.insert(ns.commands, { action = "log", description = "Show the troubleshooting log; log clear empties it", troubleshooting = true,
+table.insert(ns.commands, { action = "log", description = "Show the last command's or watch's output; log all shows everything kept, log clear empties it", troubleshooting = true,
 	run = function(word)
-		if (word or ""):lower() == "clear" then
-			ns.db.devLog = {}
-			_G.print("Recipe Vacuum: troubleshooting log cleared.")
+		word = (word or ""):lower()
+		if word == "clear" then
+			ns.db.devLog, ns.db.devLogRun = {}, nil
+			Chat(voice.logPurged)
 		else
-			ShowLog()
+			viewStart = nil
+			ShowLog(word == "all")
 		end
 	end })

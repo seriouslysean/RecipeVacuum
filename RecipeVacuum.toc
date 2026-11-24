@@ -14,8 +14,10 @@ Libs\AceComm-3.0\ChatThrottleLib.lua
 Libs\AceComm-3.0\AceComm-3.0.lua
 Libs\JigBoltgripToolkit\JigBoltgripToolkit.lua
 
+Data\Seed.lua
 Data\Included.lua
 Core.lua
+Voice.lua
 Sources.lua
 Finds.lua
 Sharing.lua

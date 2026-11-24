@@ -4,6 +4,8 @@ package-as: RecipeVacuum
 ignore:
   - AGENTS.md
   - CLAUDE.md
+  - docs
   - tests
+  - tools
   - research_notes
   - reports

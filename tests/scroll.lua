@@ -111,6 +111,7 @@ C_TradeSkillUI = {
 	GetCategoryInfo = function(id) return { categoryID = id, name = "Category", uiOrder = 1 } end,
 	GetRecipeItemNameFilter = function() return searchText end,
 }
+MISCELLANEOUS = "Miscellaneous"
 function UnitFactionGroup() return "Alliance" end
 EventUtil = { ContinueOnAddOnLoaded = function(_, f) f() end }
 
@@ -168,12 +169,13 @@ ProfessionsFrame = { CraftingPage = page }
 -- The addon's real source lookups, so the Self Found check below reads real code.
 Enum = { Profession = {}, ItemRecipeSubclass = {} }
 local WITNESSED = LEARNED + 5 -- one unlearned recipe the player saw at a trainer
-local ns = { db = { showUnlearned = true, shareWithFriends = true, pendingItems = {}, sourceFilter = {}, recipeItems = {},
+local ns = { Perf = function() end, PerfMs = function() end, db = { showUnlearned = true, shareWithFriends = true, pendingItems = {}, sourceFilter = {}, recipeItems = {},
 	found = { recipes = { [WITNESSED] = { { kind = "trainer", npc = 1 } } }, items = {} },
 	shared = { recipes = {}, items = {} } },
 	included = { recipes = {}, items = {} } }
 assert(loadfile((UNLEARNED:gsub("Unlearned%.lua$", "Sources.lua"))))("RecipeVacuum", ns)
 ns.GetRecipeFaction = function() return "Alliance" end -- no tooltip data offline
+ns.GetRecipeLock = function() return false end
 assert(loadfile(UNLEARNED))("RecipeVacuum", ns)
 
 local MAX_REDRAWS = 20 -- a rebuild takes a handful; one per added row would be hundreds
@@ -244,6 +246,35 @@ end
 local selfFoundOnly = unlearnedRows == 1
 failed = failed or not selfFoundOnly
 print(("%-58s rows %d, want 1  %s"):format("Self Found: only the witnessed unlearned recipe", unlearnedRows, selfFoundOnly and "ok" or "FAIL"))
+
+-- Categories: one with a known source keeps its header; one where nothing is learned or found shares
+-- the Miscellaneous header, which comes last.
+local SOURCED, STRAY = 9, 8
+for index, categoryID in ipairs({ STRAY, STRAY, STRAY, SOURCED, SOURCED }) do
+	local id = 9000 + index
+	recipes[id] = { recipeID = id, name = ("Extra %d"):format(index), categoryID = categoryID, learned = false, maxTrivialLevel = id }
+	table.insert(allIDs, id)
+end
+ns.db.found.recipes[9004] = { { kind = "trainer", npc = 1 } }
+ns.db.shareWithFriends = true
+ns.ClearUnlearnedCache()
+page:Init({ professionID = 165 })
+local headers, perCategory, current = {}, {}, nil
+for _, node in scrollBox:GetDataProvider():EnumerateEntireRange() do
+	local data = node:GetData()
+	if data.categoryInfo then
+		current = data.categoryInfo.categoryID
+		table.insert(headers, data.categoryInfo)
+	elseif data.recipeInfo and not data.recipeInfo.learned then
+		perCategory[current] = (perCategory[current] or 0) + 1
+	end
+end
+local last = headers[#headers]
+local categoriesRight = perCategory[SOURCED] == 2 and perCategory[STRAY] == nil and perCategory[-1] == 3
+	and last.categoryID == -1 and last.name == MISCELLANEOUS
+failed = failed or not categoriesRight
+print(("%-58s sourced %s, stray %s, miscellaneous %s, last header %s  %s"):format("Unknown categories share Miscellaneous, last",
+	tostring(perCategory[SOURCED]), tostring(perCategory[STRAY]), tostring(perCategory[-1]), tostring(last.name), categoriesRight and "ok" or "FAIL"))
 
 print(failed and "CHECKS FAILED" or "ALL SCROLL CHECKS PASSED")
 os.exit(failed and 1 or 0)
