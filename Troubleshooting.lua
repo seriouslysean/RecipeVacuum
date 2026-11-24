@@ -669,46 +669,20 @@ table.insert(troubleshooting, { "locks", "Preview locks as if a specialization w
 	ns.Log("Lock preview " .. (ns.previewLocks and "on" or "off"))
 end, quiet = true })
 -- Mark comparison; remove with the lock preview. Every unlearned row shows every mark, and each row
--- down a category shows the next candidate for each mark, so one screenshot holds them all. The first
--- row is the shipped set; a mark with fewer candidates than rows shows its shipped art on the rest.
--- Art the client lacks falls back to the shipped mark and is named in chat.
-local T, A = "texture", "atlas"
-local MARK_CANDIDATES = {
-	trainer = {
-		{ "minimap profession trainer", A, "Profession", 16 }, { "minimap class trainer", A, "Class", 16 },
-		{ "gossip trainer book", T, "Interface\\GossipFrame\\TrainerGossipIcon", 16 },
-		{ "interact trainer", A, "crosshair_trainer_32", 16 }, { "quest log lore book", A, "campaign-questlog-lorebook", 14 },
-		{ "profession crafter", A, "Professions-Icon-Crafter", 14 },
-	},
-	vendor = {
-		{ "loot roll greed coin", A, "lootroll-icon-greed", 14 }, { "money gold coin", A, "coin-gold-20x20", 14 },
-		{ "auction house gold coin", A, "auctionhouse-icon-coin-gold", 14 },
-		{ "classic greed button", T, "Interface\\Buttons\\UI-GroupLoot-Coin-Up", 16 },
-		{ "minimap reagent vendor", A, "Reagents", 16 }, { "minimap banker", A, "Banker", 16 },
-		{ "minimap auctioneer", A, "Auctioneer", 16 }, { "gossip vendor bag", T, "Interface\\GossipFrame\\VendorGossipIcon", 16 },
-		{ "buy cursor", A, "cursor_buy_32", 16 }, { "shopping cart", A, "perks-shoppingcart", 14 },
-	},
-	quest = {
-		{ "minimap quest", A, "QuestNormal", 16 }, { "interact quest", A, "crosshair_quest_32", 16 },
-	},
-	drop = {
-		{ "loot roll need dice", A, "lootroll-icon-need", 14 }, { "classic need button", T, "Interface\\Buttons\\UI-GroupLoot-Dice-Up", 16 },
-		{ "minimap treasure", A, "VignetteLoot", 16 }, { "reward chest", A, "ui_icon_chest_npcreward", 14 },
-		{ "minimap rare kill", A, "VignetteKill", 16 }, { "target skull", T, "Interface\\TargetingFrame\\UI-TargetingFrame-Skull", 13 },
-		{ "interact loot", A, "crosshair_lootall_32", 16 },
-	},
-	locked = {
-		{ "recipe row lock", T, "Interface\\LFGFrame\\UI-LFG-ICON-LOCK", 14 }, { "activities lock", A, "activities-icon-lock", 14 },
-		{ "specialization lock", A, "Professions_Specialization_Lock", 14 }, { "interact lock", A, "crosshair_lock_32", 16 },
-	},
-	unknown = {
-		{ "character select search", A, "glues-characterselect-icon-search", 11 },
-		{ "talent search glass", A, "talents-search-suggestion-magnifyingglass", 11 },
-	},
+-- down a category uses the next set below, so one screenshot holds them all. A set changes only the
+-- marks it lists.
+local BOOK = { atlas = "Class", size = 14 }              -- minimap class trainer
+local LORE_BOOK = { atlas = "campaign-questlog-lorebook", size = 14 }
+local COIN_STACK = { atlas = "Auctioneer", size = 14 }   -- minimap auctioneer
+local DICE = { atlas = "lootroll-icon-need", size = 14 } -- loot roll Need
+local MARK_SETS = {
+	{ name = "shipped marks" },
+	{ name = "blue book, coin stack, dice", trainer = BOOK, vendor = COIN_STACK, drop = DICE },
+	{ name = "bubble, coin stack, dice", vendor = COIN_STACK, drop = DICE },
+	{ name = "lore book, coin stack, dice", trainer = LORE_BOOK, vendor = COIN_STACK, drop = DICE },
+	{ name = "bubble, current coin, dice", drop = DICE },
 }
-local MARK_ORDER = { "locked", "trainer", "vendor", "quest", "drop", "unknown" }
-local previewRows
-table.insert(troubleshooting, { "marks", "Show every candidate for each mark, one per row", function()
+table.insert(troubleshooting, { "marks", "Show the candidate mark sets, one per row", function()
 	ns.previewMarks = not ns.previewMarks
 	if not ns.previewMarks then
 		ns.PreviewArt = nil
@@ -716,34 +690,11 @@ table.insert(troubleshooting, { "marks", "Show every candidate for each mark, on
 		ns.Log("Mark preview off")
 		return
 	end
-	local missing, count = {}, 0
-	for _, candidates in pairs(MARK_CANDIDATES) do
-		count = math.max(count, #candidates)
-	end
-	previewRows = { {} } -- row 1 is the shipped set
-	ns.Log("Row 1: shipped marks")
-	for index = 1, count do
-		local row, names = {}, {}
-		for _, mark in ipairs(MARK_ORDER) do
-			local candidate = MARK_CANDIDATES[mark][index]
-			if candidate then
-				local name, kind, art, size = unpack(candidate)
-				if kind == A and not C_Texture.GetAtlasInfo(art) then
-					missing[#missing + 1] = art
-				else
-					row[mark] = { size = size, [kind] = art }
-					names[#names + 1] = name
-				end
-			end
-		end
-		previewRows[index + 1] = row
-		ns.Log(("Row %d: %s"):format(index + 1, table.concat(names, " | ")))
-	end
-	if #missing > 0 then
-		ns.Log("This client lacks " .. table.concat(missing, ", "))
+	for index, set in ipairs(MARK_SETS) do
+		ns.Log(("Row %d: %s"):format(index, set.name))
 	end
 	ns.PreviewArt = function(data, mark)
-		return previewRows[((data.previewIndex or 1) - 1) % #previewRows + 1][mark]
+		return MARK_SETS[((data.previewIndex or 1) - 1) % #MARK_SETS + 1][mark]
 	end
 	ns.RefreshRows()
 end, quiet = true })
