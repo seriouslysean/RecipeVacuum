@@ -676,7 +676,7 @@ table.insert(troubleshooting, { "marks", "Show every mark on every unlearned row
 end, quiet = true })
 -- Tint comparison; remove once the marks' look is settled. Each row down a category gets the next
 -- look: desaturation, alpha, and an optional color the art is multiplied by.
-local GOLD, BONE, GRAY = NORMAL_FONT_COLOR, CreateColor(0.9, 0.85, 0.7), CreateColor(0.7, 0.7, 0.7)
+local GOLD, BONE = NORMAL_FONT_COLOR, CreateColor(0.9, 0.85, 0.7)
 local LOOKS = {
 	{ name = "shipped: mostly gray, half strength", 0.7, 0.5 },
 	{ name = "full color", 0, 1 },
@@ -689,9 +689,12 @@ local LOOKS = {
 	{ name = "half gray, three quarter strength", 0.5, 0.75 },
 }
 table.insert(troubleshooting, { "tints", "Show the candidate mark looks, one per row", function()
-	ns.previewMarks = not ns.PreviewLook
-	if ns.PreviewLook then
-		ns.PreviewLook = nil
+	ns.previewMarks = not ns.previewMarks
+	if not ns.previewMarks then
+		-- Stays in place for the session so tinted textures go back to their own color.
+		ns.PreviewLook = function(texture)
+			texture:SetVertexColor(1, 1, 1)
+		end
 		ns.RefreshRows()
 		ns.Log("Tint preview off")
 		return
