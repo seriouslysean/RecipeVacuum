@@ -13,7 +13,7 @@ Client: WoW Forever 1.60.1 (build 71037, Interface 16001), the modern client wit
 - Quiet: no chat output except the one "new recipe sources" line, which players can turn off.
 - No named magic numbers inline: name them at the top of the file.
 - Sit nicely with other addons: hooks run after Blizzard's code (`hooksecurefunc`, `Menu.ModifyMenu`), state on Blizzard frames goes in weak side tables, and the only globals are the saved variables, slash commands and one named frame (see `.luacheckrc`).
-- Comments say why, briefly. Decision history goes in `HANDOFF.md`, not in code.
+- Comments say why, briefly. Decision history stays out of code.
 
 ## Layout
 
@@ -51,6 +51,5 @@ In game, `/recipevacuum help` lists every command. `/recipevacuum watch on` logs
 
 ## Where things are recorded
 
-- `HANDOFF.md`: status, owner decisions with their wording, measurements from the game, open questions, and an inventory of everything custom or copied from Blizzard.
 - `README.md`: what players and contributors read.
 - Release packaging: `.pkgmeta` (BigWigs packager). Repository-only files are excluded from the addon zip there.
