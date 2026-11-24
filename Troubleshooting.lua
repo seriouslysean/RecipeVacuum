@@ -261,16 +261,10 @@ end
 -- Services can arrive after the window opens and the window's filter hides some, so list them a moment
 -- later with every filter on, then put the player's filter back.
 local TRAINER_LIST_DELAY = 0.5
-local TRAINER_FILTERS = { "available", "unavailable", "used" }
 handlers.TRAINER_SHOW = function()
 	print(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
 		Describe(UnitGUID("npc")), Describe((UnitFactionGroup("npc"))), Describe(IsTradeskillTrainer()), GetNumTrainerServices(), Where()))
-	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function()
-		local shown = {}
-		for _, filter in ipairs(TRAINER_FILTERS) do
-			shown[filter] = GetTrainerServiceTypeFilter(filter)
-			SetTrainerServiceTypeFilter(filter, true)
-		end
+	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function() ns.WithAllTrainerServices(function(shown)
 		print(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
 			GetNumTrainerServices(), Describe(shown.available), Describe(shown.unavailable), Describe(shown.used)))
 		-- Recipes have a category and ranks have none, which is how the recorder tells them apart.
@@ -293,14 +287,11 @@ handlers.TRAINER_SHOW = function()
 				.. " | recipe info " .. Describe(tooltip and tooltip.id and C_TradeSkillUI.GetRecipeInfo(tooltip.id) ~= nil)
 				.. " | step " .. Describe(GetTrainerServiceStepIndex()))
 		end
-		for _, filter in ipairs(TRAINER_FILTERS) do
-			SetTrainerServiceTypeFilter(filter, shown[filter])
-		end
 		if #skipped > 0 then
 			print("  skipped as ranks (no category): " .. table.concat(skipped, "; "))
 		end
 		WatchFound(recipes)
-	end))
+	end) end))
 end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
 

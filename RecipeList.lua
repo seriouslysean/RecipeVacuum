@@ -63,6 +63,9 @@ local function GetIcons(row)
 		-- OnLeave only: the list sets each row's OnEnter script again on every Init, which drops a
 		-- hook on it (docs/client-notes.md, "Recipe list rows"), so entering comes from Blizzard's event.
 		row:HookScript("OnLeave", RowOnLeave)
+		-- Blizzard's lock and skill-up buttons leave through the row's OnLeave method, past the script
+		-- (ProfessionsRecipeListRecipeMixin:OnLoad), so that path is hooked as well.
+		hooksecurefunc(row, "OnLeave", RowOnLeave)
 	end
 	return State(row).icons
 end

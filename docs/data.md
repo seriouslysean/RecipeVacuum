@@ -93,6 +93,8 @@ A recipe with no known source is listed, with the unknown mark, once it has been
 
 The made-item table (`ns.GetMadeRecipe`: `ns.seed.made`, with a checkout scan over it) is not shipped yet: the `made` command scans what the open profession's recipes make into `RecipeVacuumDB.devMade`, to measure its size before the generator writes it into the seed. Hovering an item is not a sighting yet; its cost per tooltip is unmeasured.
 
+A shared observation keeps the time each of its fields was learned (`at`, by field name), so reports about different fields merge to the same result in whatever order they arrive; when two values for one field carry the same time, the one that sorts higher is kept. `at` is saved with the shared layer and is not sent.
+
 A source can be known in part. The tooltip shows "Unknown" in the place column for a source whose location is not known (a roll in a zone, a peer's report without a position), and Show Map lists only places with a position.
 
 Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe, and the first-run dialog.

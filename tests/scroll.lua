@@ -278,5 +278,15 @@ failed = failed or not categoriesRight
 print(("%-58s sourced %s, stray %s, miscellaneous %s, last header %s  %s"):format("Unknown categories share Miscellaneous, last",
 	tostring(perCategory[SOURCED]), tostring(perCategory[STRAY]), tostring(perCategory[MISCELLANEOUS_ID]), tostring(last.name), categoriesRight and "ok" or "FAIL"))
 
+-- A recipe opened from a link, which only the addon's rows hold, is the one selected. Blizzard's Init
+-- cannot find it in its own list and falls back to the recipe already shown. Fails if that fallback
+-- stays selected.
+page.RecipeList:SelectRecipe({ recipeID = 1 })
+page:Init({ professionID = 165, openRecipeID = WITNESSED })
+local openedRight = formRecipe ~= nil and formRecipe.recipeID == WITNESSED
+failed = failed or not openedRight
+print(("%-58s selected %s, want %d  %s"):format("A recipe opened by link is selected",
+	tostring(formRecipe and formRecipe.recipeID), WITNESSED, openedRight and "ok" or "FAIL"))
+
 print(failed and "CHECKS FAILED" or "ALL SCROLL CHECKS PASSED")
 os.exit(failed and 1 or 0)

@@ -210,20 +210,37 @@ function ns.MergeFinds(rows, maxRows)
 			table.insert(bucket[id], observation)
 			changed = true
 		end
-		-- Field by field: a value we lack is filled in, a newer sighting corrects one we had, and nothing
-		-- is cleared because a row leaves it out. The same facts again change nothing.
-		local newer = (row.s or 0) > (observation.seen or 0)
+		-- Field by field, each with the time it was learned (observation.at): a value we lack is filled
+		-- in, a newer sighting of that field corrects it, and nothing is cleared because a row leaves it
+		-- out. Reports reach the same result in any order; the same facts again change nothing.
+		local at = observation.at
+		if not at then
+			at = {}
+			for name in pairs(MERGED_FIELDS) do
+				if observation[name] ~= nil then at[name] = observation.seen or 0 end
+			end
+			observation.at = at
+		end
+		local seen = row.s or 0
 		for name, key in pairs(MERGED_FIELDS) do
 			local incoming = row[key]
-			if (name ~= "x" and name ~= "y") or row.fi then -- other positions live on the NPC or object
-				if incoming ~= nil and incoming ~= observation[name] and (newer or observation[name] == nil) then
-					observation[name] = incoming
-					changed = true
+			-- Positions other than a fishing spot live on the NPC or object.
+			if incoming ~= nil and ((name ~= "x" and name ~= "y") or row.fi) then
+				local current, learned = observation[name], at[name]
+				-- Two different values learned at the same moment: the one that sorts higher, so every
+				-- player settles on the same one.
+				local tie = seen == learned and incoming ~= current and tostring(incoming) > tostring(current)
+				if current == nil or seen > learned or tie then
+					if incoming ~= current then
+						observation[name] = incoming
+						changed = true
+					end
+					at[name] = seen
 				end
 			end
 		end
-		if newer then
-			observation.seen, observation.build = row.s, row.b or observation.build
+		if seen > (observation.seen or 0) then
+			observation.seen, observation.build = seen, row.b or observation.build
 		end
 		if row.i and not db.itemRecipe[row.i] and not ns.GetSeededRecipe(row.i) then
 			db.pendingItems[row.i] = db.pendingItems[row.i] or {}

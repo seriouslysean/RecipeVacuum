@@ -101,7 +101,6 @@ local function Announce(count, name)
 	end
 end
 
--- Recipe items wait in pendingItems until Unlearned.lua links them to a recipe ID.
 -- A recipe item waits here until its tooltip data has loaded and names the recipe it teaches
 -- (ns.LinkPending).
 local function NotePendingItem(itemID)
@@ -119,6 +118,30 @@ end
 -- are on for the read, and the player's choice is put back after.
 local TRAINER_SERVICE_TYPES = { "available", "unavailable", "used" }
 
+-- Runs read with every kind of trainer service shown, then puts the player's filter back, also when
+-- read fails. read is given what the filter was.
+function ns.WithAllTrainerServices(read)
+	local shown = {}
+	for _, serviceType in ipairs(TRAINER_SERVICE_TYPES) do
+		shown[serviceType] = not not GetTrainerServiceTypeFilter(serviceType)
+		if not shown[serviceType] then
+			SetTrainerServiceTypeFilter(serviceType, true)
+		end
+	end
+	local ok, first, second, third, fourth = pcall(read, shown)
+	for serviceType, wasShown in pairs(shown) do
+		if not wasShown then
+			SetTrainerServiceTypeFilter(serviceType, false)
+		end
+	end
+	if not ok then
+		error(first, 0)
+	end
+	return first, second, third, fourth
+end
+
+local ReadTrainerServices
+
 local function RecordTrainer()
 	if not ns.db.selfFound then
 		return 0
@@ -128,13 +151,12 @@ local function RecordTrainer()
 	if not npc then
 		return 0
 	end
-	local savedFilter = {}
-	for _, serviceType in ipairs(TRAINER_SERVICE_TYPES) do
-		savedFilter[serviceType] = not not GetTrainerServiceTypeFilter(serviceType)
-		if not savedFilter[serviceType] then
-			SetTrainerServiceTypeFilter(serviceType, true)
-		end
-	end
+	return ns.WithAllTrainerServices(function()
+		return ReadTrainerServices(npc, professionTrainer)
+	end)
+end
+
+function ReadTrainerServices(npc, professionTrainer)
 	local count, recipes = 0, 0
 	local changed = false
 	local services = GetNumTrainerServices()
@@ -155,11 +177,6 @@ local function RecordTrainer()
 				changed = changed or updated
 				if isNew then count = count + 1 end
 			end
-		end
-	end
-	for serviceType, wasShown in pairs(savedFilter) do
-		if not wasShown then
-			SetTrainerServiceTypeFilter(serviceType, false)
 		end
 	end
 	if recipes > 0 then NoteVisit(npc) end

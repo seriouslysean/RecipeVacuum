@@ -34,7 +34,6 @@ local defaults = {
 	-- recipeFacts: per-build facts read from recipe tooltips (Sources.lua), rebuilt on a new game build
 }
 
--- Keeps the newest position per map.
 -- The addon's chat lines are a log for the player: the addon's name, a colon, the text, all in the
 -- color the game gives an NPC's speech (ChatTypeInfo.MONSTER_SAY), since the Vacuum is a machine
 -- talking, as the game's gnomish machines do. One color throughout, as an NPC's line is. Only the

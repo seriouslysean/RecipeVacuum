@@ -161,8 +161,6 @@ function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = types
 end
 
--- Whether the Sources filter passes this recipe. Recipes with no known source pass while Unknown is
--- checked.
 -- The Sources filter. Recipes with a known source are shown unless their type is unticked. Recipes
 -- with no known source are hidden unless Unknown is ticked: the list shows what the player or their
 -- friends have come across, not everything the game's data holds.

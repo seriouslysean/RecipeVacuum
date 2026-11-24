@@ -270,6 +270,7 @@ local function AddUnlearnedRecipes(page)
 
 	local root = dataProvider:GetRootNode()
 	local collapses = page:GetCollapses()
+	local openRecipeID, opened = page.professionInfo.openRecipeID, nil
 	for _, category in ipairs(matches) do
 		local categoryNode = categoryNodes[category.info.categoryID]
 		local newCategory = not categoryNode
@@ -280,6 +281,9 @@ local function AddUnlearnedRecipes(page)
 		end
 		for _, elementData in ipairs(category.recipes) do
 			categoryNode:Insert(elementData)
+			if elementData.recipeInfo.recipeID == openRecipeID then
+				opened = elementData.recipeInfo
+			end
 		end
 		if newCategory then
 			categoryNode:Insert({ bottomPadding = true, order = ORDER_AFTER_ROWS })
@@ -299,10 +303,11 @@ local function AddUnlearnedRecipes(page)
 	-- Reattaching clears the selection, and Blizzard showed "No results" before our recipes were added.
 	-- Put both back as Blizzard's Init leaves them, including its scroll to a recipe opened from a link.
 	page.RecipeList.NoResultsText:Hide() -- at least one match was inserted
-	local selected = page.SchematicForm:GetRecipeInfo()
+	-- A recipe opened from a link that only our rows hold: Blizzard's Init did not find it and fell
+	-- back to another recipe (ProfessionsCraftingPageMixin:Init), so the one asked for is selected here.
+	local selected = opened or page.SchematicForm:GetRecipeInfo()
 	if selected then
-		local scrollToRecipe = page.professionInfo.openRecipeID ~= nil
-		page.RecipeList:SelectRecipe(Professions.GetFirstRecipe(selected) or selected, scrollToRecipe)
+		page.RecipeList:SelectRecipe(Professions.GetFirstRecipe(selected) or selected, openRecipeID ~= nil)
 	end
 
 	--@debug@

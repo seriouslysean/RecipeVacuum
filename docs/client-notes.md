@@ -70,4 +70,6 @@ Recorded by the working build on low-level characters:
 ## Recipe list rows
 
 - The recipe list's element initializer calls `button:SetScript("OnEnter", ...)` on a row every time it is initialized (`Blizzard_ProfessionsRecipeList.lua`, the factory in `ProfessionsRecipeListMixin:OnLoad`). A `HookScript("OnEnter")` on a row therefore lasts only until that row's next Init. Measured on build 71037 with a hover trace: 19 hooked enters against 221 hooked leaves in one session, the enters only on rows not yet re-initialized. `OnLeave` is set once in the template XML, so a hook on it stays.
+- The row's lock and skill-up child buttons leave through the row's `OnLeave` method, not its script (`ProfessionsRecipeListRecipeMixin:OnLoad`), so a row's leave is hooked both ways. Seen in the hover trace: one method leave after a skill-up button enter.
+- Build 71091 changed this file only in the craftable-count callback and an early return in `OnEnter`; the checks pass against it.
 - Blizzard's row `OnEnter` method fires `EventRegistry` event `Professions.RecipeListOnEnter` with the row and its element data, from the row's script and from its child buttons (skill-up arrows, lock). Row hover is taken from that event.

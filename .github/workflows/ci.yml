@@ -19,8 +19,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: Gethe/wow-ui-source
-          # The Forever build the addon is written against (1.60.1, build 71037).
-          ref: 734f065329cff4992835b01a84f210a297db91b6
+          # The Forever build the addon is written against (1.60.1, build 71091).
+          ref: c01a87b549bbc19e0f284c1616d18654c91297de
           path: .ui-source
       - name: Install LuaJIT and luacheck
         run: |

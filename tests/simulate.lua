@@ -267,6 +267,26 @@ do
   m.MergeFinds({ row(300, { c = 800 }) }, 1)
   check("a newer sighting corrects an older value", kept.cost == 800 and kept.seen == 300)
 end
+-- 5c. Merging reaches the same result whatever order reports arrive in. Fails if a later-arriving
+-- report about one field is lost because another field's report already advanced the record.
+do
+  local function report(seen, extra)
+    local wire = { k = "trainer", r = 7002, n = 9002, nm = "Teacher", m = 1, x = 0.5, y = 0.5, s = seen, b = 1 }
+    for key, value in pairs(extra) do wire[key] = value end
+    return wire
+  end
+  local reports = { report(100, { c = 100 }), report(300, { sk = 75 }), report(200, { c = 200 }) }
+  local function final(order)
+    local side = boot(nil)
+    for _, index in ipairs(order) do side.MergeFinds({ reports[index] }, 1) end
+    local kept = side.db.shared.recipes[7002][1]
+    return kept.cost, kept.skill, kept.seen
+  end
+  local cost1, skill1, seen1 = final({ 1, 2, 3 })
+  local cost2, skill2, seen2 = final({ 3, 2, 1 })
+  check("reports merge to the same result in any order", cost1 == 200 and skill1 == 75 and seen1 == 300
+    and cost2 == 200 and skill2 == 75 and seen2 == 300)
+end
 check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction }, 1) == nil)
 -- A source both received and seen firsthand is listed once
 b.db.sourceLevel, b.db.recipeItems[99] = 2, { 1000 }
