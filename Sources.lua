@@ -297,11 +297,9 @@ function ns.GetMarks(recipeInfo, out)
 	return #out
 end
 
--- Dimmed look for sources not yet had, after Blizzard_MountCollection.lua (Classic mount journal
--- disabled entries): half alpha, only mostly desaturated so each type keeps a hint of color. "Full
--- color source icons" turns it off.
+-- Marks are drawn in full color at half strength, so they sit behind the recipe names, and at full
+-- strength while the pointer is on their row. "Full Color Source Icons" keeps them at full strength.
 local MARK_ALPHA = 0.5
-local MARK_DESATURATION = 0.7
 
 local function SetArt(texture, info)
 	if info.atlas then
@@ -325,9 +323,10 @@ function ns.ApplyMark(icon, mark)
 		SetArt(icon.Texture, info)
 		icon.markInfo = info
 	end
-	local dimmed = not ns.db.fullColorIcons
-	icon.Texture:SetDesaturation(dimmed and MARK_DESATURATION or 0)
-	icon.Texture:SetAlpha(dimmed and MARK_ALPHA or 1)
+end
+
+function ns.SetMarkStrength(icon, full)
+	icon.Texture:SetAlpha((full or ns.db.fullColorIcons) and 1 or MARK_ALPHA)
 end
 
 function ns.SetSourceTexture(texture, sourceType)

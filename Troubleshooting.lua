@@ -694,6 +694,7 @@ table.insert(troubleshooting, { "tints", "Show the candidate mark looks, one per
 		-- Stays in place for the session so tinted textures go back to their own color.
 		ns.PreviewLook = function(texture)
 			texture:SetVertexColor(1, 1, 1)
+			texture:SetDesaturation(0)
 		end
 		ns.RefreshRows()
 		ns.Log("Tint preview off")
