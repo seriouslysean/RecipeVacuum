@@ -115,7 +115,7 @@ MISCELLANEOUS = "Miscellaneous"
 function UnitFactionGroup() return "Alliance" end
 EventUtil = { ContinueOnAddOnLoaded = function(_, f) f() end }
 
-Professions = { GetFirstRecipe = function(info) return info end }
+Professions = { GetFirstRecipe = function(info) return info end, InLocalCraftingMode = function() return true end }
 -- stands in for Professions.GenerateCraftingDataProvider: learned recipes only, as on Forever
 function Professions.GenerateCraftingDataProvider()
 	local provider = CreateTreeDataProvider()

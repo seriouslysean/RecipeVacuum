@@ -75,7 +75,7 @@ local function OnChat(event, message)
 	end
 end
 
--- A profession another player showed: every recipe they know. The guild's own view counts as
+-- A profession another player showed: every recipe they know. The guild's views count as
 -- Friends; a linked one as Public unless its link was seen in a friends channel. Read once per
 -- window, when its list is ready.
 local shownPending
@@ -86,8 +86,8 @@ local function ReadShownProfession()
 	end
 	shownPending = nil
 	local linked, name = C_TradeSkillUI.IsTradeSkillLinked()
-	local level = C_TradeSkillUI.IsTradeSkillGuild() and LEVEL.FRIENDS
-		or linked and (name and linkLevels[name] or LEVEL.PUBLIC)
+	local guild = C_TradeSkillUI.IsTradeSkillGuild() or C_TradeSkillUI.IsTradeSkillGuildMember()
+	local level = guild and LEVEL.FRIENDS or linked and (name and linkLevels[name] or LEVEL.PUBLIC)
 	if not level then
 		return
 	end
@@ -99,24 +99,21 @@ local function ReadShownProfession()
 	end
 end
 
--- Asked once, the first time a profession window opens: how far the vacuum listens. Escape keeps the
--- default, Friends. The same choice is on the options page.
-local CHOOSER = "RECIPEVACUUM_SOURCE_LEVEL"
-StaticPopupDialogs[CHOOSER] = {
-	text = "How should Recipe Vacuum learn about recipes?|n|n"
-		.. "Self Found: only what you see yourself.|n"
-		.. "Friends: also what your party, raid, guild and friends see.|n"
-		.. "Public: also recipes linked in public chat.|n|n"
-		.. "You can change this in the options.",
-	button1 = "Friends", button2 = "Self Found", button3 = "Public",
-	OnAccept = function() ns.ChooseLevel(LEVEL.FRIENDS) end,
-	OnCancel = function(_, _, reason)
-		-- Escape and a timeout also arrive here; only a click on the button picks Self Found.
-		ns.ChooseLevel(reason == "clicked" and LEVEL.SELF or LEVEL.FRIENDS)
-	end,
-	OnAlt = function() ns.ChooseLevel(LEVEL.PUBLIC) end,
-	hideOnEscape = true, whileDead = true, timeout = 0,
-}
+-- Shown once, the first time the player's own profession window opens: Blizzard's help tip, saying
+-- how far the vacuum listens and where that is set. Nothing is chosen for the player.
+local function ShowLevelTip()
+	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
+	if ns.db.levelTipSeen or not page or not Professions.InLocalCraftingMode() then
+		return
+	end
+	HelpTip:Show(page, {
+		text = ("Recipe Vacuum lists recipes you come across. It is listening at the %s level; change that in its options.")
+			:format(ns.levelNames[ns.db.sourceLevel]),
+		buttonStyle = HelpTip.ButtonStyle.Close,
+		targetPoint = HelpTip.Point.TopEdgeCenter,
+		onAcknowledgeCallback = function() ns.db.levelTipSeen = true end,
+	}, page.RecipeList)
+end
 
 local frame = CreateFrame("Frame")
 for event in pairs(CHAT_LEVELS) do
@@ -135,8 +132,8 @@ frame:SetScript("OnEvent", function(_, event, message)
 	end
 	if event ~= "TRADE_SKILL_LIST_UPDATE" then
 		shownPending = true
-		if event == "TRADE_SKILL_SHOW" and not ns.db.levelChosen then
-			StaticPopup_Show(CHOOSER)
+		if event == "TRADE_SKILL_SHOW" then
+			ShowLevelTip()
 		end
 	end
 	ReadShownProfession()

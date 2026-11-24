@@ -15,8 +15,7 @@ local MISCELLANEOUS_CATEGORY_ID = -2
 
 -- Whether the open view is one where the player's own unlearned recipes belong.
 function ns.CanShowUnlearned()
-	return not (C_TradeSkillUI.IsNPCCrafting() or C_TradeSkillUI.IsTradeSkillGuild()
-		or C_TradeSkillUI.IsTradeSkillLinked())
+	return Professions.InLocalCraftingMode()
 end
 
 local function IsListFilteredToCraftable()

@@ -19,11 +19,13 @@ end
 
 -- Same tooltip as Blizzard's source line: the source text as highlight lines, wrapped at 350.
 local SOURCE_TOOLTIP_WIDTH = 350 -- copied from the same Init
+local sourceLineRecipe -- the recipe the source line stands for; kept here, not on Blizzard's button
+
 local function SourceOnEnter(button)
 	GameTooltip:SetOwner(button.Text, "ANCHOR_RIGHT")
 	GameTooltip:SetCustomWordWrapMinWidth(SOURCE_TOOLTIP_WIDTH)
-	button.recipeInfo.lockReason = ns.GetRecipeLock(button.recipeInfo.recipeID) or nil
-	ns.AddSourceLines(GameTooltip, button.recipeInfo)
+	sourceLineRecipe.lockReason = ns.GetRecipeLock(sourceLineRecipe.recipeID) or nil
+	ns.AddSourceLines(GameTooltip, sourceLineRecipe)
 	GameTooltip:Show()
 end
 
@@ -108,8 +110,10 @@ local function ShowSourceLine(form, recipeInfo, isRecraft)
 		return
 	end
 	ns.SummarizeSources(recipeInfo)
-	button.recipeInfo = recipeInfo
+	sourceLineRecipe = recipeInfo
 	button.Text:SetText(TRADESKILL_UNLEARNED_RECIPE_HEADER)
+	-- Blizzard sets this button's OnEnter itself on every Init (ProfessionsRecipeSchematicFormMixin:Init),
+	-- so setting it after that Init is the same pattern, and a hook would not survive.
 	button:SetScript("OnEnter", SourceOnEnter)
 	button:ClearAllPoints()
 	button:SetPoint("TOPLEFT", form.Description, "BOTTOMLEFT", 0, SOURCE_LINE_GAP)
@@ -147,7 +151,10 @@ local function MapTargets(recipeInfo)
 end
 
 local function ShowOnMap(target)
-	C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(target.mapID, target.x, target.y))
+	-- As Blizzard's own pin links do (ItemRefHandlers.lua): nothing follows a pin that was not set.
+	if not C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(target.mapID, target.x, target.y)) then
+		return
+	end
 	C_SuperTrack.SetSuperTrackedUserWaypoint(true)
 	if not InCombatLockdown() then
 		OpenMapToUserWaypoint()

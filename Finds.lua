@@ -137,6 +137,9 @@ end
 
 local function ValidRow(row)
 	if type(row) ~= "table" or not SourceField(row) then return false end
+	-- Local data answers both; an ID that is neither would wait in pendingItems for good.
+	if row.i and select(6, C_Item.GetItemInfoInstant(row.i)) ~= Enum.ItemClass.Recipe then return false end
+	if row.r and not C_TradeSkillUI.GetTradeSkillLineForRecipe(row.r) then return false end
 	-- Each kind carries only its own identity: a quest ID on quests, a drop's origin on drops.
 	if row.k ~= "quest" and row.q then return false end
 	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z) then return false end

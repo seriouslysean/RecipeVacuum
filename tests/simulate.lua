@@ -24,10 +24,11 @@ local TAILORING, TAILORING_PATTERN = 7, 2
 Enum = { ItemClass = { Recipe = 9 }, LootSlotType = { Item = 1 }, Profession = { Tailoring = TAILORING },
   ItemRecipeSubclass = { Tailoring = TAILORING_PATTERN },
   TooltipDataLineType = {}, TooltipDataUsageRequirementType = {} }
-local recipeItems = { [6342] = true, [1000] = true, [2000] = true }
+local nonRecipes = { [5] = true, [7] = true, [777] = true, [10456] = true } -- every other item is a recipe item
+C_TradeSkillUI = { GetTradeSkillLineForRecipe = function() return 1 end }
 local itemNames = { [10456] = "A Bulging Coin Purse" } -- names the client has loaded
 C_Item = { GetItemInfoInstant = function(x) local id = tonumber(x) or tonumber(tostring(x):match("item:(%d+)"))
-    return id, nil, nil, nil, nil, recipeItems[id] and 9 or 7, TAILORING_PATTERN end,
+    return id, nil, nil, nil, nil, nonRecipes[id] and 7 or 9, TAILORING_PATTERN end,
   GetItemIDByGUID = function(guid) return guid == "Item-1-0-ABC" and 10456 or nil end,
   GetItemNameByID = function(id) return itemNames[id] end,
   RequestLoadItemDataByID = function() end }
@@ -151,7 +152,6 @@ check("quest NPCs are saved only with a recipe reward", db.npcs[4784] ~= nil and
 
 -- 3b. Group rolls: a recipe someone else looted is kept by zone; one the player looted adds nothing.
 -- Fails if a roll records no find, names a mob it cannot know, or doubles the player's own loot.
-recipeItems[3000] = true
 rollLinks[1], rollLinks[2] = "item:3000", "item:1000"
 fire("START_LOOT_ROLL", 1)
 fire("START_LOOT_ROLL", 2) -- item 1000 was in the player's own loot window above
@@ -330,6 +330,7 @@ check("reject quest without quest id", b.MergeFinds({ { k = "quest", i = 1 } }, 
 check("reject vendor carrying a quest", b.MergeFinds({ { k = "vendor", i = 1, n = 1, q = 5 } }, 10) == nil)
 check("reject bad object name", b.MergeFinds({ { k = "drop", i = 1, o = 2, on = "x|cff" } }, 10) == nil)
 check("reject unknown fishing zone", b.MergeFinds({ { k = "drop", i = 1, fi = UNKNOWN_MAP } }, 10) == nil)
+check("reject an item that is not a recipe item", b.MergeFinds({ { k = "drop", i = 777, n = 1 } }, 10) == nil)
 check("reject a position with one coordinate", b.MergeFinds({ { k = "drop", i = 1, fi = 1, x = 0.5 } }, 10) == nil)
 check("reject a drop carrying a quest", b.MergeFinds({ { k = "drop", i = 1, n = 1, q = 5 } }, 10) == nil)
 check("reject unknown roll zone", b.MergeFinds({ { k = "drop", i = 1, z = UNKNOWN_MAP } }, 10) == nil)
@@ -355,7 +356,6 @@ end
 -- sighting weakens a nearer one, or a recipe shows below the level it arrived at.
 do
   local h = boot(nil)
-  StaticPopupDialogs = {}
   local known = C_TradeSkillUI
   C_TradeSkillUI = { GetTradeSkillLineForRecipe = function(id) return id == 5555 and 202 or nil end }
   load("Heard.lua", h)

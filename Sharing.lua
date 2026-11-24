@@ -59,6 +59,10 @@ local failures = CreateFrame("Frame")
 failures:RegisterEvent("CHAT_MSG_SYSTEM")
 failures:SetScript("OnEvent", function(_, _, message)
 	if not next(whispered) or issecretvalue(message) then return end
+	local now = GetTime()
+	for target, sent in pairs(whispered) do
+		if now - sent > WHISPER_ERROR_WINDOW then whispered[target] = nil end
+	end
 	local name = message:match(NOT_FOUND_PATTERN)
 	local sent = name and whispered[name]
 	if sent then
@@ -411,6 +415,7 @@ function ns.SetSharing(value)
 		end
 		sourcesDirty = nil -- the mode change refreshes the visible source list
 		wipe(friends)
+		wipe(whispered)
 		wipe(replied)
 		wipe(bnetPresence)
 		wipe(changedFriends)

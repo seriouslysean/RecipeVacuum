@@ -6,6 +6,7 @@ local SCHEMA = 8
 -- How near to the player a piece of knowledge arrived, and how far the player chose to listen
 -- (docs/data.md, "Levels"). Each level includes the ones before it.
 ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
+ns.levelNames = { "Self Found", "Friends", "Public" }
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }

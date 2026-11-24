@@ -230,9 +230,11 @@ end)
 -- The recipe items that teach a recipe: the seed and this session's scan turned around once, then
 -- the links saved in play for items they do not have.
 local seededItems
+local joinedItems = {}
 
 function ns.ResetRecipeItems()
 	seededItems = nil
+	wipe(joinedItems)
 end
 
 function ns.GetRecipeItems(recipeID)
@@ -250,7 +252,20 @@ function ns.GetRecipeItems(recipeID)
 			table.sort(items)
 		end
 	end
-	return seededItems[recipeID] or ns.db.recipeItems[recipeID]
+	local seeded, saved = seededItems[recipeID], ns.db.recipeItems[recipeID]
+	if not (seeded and saved) then
+		return seeded or saved
+	end
+	-- Both: an item the seed lacks was linked in play to a recipe the seed also knows. Rare, so the
+	-- joined list is made once and dropped with the index.
+	local joined = joinedItems[recipeID]
+	if not joined or #joined ~= #seeded + #saved then
+		joined = {}
+		for _, itemID in ipairs(seeded) do joined[#joined + 1] = itemID end
+		for _, itemID in ipairs(saved) do joined[#joined + 1] = itemID end
+		joinedItems[recipeID] = joined
+	end
+	return joined
 end
 
 -- Links recorded recipe items (vendor, drop, quest) to the recipes they teach. An item the seed knows
