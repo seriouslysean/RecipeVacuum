@@ -169,7 +169,7 @@ ProfessionsFrame = { CraftingPage = page }
 -- The addon's real source lookups, so the Self Found check below reads real code.
 Enum = { Profession = {}, ItemRecipeSubclass = {} }
 local WITNESSED = LEARNED + 5 -- one unlearned recipe the player saw at a trainer
-local ns = { Perf = function() end, PerfMs = function() end, db = { showUnlearned = true, showUnavailable = true, shareWithFriends = true, pendingItems = {}, sourceFilter = {}, recipeItems = {},
+local ns = { Perf = function() end, PerfMs = function() end, db = { showUnlearned = true, showUnavailable = true, shareWithFriends = true, pendingItems = {}, sourceFilter = { unknown = true }, recipeItems = {},
 	found = { recipes = { [WITNESSED] = { { kind = "trainer", npc = 1 } } }, items = {} },
 	shared = { recipes = {}, items = {} } },
 	included = { recipes = {}, items = {} } }

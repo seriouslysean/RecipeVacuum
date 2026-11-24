@@ -28,12 +28,9 @@ local function ToggleShowUnavailable()
 end
 
 -- Sources submenu, laid out like Blizzard's Professions.InitSourcesFilter.
-local sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown" }
+local sourceFilterKeys = ns.sourceFilterKeys
 
--- A key is on unless set to false.
-local function IsSourceChecked(key)
-	return ns.db.sourceFilter[key] ~= false
-end
+local IsSourceChecked = ns.IsSourceShown
 
 local function ToggleSource(key)
 	ns.db.sourceFilter[key] = not IsSourceChecked(key)

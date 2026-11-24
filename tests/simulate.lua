@@ -304,6 +304,20 @@ check("reject unknown roll zone", b.MergeFinds({ { k = "drop", i = 1, z = UNKNOW
 check("shared roll keeps its zone", b.db.shared.items[3000] and b.db.shared.items[3000][1].zone == 1429)
 check("reject more rows than the limit", b.MergeFinds(rows, #rows - 1) == nil)
 
+-- 6b. Sources filter defaults: a recipe with no known source is hidden until Unknown is ticked; one
+-- with a source shows until its type is unticked. Fails if the full game list shows by default.
+do
+  local kept = a.db.sourceFilter
+  a.db.sourceFilter = {}
+  local unknown, trained = {}, { sourceTypes = { trainer = true } }
+  check("no-source recipes are hidden by default, sourced ones shown",
+    a.PassesSourceFilter(unknown) == false and a.PassesSourceFilter(trained) == true)
+  a.db.sourceFilter = { unknown = true, trainer = false }
+  check("ticking Unknown shows them, unticking a type hides it",
+    a.PassesSourceFilter(unknown) == true and a.PassesSourceFilter(trained) == false)
+  a.db.sourceFilter = kept
+end
+
 -- 7. Reload is stable
 local savedDB = a.db
 RecipeVacuumDB = savedDB; loaded = {}

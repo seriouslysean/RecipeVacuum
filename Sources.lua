@@ -142,8 +142,20 @@ end
 
 -- Whether the Sources filter passes this recipe. Recipes with no known source pass while Unknown is
 -- checked.
+-- The Sources filter. Recipes with a known source are shown unless their type is unticked. Recipes
+-- with no known source are hidden unless Unknown is ticked: the list shows what the player or their
+-- friends have come across, not everything the game's data holds.
+ns.sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown" }
+
+function ns.IsSourceShown(key)
+	local shown = ns.db.sourceFilter[key]
+	if shown == nil then
+		return key ~= "unknown"
+	end
+	return shown
+end
+
 function ns.PassesSourceFilter(recipeInfo)
-	local filter = ns.db.sourceFilter
 	-- Self Found shows only recipes the player witnessed; shared sources are
 	-- already hidden in that mode.
 	if not ns.db.shareWithFriends and not recipeInfo.sourceTypes then
@@ -151,10 +163,10 @@ function ns.PassesSourceFilter(recipeInfo)
 	end
 	local types = recipeInfo.sourceTypes
 	if not types then
-		return filter.unknown ~= false
+		return ns.IsSourceShown("unknown")
 	end
 	for sourceType in pairs(types) do
-		if filter[sourceType] ~= false then
+		if ns.IsSourceShown(sourceType) then
 			return true
 		end
 	end

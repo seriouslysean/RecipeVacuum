@@ -177,8 +177,8 @@ local function GetMatches(categories, searchText)
 	end
 	-- Self Found lists only witnessed recipes, so it filters even with every source checked.
 	local filteringSources = not ns.db.shareWithFriends
-	for _, enabled in pairs(ns.db.sourceFilter) do
-		if enabled == false then
+	for _, key in ipairs(ns.sourceFilterKeys) do
+		if not ns.IsSourceShown(key) then
 			filteringSources = true
 			break
 		end

@@ -10,7 +10,7 @@ end
 -- Option defaults live in Settings.lua.
 local defaults = {
 	showUnlearned = true, -- Blizzard default; Forever turns it off
-	sourceFilter = {},     -- [sourceType or "unknown"] = false when unchecked in the Sources filter
+	sourceFilter = {},     -- [sourceType or "unknown"] = true or false once set in the Sources filter (ns.IsSourceShown)
 	showUnavailable = true, -- recipes locked by another specialization stay listed
 	npcs = {},
 	objects = {},
