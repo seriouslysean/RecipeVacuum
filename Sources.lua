@@ -298,7 +298,7 @@ function ns.GetMarks(recipeInfo, out)
 end
 
 -- Marks are drawn in full color at half strength, so they sit behind the recipe names, and at full
--- strength while the pointer is on their row. "Full Color Source Icons" keeps them at full strength.
+-- strength under the pointer. "Full Color Source Icons" keeps them at full strength.
 local MARK_ALPHA = 0.5
 
 local function SetArt(texture, info)

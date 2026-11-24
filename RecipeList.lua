@@ -24,25 +24,10 @@ local function State(row)
 	return state
 end
 
--- Marks brighten while the pointer is on their row.
-local function SetRowStrength(row, full)
-	for _, icon in ipairs(State(row).icons or {}) do
-		ns.SetMarkStrength(icon, full)
-	end
-end
-
-local function RowOnEnter(row)
-	SetRowStrength(row, true)
-end
-
-local function RowOnLeave(row)
-	SetRowStrength(row, false)
-end
-
 local function IconOnEnter(icon)
 	local row = icon:GetParent()
 	row:OnEnter()
-	RowOnEnter(row) -- the pointer left the row's own frame for this icon
+	ns.SetMarkStrength(icon, true) -- only the mark under the pointer brightens, to go with its tooltip
 	GameTooltip:SetOwner(icon, "ANCHOR_RIGHT")
 	ns.AddMarkLines(GameTooltip, State(row).recipe, icon.mark)
 	GameTooltip:Show()
@@ -50,7 +35,7 @@ end
 
 local function IconOnLeave(icon)
 	icon:GetParent():OnLeave()
-	RowOnLeave(icon:GetParent())
+	ns.SetMarkStrength(icon, false)
 end
 
 local function IconOnClick(icon, button, down)
@@ -60,8 +45,6 @@ end
 local function GetIcons(row)
 	if not State(row).icons then
 		State(row).icons = {}
-		row:HookScript("OnEnter", RowOnEnter)
-		row:HookScript("OnLeave", RowOnLeave)
 		for index = 1, MAX_ICONS do
 			local icon = CreateFrame("Button", nil, row)
 			icon:SetSize(SLOT_SIZE, SLOT_SIZE)
@@ -115,7 +98,7 @@ local function UpdateRow(row, node)
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
 			icon.mark = mark
 			ns.ApplyMark(icon, mark)
-			ns.SetMarkStrength(icon, row:IsMouseOver())
+			ns.SetMarkStrength(icon, icon:IsMouseOver())
 			--@debug@
 			if ns.PreviewLook then
 				ns.PreviewLook(icon.Texture, data, mark)
