@@ -24,45 +24,51 @@ local function State(row)
 	return state
 end
 
-local function IconOnEnter(icon)
-	local row = icon:GetParent()
-	-- The pointer has left the row's own frame for this icon, so the row is told to look hovered.
-	row:LockHighlight()
-	row:OnEnter()
-	ns.SetMarkStrength(icon, true) -- only the mark under the pointer brightens, to go with its tooltip
-	GameTooltip:SetOwner(icon, "ANCHOR_RIGHT")
-	ns.AddMarkLines(GameTooltip, State(row).recipe, icon.mark)
-	GameTooltip:Show()
+-- One hover for the whole row: its marks go to full strength and one tooltip lists every source.
+-- The marks take no mouse input, so the pointer and clicks reach Blizzard's row as usual.
+local function SetRowStrength(row, full)
+	for _, icon in ipairs(State(row).icons) do
+		ns.SetMarkStrength(icon, full)
+	end
 end
 
-local function IconOnLeave(icon)
-	icon:GetParent():UnlockHighlight()
-	icon:GetParent():OnLeave()
-	ns.SetMarkStrength(icon, false)
+-- After Blizzard's own OnEnter, whose tooltip (the full name of a shortened label) ours replaces: the
+-- recipe's name is our title.
+local function RowOnEnter(row)
+	local recipeInfo = State(row).recipe
+	if recipeInfo then
+		SetRowStrength(row, true)
+		GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+		ns.AddSourceLines(GameTooltip, recipeInfo)
+		GameTooltip:Show()
+	end
 end
 
-local function IconOnClick(icon, button, down)
-	icon:GetParent():Click(button, down)
+-- Blizzard's OnLeave has already hidden the tooltip.
+local function RowOnLeave(row)
+	if State(row).recipe then
+		SetRowStrength(row, false)
+	end
 end
 
 local function GetIcons(row)
 	if not State(row).icons then
 		State(row).icons = {}
 		for index = 1, MAX_ICONS do
-			local icon = CreateFrame("Button", nil, row)
+			local icon = CreateFrame("Frame", nil, row)
 			icon:SetSize(SLOT_SIZE, SLOT_SIZE)
 			icon.Texture = icon:CreateTexture(nil, "OVERLAY")
 			icon.Texture:SetPoint("CENTER")
-			icon:SetScript("OnEnter", IconOnEnter)
-			icon:SetScript("OnLeave", IconOnLeave)
-			icon:SetScript("OnClick", IconOnClick)
 			State(row).icons[index] = icon
 		end
+		row:HookScript("OnEnter", RowOnEnter)
+		row:HookScript("OnLeave", RowOnLeave)
 	end
 	return State(row).icons
 end
 
 local function HideIcons(row)
+	State(row).recipe = nil -- a pooled row now showing a learned recipe: our hover does nothing
 	for _, icon in ipairs(State(row).icons or {}) do
 		icon:Hide()
 	end
@@ -99,9 +105,8 @@ local function UpdateRow(row, node)
 		if mark then
 			icon:ClearAllPoints()
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
-			icon.mark = mark
 			ns.ApplyMark(icon, mark)
-			ns.SetMarkStrength(icon, icon:IsMouseOver())
+			ns.SetMarkStrength(icon, row:IsMouseOver())
 			--@debug@
 			if ns.PreviewLook then
 				ns.PreviewLook(icon.Texture, data, mark)

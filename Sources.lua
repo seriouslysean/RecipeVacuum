@@ -309,15 +309,19 @@ local function SetArt(texture, info)
 	end
 end
 
--- Draws a mark on an icon button that has a centered .Texture.
-function ns.ApplyMark(icon, mark)
-	local info = ns.sourceTypes[mark] or ns.marks[mark]
-	-- size is the height; atlas art keeps its own shape (the coin and the padlock are not square).
+function ns.GetMarkAspect(info)
 	if not info.aspect then
 		local atlas = info.atlas and C_Texture.GetAtlasInfo(info.atlas)
 		info.aspect = atlas and atlas.width / atlas.height or 1
 	end
-	icon.Texture:SetSize(info.size * info.aspect, info.size)
+	return info.aspect
+end
+
+-- Draws a mark on an icon frame that has a centered .Texture.
+function ns.ApplyMark(icon, mark)
+	local info = ns.sourceTypes[mark] or ns.marks[mark]
+	-- size is the height; atlas art keeps its own shape (the padlock is not square).
+	icon.Texture:SetSize(info.size * ns.GetMarkAspect(info), info.size)
 	-- Compared by the art's own table, so a mark whose art is replaced redraws.
 	if icon.markInfo ~= info then
 		SetArt(icon.Texture, info)
@@ -362,6 +366,17 @@ local function AddDetailLines(tooltip, observation)
 	end
 end
 
+-- A line's text led by its row mark, so the tooltip explains the marks: the same art, at text height.
+local MARK_TEXT_HEIGHT = 14
+
+local function MarkText(mark, text)
+	local info = ns.sourceTypes[mark] or ns.marks[mark]
+	local width = math.floor(MARK_TEXT_HEIGHT * ns.GetMarkAspect(info) + 0.5)
+	local art = info.atlas and CreateAtlasMarkup(info.atlas, width, MARK_TEXT_HEIGHT)
+		or ("|T%s:%d:%d|t"):format(info.texture, MARK_TEXT_HEIGHT, width)
+	return art .. " " .. text
+end
+
 -- One source type's lines: a gold header when asked, one white "who | where" line per source (as the
 -- Wardrobe sources tooltip, CollectionsUtil.lua), and indented lines under it. detailed adds
 -- coordinates, skill and cost.
@@ -369,7 +384,7 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 	for _, observation in ipairs(entries) do
 		if observation.kind == kind then
 			if withHeader then
-				GameTooltip_AddNormalLine(tooltip, ns.sourceTypes[kind].label)
+				GameTooltip_AddNormalLine(tooltip, MarkText(kind, ns.sourceTypes[kind].label))
 				withHeader = false
 			end
 			local name = ns.SourceInfo(observation)
@@ -391,9 +406,6 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 	end
 end
 
-local function UnknownSource()
-	return ns.SOURCE_LABEL .. " " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(UNKNOWN)
-end
 
 -- The whole source tooltip, for the recipe pane: the recipe as title, then every source type.
 function ns.AddSourceLines(tooltip, recipeInfo, detailed)
@@ -401,30 +413,15 @@ function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	-- The game's own requirement line, shown as Blizzard shows a row's disabled reason
 	-- (Blizzard_ProfessionsRecipeList.lua, LockedIcon OnEnter).
 	if recipeInfo.lockReason then
-		GameTooltip_AddDisabledLine(tooltip, recipeInfo.lockReason)
+		GameTooltip_AddDisabledLine(tooltip, MarkText("locked", recipeInfo.lockReason))
 	end
 	local entries = ns.GetSources(recipeInfo)
 	if not entries then
-		GameTooltip_AddNormalLine(tooltip, UnknownSource())
+		GameTooltip_AddNormalLine(tooltip, MarkText("unknown", ns.SOURCE_LABEL .. " " .. HIGHLIGHT_FONT_COLOR:WrapTextInColorCode(UNKNOWN)))
 		return
 	end
 	for _, kind in ipairs(ns.sourceOrder) do
 		AddKindLines(tooltip, entries, kind, detailed, true)
-	end
-end
-
--- A row mark's own tooltip: what the mark means as the title, then only what belongs to it.
-function ns.AddMarkLines(tooltip, recipeInfo, mark)
-	if mark == "locked" then
-		GameTooltip_SetTitle(tooltip, UNAVAILABLE)
-		if recipeInfo.lockReason then
-			GameTooltip_AddDisabledLine(tooltip, recipeInfo.lockReason)
-		end
-	elseif mark == "unknown" then
-		GameTooltip_SetTitle(tooltip, UnknownSource(), NORMAL_FONT_COLOR)
-	else
-		GameTooltip_SetTitle(tooltip, ns.sourceTypes[mark].label)
-		AddKindLines(tooltip, ns.GetSources(recipeInfo) or {}, mark)
 	end
 end
 
