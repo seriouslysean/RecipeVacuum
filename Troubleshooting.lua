@@ -672,10 +672,21 @@ end, quiet = true })
 -- row; a set changes only the marks it lists. Art the client lacks is named in chat.
 local MARK_SETS = {
 	{ name = "current marks" },
-	{ name = "drop: skull, smaller", drop = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull", size = 13 } },
-	{ name = "drop: loot roll dice", drop = { texture = "Interface\\Buttons\\UI-GroupLoot-Dice-Up", size = 16 } },
-	{ name = "drop: treasure chest (minimap loot)", drop = { atlas = "VignetteLoot", size = 16 } },
-	{ name = "drop: reward chest (profession window)", drop = { atlas = "ui_icon_chest_npcreward", size = 16 } },
+	{ name = "minimap tracking family: profession trainer, reagent vendor, quest, loot chest",
+		trainer = { atlas = "Profession", size = 16 }, vendor = { atlas = "Reagents", size = 16 },
+		quest = { atlas = "QuestNormal", size = 16 }, drop = { atlas = "VignetteLoot", size = 16 } },
+	{ name = "minimap tracking, banker for vendor",
+		trainer = { atlas = "Profession", size = 16 }, vendor = { atlas = "Banker", size = 16 },
+		quest = { atlas = "QuestNormal", size = 16 }, drop = { atlas = "VignetteLoot", size = 16 } },
+	{ name = "interact icon family: trainer, buy, quest, loot, lock",
+		trainer = { atlas = "crosshair_trainer_32", size = 16 }, vendor = { atlas = "crosshair_buy_32", size = 16 },
+		quest = { atlas = "crosshair_quest_32", size = 16 }, drop = { atlas = "crosshair_lootall_32", size = 16 },
+		locked = { atlas = "crosshair_lock_32", size = 16 } },
+	{ name = "loot roll pair: greed coin for vendor, need dice for drop",
+		vendor = { atlas = "lootroll-icon-greed", size = 14 }, drop = { atlas = "lootroll-icon-need", size = 14 } },
+	{ name = "auction house gold coin for vendor, skull for drop",
+		vendor = { atlas = "auctionhouse-icon-coin-gold", size = 14 },
+		drop = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull", size = 13 } },
 }
 local markSet, shippedMarks = 0, nil
 table.insert(troubleshooting, { "marks", "Show the next set of mark art on every unlearned row", function()
