@@ -73,7 +73,7 @@ local viewStart
 local function ShowLog(all)
 	local log = ns.db.devLog or {}
 	local first = all and 1 or math.min(viewStart or ns.db.devLogRun or 1, #log + 1)
-	toolkit:ShowText(C_AddOns.GetAddOnMetadata("RecipeVacuum", "Title") .. ": " .. ns.voice.logTitle, table.concat(log, "\n", first))
+	toolkit:ShowText(ns.title .. ": " .. ns.voice.logTitle, table.concat(log, "\n", first))
 end
 
 -- Lines are timestamped, so a long watch reads as a timeline; a dated line is kept as it is.
@@ -99,7 +99,7 @@ local logOnly
 
 -- A line from Voice.lua goes to chat through ns.Log, which tags it, and to the saved log with the
 -- same tag.
-local LOG_TAG = "Recipe Vacuum: "
+local LOG_TAG = ns.title .. ": "
 local voice = ns.voice
 
 local function Chat(line)
@@ -136,9 +136,7 @@ local function WatchFound(count)
 	end
 end
 
-local function IsRecipeItem(itemID)
-	return itemID and select(6, C_Item.GetItemInfoInstant(itemID)) == Enum.ItemClass.Recipe
-end
+local IsRecipeItem = ns.IsRecipeItem
 
 -- Wraps a watch callback so its lines skip chat; the flag is cleared even when the callback errors.
 local function LogOnly(callback)
@@ -157,7 +155,7 @@ local watcher
 
 -- tostring that never touches a secret value (Forever can hand addons secret GUIDs and names).
 local function Describe(value)
-	if issecretvalue and issecretvalue(value) then
+	if issecretvalue(value) then
 		return "<secret>"
 	end
 	return tostring(value)
@@ -196,12 +194,12 @@ local handlers = {
 		local recipes = 0
 		for slot = 1, GetNumLootItems() do
 			local link = GetLootSlotLink(slot)
-			if link and not (issecretvalue and issecretvalue(link)) and IsRecipeItem(C_Item.GetItemInfoInstant(link)) then
+			if link and not issecretvalue(link) and IsRecipeItem(link) then
 				recipes = recipes + 1
 			end
 			local source = GetLootSourceInfo(slot)
 			-- Containers opened from bags report an Item GUID with no item ID in it.
-			local container = type(source) == "string" and not (issecretvalue and issecretvalue(source))
+			local container = type(source) == "string" and not issecretvalue(source)
 				and source:find("^Item%-") and C_Item.GetItemIDByGUID and C_Item.GetItemIDByGUID(source)
 			print(("  slot %d type %s %s | sources %s%s"):format(slot, Describe(GetLootSlotType(slot)),
 				Describe(GetLootSlotLink(slot)), DescribeAll(GetLootSourceInfo(slot)),
@@ -232,7 +230,7 @@ handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
 	local link = GetLootRollItemLink(rollID)
 	print(("ROLL %s | item %s | handle %s | time %s | unit target %s | %s"):format(Describe(rollID), Describe(link),
 		Describe(lootHandle), Describe(rollTime), Describe(UnitGUID("target")), Where()))
-	local itemID = link and not (issecretvalue and issecretvalue(link)) and C_Item.GetItemInfoInstant(link)
+	local itemID = link and not issecretvalue(link) and C_Item.GetItemInfoInstant(link)
 	WatchFound(IsRecipeItem(itemID) and 1 or 0)
 end
 -- Vendors and trainers are recorded when their window opens, not on a purchase, so the watch logs the

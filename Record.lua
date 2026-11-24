@@ -4,8 +4,6 @@ local _, ns = ...
 -- with the player's faction and position. Trainers by recipe ID from tooltips (another addon Scanner.lua).
 -- Only Enum.ItemClass.Recipe items are kept; anything else costs one item-class check.
 
-local RECIPE_ITEM_CLASS = Enum.ItemClass.Recipe
-
 -- Positions are rounded to three decimals of the 0..1 map coordinate.
 local COORDINATE_PRECISION = 1000
 
@@ -23,7 +21,7 @@ local function GetPlayerLocation()
 	return mapID, Round(x), Round(y)
 end
 
-local BUILD = tonumber((select(2, GetBuildInfo())))
+local BUILD = ns.BUILD
 
 -- The NPC being talked to, or nil when the client hides it (secret values). Its name and position are
 -- saved by NoteVisit, and only for an NPC that has a recipe: every trainer and vendor passes through here.
@@ -113,9 +111,7 @@ local function NotePendingItem(itemID)
 end
 
 local function IsRecipeItem(itemID)
-	if not itemID then return false end
-	local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
-	return classID == RECIPE_ITEM_CLASS
+	return itemID ~= nil and ns.IsRecipeItem(itemID) ~= nil
 end
 
 -- Some NPCs teach recipes without the profession trainer flag, so at other trainers a service counts
@@ -322,8 +318,8 @@ local function ReadLoot()
 	local count, changed, sourceName = 0, false, nil
 	for slot = 1, GetNumLootItems() do
 		local link = GetLootSlotType(slot) == Enum.LootSlotType.Item and GetLootSlotLink(slot)
-		local itemID = link and C_Item.GetItemInfoInstant(link)
-		if IsRecipeItem(itemID) then
+		local itemID = link and ns.IsRecipeItem(link)
+		if itemID then
 			local sources = { GetLootSourceInfo(slot) }
 			for index = 1, #sources, 2 do
 				local source, details, name = LootSource(sources[index])
@@ -410,9 +406,9 @@ local function ReadRoll(rollID)
 	if not link or issecretvalue(link) then
 		return
 	end
-	local itemID = C_Item.GetItemInfoInstant(link)
+	local itemID = ns.IsRecipeItem(link)
 	local looted = itemID and lootedAt[itemID]
-	if not IsRecipeItem(itemID) or (looted and GetTime() - looted < ROLL_AFTER_LOOT) then
+	if not itemID or (looted and GetTime() - looted < ROLL_AFTER_LOOT) then
 		return
 	end
 	local mapID = GetPlayerLocation()

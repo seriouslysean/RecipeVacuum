@@ -119,8 +119,12 @@ function ns.GetSources(recipeInfo)
 	return #list > 0 and list or nil
 end
 
--- Caches sourceTypes (set) and primarySource (the type the row shows) on a recipe so redraws and
--- filtering read fields; both nil when no source is known.
+-- The item ID when an item (ID or link) is a recipe item, else nil. One instant lookup, no server.
+function ns.IsRecipeItem(item)
+	local itemID, _, _, _, _, classID = C_Item.GetItemInfoInstant(item)
+	return classID == Enum.ItemClass.Recipe and itemID or nil
+end
+
 -- The nearest level a recipe, or an item that teaches it, has been come across at; nil if never.
 function ns.MetLevel(recipeID)
 	local met = ns.db.met
@@ -134,8 +138,10 @@ function ns.MetLevel(recipeID)
 	return level
 end
 
+-- Caches sourceTypes (a set, nil when no source is known) and met on a recipe, so redraws and
+-- filtering read fields.
 function ns.SummarizeSources(recipeInfo)
-	recipeInfo.sourceTypes, recipeInfo.primarySource = nil, nil
+	recipeInfo.sourceTypes = nil
 	recipeInfo.met = ns.MetLevel(recipeInfo.recipeID)
 	local entries = ns.GetSources(recipeInfo)
 	if not entries then
@@ -146,12 +152,6 @@ function ns.SummarizeSources(recipeInfo)
 		types[entry.kind] = true
 	end
 	recipeInfo.sourceTypes = types
-	for _, sourceType in ipairs(ns.sourceOrder) do
-		if types[sourceType] then
-			recipeInfo.primarySource = sourceType
-			break
-		end
-	end
 end
 
 -- Whether the Sources filter passes this recipe. Recipes with no known source pass while Unknown is
@@ -321,10 +321,6 @@ ns.marks = {
 	locked = { atlas = "AdventureMapIcon-Lock", size = 14 },
 }
 
-function ns.GetMarkSize(mark)
-	return (ns.sourceTypes[mark] or ns.marks[mark]).size
-end
-
 -- Marks for a recipe in display order, filled into out; returns the count.
 function ns.GetMarks(recipeInfo, out)
 	wipe(out)
@@ -378,10 +374,6 @@ end
 
 function ns.SetMarkStrength(icon, full)
 	icon.Texture:SetAlpha(full and 1 or MARK_ALPHA)
-end
-
-function ns.SetSourceTexture(texture, sourceType)
-	SetArt(texture, ns.sourceTypes[sourceType] or ns.marks[sourceType])
 end
 
 function ns.SourcePosition(observation)
@@ -481,7 +473,7 @@ end
 local recipeFactions, recipeSpecs = {}, {}
 
 local function Facts()
-	local build = select(2, GetBuildInfo())
+	local build = ns.BUILD
 	local facts = ns.db.recipeFacts
 	if not facts or facts.build ~= build then
 		facts = { build = build, faction = {}, spec = {} }

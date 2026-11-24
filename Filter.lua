@@ -1,5 +1,4 @@
-local addonName, ns = ...
-local moduleTitle = C_AddOns.GetAddOnMetadata(addonName, "Title")
+local _, ns = ...
 
 local function IsShowUnlearnedChecked()
 	return ns.db.showUnlearned
@@ -64,7 +63,7 @@ Menu.ModifyMenu("MENU_PROFESSIONS_FILTER", function(_, rootDescription)
 		return
 	end
 	rootDescription:CreateDivider()
-	rootDescription:CreateTitle(moduleTitle)
+	rootDescription:CreateTitle(ns.title)
 	rootDescription:CreateCheckbox(PROFESSION_RECIPES_SHOW_UNLEARNED or "Show Unlearned",
 		IsShowUnlearnedChecked, ToggleShowUnlearned)
 	-- Blizzard's word for what a character can't learn, from its trainer filter.

@@ -5,6 +5,7 @@ local repo, saved = arg[1], arg[2]
 local loaded = {}
 EventUtil = { ContinueOnAddOnLoaded = function(_, fn) loaded[#loaded + 1] = fn end }
 C_AddOns = { GetAddOnMetadata = function() return "Recipe Vacuum" end }
+GetBuildInfo = function() return "1.60.1", "71037" end
 GetServerTime = function() return 1795470000 end
 C_Map = { GetMapInfo = function(id) return { name = "Map" .. id } end }
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end

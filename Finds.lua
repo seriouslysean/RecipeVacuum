@@ -138,7 +138,7 @@ end
 local function ValidRow(row)
 	if type(row) ~= "table" or not SourceField(row) then return false end
 	-- Local data answers both; an ID that is neither would wait in pendingItems for good.
-	if row.i and select(6, C_Item.GetItemInfoInstant(row.i)) ~= Enum.ItemClass.Recipe then return false end
+	if row.i and not ns.IsRecipeItem(row.i) then return false end
 	if row.r and not C_TradeSkillUI.GetTradeSkillLineForRecipe(row.r) then return false end
 	-- Each kind carries only its own identity: a quest ID on quests, a drop's origin on drops.
 	if row.k ~= "quest" and row.q then return false end
@@ -234,11 +234,10 @@ ns.EXPORT_FORMAT_VERSION = 3
 
 function ns.ExportFinds()
 	local rows = ns.FindsSince(0, math.huge)
-	local _, build = GetBuildInfo()
 	local json = C_EncodingUtil.SerializeJSON({
-		format = "RecipeVacuum", version = ns.EXPORT_FORMAT_VERSION, exportBuild = build, locale = GetLocale(),
+		format = "RecipeVacuum", version = ns.EXPORT_FORMAT_VERSION, exportBuild = ns.BUILD, locale = GetLocale(),
 		observations = rows,
 	})
 	LibStub("JigBoltgripToolkit-1.0"):ShowText(
-		C_AddOns.GetAddOnMetadata("RecipeVacuum", "Title") .. ": " .. ns.voice.exportTitle, json)
+		ns.title .. ": " .. ns.voice.exportTitle, json)
 end

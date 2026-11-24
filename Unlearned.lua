@@ -76,10 +76,12 @@ local function GetUnlearnedCategories(professionInfo)
 		return cache[professionID]
 	end
 
+	--@debug@
 	-- Phase timings of an uncached build, for the perf command: recipes, sources, grouping.
 	local phaseStart = debugprofilestop()
 	local phases = {}
 	ns.coldBuildPhases = phases
+	--@end-debug@
 
 	-- Recorded recipe items link to their recipes first, so their sources count below.
 	local linksComplete = not next(ns.db.pendingItems) or ns.LinkPending()
@@ -109,8 +111,10 @@ local function GetUnlearnedCategories(professionInfo)
 			end
 		end
 	end
+	--@debug@
 	phases.recipes = debugprofilestop() - phaseStart
 	phaseStart = debugprofilestop()
+	--@end-debug@
 
 	-- Sources first, since one known source keeps its whole category's header.
 	local seen, rows = {}, {}
@@ -126,8 +130,10 @@ local function GetUnlearnedCategories(professionInfo)
 		end
 	end
 
+	--@debug@
 	phases.sources, phases.unlearned = debugprofilestop() - phaseStart, #rows
 	phaseStart = debugprofilestop()
+	--@end-debug@
 
 	local categories, byID = {}, {}
 	for _, recipeInfo in ipairs(rows) do
@@ -161,7 +167,9 @@ local function GetUnlearnedCategories(professionInfo)
 			row.order = index / divisor
 		end
 	end
+	--@debug@
 	phases.grouping = debugprofilestop() - phaseStart
+	--@end-debug@
 	if indexComplete and factionsComplete and linksComplete then
 		cache[professionID] = categories
 	end
@@ -236,7 +244,9 @@ local function AddUnlearnedRecipes(page)
 		return
 	end
 
+	--@debug@
 	local startTime = debugprofilestop()
+	--@end-debug@
 	local categories = GetUnlearnedCategories(page.professionInfo)
 	local matches = categories and GetMatches(categories, page.RecipeList.SearchBox:GetText():lower())
 	if not matches then
@@ -293,8 +303,8 @@ local function AddUnlearnedRecipes(page)
 		page.RecipeList:SelectRecipe(Professions.GetFirstRecipe(selected) or selected, scrollToRecipe)
 	end
 
-	ns.lastUnlearnedMs = debugprofilestop() - startTime
 	--@debug@
+	ns.lastUnlearnedMs = debugprofilestop() - startTime
 	local phases = ns.coldBuildPhases
 	if phases and not phases.counted and phases.grouping then
 		phases.counted = true
@@ -305,10 +315,10 @@ local function AddUnlearnedRecipes(page)
 	else
 		ns.PerfMs("list build, warm", ns.lastUnlearnedMs)
 	end
-	--@end-debug@
 	-- The slowest is the first build after a reload or a change, before the cache is filled.
 	ns.slowestUnlearnedMs = math.max(ns.slowestUnlearnedMs or 0, ns.lastUnlearnedMs)
 	ns.unlearnedBuilds = (ns.unlearnedBuilds or 0) + 1
+	--@end-debug@
 end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()

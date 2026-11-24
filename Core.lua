@@ -5,6 +5,9 @@ local SCHEMA = 8
 
 -- How near to the player a piece of knowledge arrived, and how far the player chose to listen
 -- (docs/data.md, "Levels"). Each level includes the ones before it.
+ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
+ns.BUILD = tonumber((select(2, GetBuildInfo()))) -- the game build, as saved on finds and facts
+
 ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 ns.levelNames = { "Self Found", "Friends", "Public" }
 
@@ -35,7 +38,7 @@ local defaults = {
 -- color is shared: no "says:", and no brackets, which Forever uses for player names.
 function ns.Log(text)
 	local color = ChatTypeInfo.MONSTER_SAY
-	DEFAULT_CHAT_FRAME:AddMessage(("%s: %s"):format(C_AddOns.GetAddOnMetadata(addonName, "Title"), text),
+	DEFAULT_CHAT_FRAME:AddMessage(("%s: %s"):format(ns.title, text),
 		color.r, color.g, color.b)
 end
 
@@ -177,11 +180,9 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	local version = db.schema or (db.sources and 1) or SCHEMA
 	if version > SCHEMA then
 		-- Newer save: leave it alone and run on an empty session copy.
-		ns.newerSave = true
 		db = {}
 		version = SCHEMA
-		print(("%s: saved data is from a newer version; it was left unchanged."):format(
-			C_AddOns.GetAddOnMetadata(addonName, "Title")))
+		ns.Log("saved data is from a newer version; it was left unchanged.")
 	else
 		RecipeVacuumDB = db
 	end

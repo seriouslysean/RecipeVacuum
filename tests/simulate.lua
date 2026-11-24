@@ -304,8 +304,6 @@ check("an item that teaches nothing stays unlinked and is not asked again", b.db
 local seedSave = { schema = 6, found = { recipes = {}, items = {} }, shared = { recipes = {}, items = {} },
   itemRecipe = { [7777] = 888, [9999] = 111 }, recipeItems = { [888] = { 7777 }, [111] = { 9999 } },
   pendingItems = { [7778] = {} }, npcs = {}, objects = {} }
-local seedFile = os.tmpname()
-local handle = io.open(seedFile, "w"); handle:write("RecipeVacuumDB = ..."); handle:close()
 RecipeVacuumDB = nil
 local d
 do
@@ -317,7 +315,6 @@ do
   for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
   d = nsd
 end
-os.remove(seedFile)
 check("seed links an item with no item data loaded", d.GetSeededRecipe(7777) == 888)
 local seededItems = d.GetRecipeItems(888)
 check("seed gives a recipe its items", seededItems and #seededItems == 2 and seededItems[1] == 7777)

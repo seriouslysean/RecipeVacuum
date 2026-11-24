@@ -4,7 +4,6 @@ local _, ns = ...
 -- across"): linked in chat, looted by someone nearby, or listed in a profession another player showed.
 -- Only the recipe and how near to the player it arrived (ns.LEVEL) are kept: not who, not which channel.
 local LEVEL = ns.LEVEL
-local RECIPE_ITEM_CLASS = Enum.ItemClass.Recipe
 
 -- How near each chat event is. Loot lines cover the player's own loot too, which the recorder already
 -- saves with its source.
@@ -46,9 +45,8 @@ local function OnChat(event, message)
 	end
 	local level = CHAT_LEVELS[event]
 	for id in message:gmatch("|Hitem:(%d+)") do
-		local itemID = tonumber(id)
-		local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemID)
-		if classID == RECIPE_ITEM_CLASS then
+		local itemID = ns.IsRecipeItem(tonumber(id))
+		if itemID then
 			local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]
 			if recipeID then
 				Note("recipes", recipeID, level)

@@ -25,7 +25,7 @@ local function SourceOnEnter(button)
 	GameTooltip:SetOwner(button.Text, "ANCHOR_RIGHT")
 	GameTooltip:SetCustomWordWrapMinWidth(SOURCE_TOOLTIP_WIDTH)
 	sourceLineRecipe.lockReason = ns.GetRecipeLock(sourceLineRecipe.recipeID) or nil
-	ns.AddSourceLines(GameTooltip, sourceLineRecipe)
+	ns.AddSourceLines(GameTooltip, sourceLineRecipe, true) -- with coordinates, skill and cost
 	GameTooltip:Show()
 end
 
