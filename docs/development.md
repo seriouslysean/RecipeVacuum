@@ -44,9 +44,10 @@ The Ace3 copies came from a repository checkout, not a tagged release, and that 
 
 Code between `--@debug@` and `--@end-debug@` exists in a checkout and is stripped from released builds by the BigWigs packager, as other addons use the same markers. A checkout build:
 
-- has the development commands `perf`, `scan`, `made` (what the open profession's recipes make) and `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character);
+- has the development commands `perf`, `scan` and `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character);
 - times its own work all session (list builds, row marks, loot, vendor, trainer and quest reads, tooltips, linking) and writes the table to the saved log at logout or `/reload`, as `PERF` lines in `RecipeVacuumDB.devLog`;
-- uses a scan from the current game build ahead of the seed.
+- uses a scan from the current game build ahead of the seed;
+- reads what each recipe makes whenever a profession list opens, once per profession per game build, into `RecipeVacuumDB.devMade`, with nothing to run.
 
 A file must still compile with the marked blocks removed.
 

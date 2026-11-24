@@ -632,38 +632,49 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window too
 		Say(voice.perfNoScan)
 	end
 end })
--- Made-item scan: what each recipe of the open profession makes, saved for the generator and used at once as ns.scannedMade, spread over frames.
-local MADE_BATCH = 50
-table.insert(troubleshooting, { "made", "Scan what the open profession's recipes make", function()
-	local recipeIDs = C_TradeSkillUI.IsTradeSkillReady() and C_TradeSkillUI.GetAllRecipeIDs()
-	if not recipeIDs then
-		return ns.Log(ns.voice.scanNoWindow)
+-- Made-item scan, for measuring the table before it ships: whenever a profession list is ready (the
+-- player's own or one shown by another player), what each recipe makes is read once per game build.
+local MADE_BATCH = 50 -- recipes read per frame
+local madeScanning
+
+local function ScanMade()
+	if madeScanning or not C_TradeSkillUI.IsTradeSkillReady() then
+		return
 	end
-	ns.db.devMade = ns.db.devMade or {}
-	local made, index, found, shared = ns.db.devMade, 0, 0, 0
+	local profession = C_TradeSkillUI.GetBaseProfessionInfo()
+	local professionID = profession and profession.professionID
+	local done = ns.db.devMadeDone
+	if not done or done.build ~= ns.BUILD then
+		done = { build = ns.BUILD }
+		ns.db.devMadeDone, ns.db.devMade = done, {}
+	end
+	if not professionID or done[professionID] then
+		return
+	end
+	local recipeIDs, made, index = C_TradeSkillUI.GetAllRecipeIDs(), ns.db.devMade, 0
+	madeScanning = true
 	local function Batch()
 		for _ = 1, MADE_BATCH do
 			index = index + 1
 			local recipeID = recipeIDs[index]
 			if not recipeID then
-				ns.scannedMade = made
-				return ns.Log(("Made-item scan: %d recipes, %d make an item, %d items made by more than one recipe")
-					:format(#recipeIDs, found, shared))
+				madeScanning, done[professionID], ns.scannedMade = nil, #recipeIDs, made
+				return
 			end
 			local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
 			local itemID = schematic and schematic.outputItemID
 			if itemID then
-				found = found + 1
-				if made[itemID] and made[itemID] ~= recipeID then
-					shared = shared + 1
-				end
 				made[itemID] = math.min(made[itemID] or recipeID, recipeID) -- the lowest ID, to be stable
 			end
 		end
 		C_Timer.After(0, Batch)
 	end
 	Batch()
-end, quiet = true })
+end
+
+local madeFrame = CreateFrame("Frame")
+madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
+madeFrame:SetScript("OnEvent", ScanMade)
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode and whisper every reply to yourself", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
