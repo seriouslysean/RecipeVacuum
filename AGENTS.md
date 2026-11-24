@@ -36,6 +36,7 @@ Every toolkit addon meets one checklist before a release, the [quality bar](http
 | `RecipeList.lua` | Source marks on list rows |
 | `RecipePanel.lua` | Source line and Show on Map for a selected unlearned recipe |
 | `Filter.lua` | The Recipe Vacuum section of Blizzard's filter menu |
+| `LevelCards.lua`, `.xml` | The listening level as three cards on the options page |
 | `Settings.lua` | Options page and player commands |
 | `Troubleshooting.lua` | Troubleshooting commands and their log |
 | `Libs/JigBoltgripToolkit` | Shared toolkit page, commands, help and copy window |

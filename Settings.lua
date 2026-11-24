@@ -3,15 +3,6 @@ local addonName, ns = ...
 local LEVEL = ns.LEVEL
 local LEVEL_SETTING = addonName .. "_sourceLevel"
 
--- How far the vacuum listens; each level includes the one before (docs/data.md, "Levels").
-local function GetSourceLevels()
-	local levels = Settings.CreateControlTextContainer()
-	levels:Add(LEVEL.SELF, ns.levelNames[LEVEL.SELF], "Only what you see yourself: trainers, vendors, quests and loot. Sharing is paused.")
-	levels:Add(LEVEL.FRIENDS, ns.levelNames[LEVEL.FRIENDS], "Also what your party, raid, guild and friends see, link or share.")
-	levels:Add(LEVEL.PUBLIC, ns.levelNames[LEVEL.PUBLIC], "Also recipes linked in public chat.")
-	return levels:GetData()
-end
-
 local function Checkbox(category, key, name, tooltip, default, onChange)
 	local setting = Settings.RegisterAddOnSetting(category, addonName .. "_" .. key, key,
 		ns.db, Settings.VarType.Boolean, name, default)
@@ -42,9 +33,9 @@ function ns.InitSettings()
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Recipe Sources"))
 	local level = Settings.RegisterAddOnSetting(category, LEVEL_SETTING, "sourceLevel",
 		ns.db, Settings.VarType.Number, "Recipe Sources", LEVEL.FRIENDS)
-	Settings.CreateDropdown(category, level, GetSourceLevels,
-		"Choose how far Recipe Vacuum listens for recipes. What you come across yourself is always kept.")
+	local showChoice = ns.AddLevelCards(layout, level)
 	level:SetValueChangedCallback(function(_, value)
+		showChoice(value)
 		ns.SetSharing(value >= LEVEL.FRIENDS)
 		ns.SourcesChanged()
 	end)

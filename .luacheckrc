@@ -29,7 +29,7 @@ read_globals = {
 	"OPEN", "OpenMapToUserWaypoint", "PROFESSION_RECIPES_SHOW_UNLEARNED", "Professions", "ProfessionsFrame",
 	"ProfessionsUtil", "QUEST", "REQUIRES_LABEL", "ScrollBoxConstants", "ScrollUtil", "Settings",
 	"SetTrainerServiceTypeFilter", "SHOW_MAP", "SOURCE", "SOURCES", "strcmputf8i", "strjoin", "strsplit",
-	"strtrim", "tContains", "tDeleteItem", "tostringall", "TRADESKILL_UNLEARNED_RECIPE_HEADER", "UiMapPoint",
+	"strtrim", "tContains", "TOOLTIP_DEFAULT_COLOR", "tDeleteItem", "tostringall", "TRADESKILL_UNLEARNED_RECIPE_HEADER", "UiMapPoint",
 	"UIParent", "UISpecialFrames", "UNAVAILABLE", "UNCHECK_ALL", "UnitFactionGroup", "UnitGUID", "UnitInParty",
 	"UnitInRaid", "UnitLevel", "UnitName", "UNKNOWN", "wipe", "WOW_PROJECT_ID",
 }
