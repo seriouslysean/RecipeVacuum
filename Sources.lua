@@ -257,9 +257,9 @@ ns.SOURCE_LABEL = SOURCE or "Source:"
 ns.marks = {
 	unknown = { atlas = "common-search-magnifyingglass", size = 11 },
 	-- Blizzard's padlock for a locked reagent slot (LockedIcon in
-	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml). The art has a clear edge, so 13 draws it as tall
+	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml). The art has a clear edge, so 14 draws it as tall
 	-- as the magnifier (docs/client-notes.md, "Requirements").
-	locked = { atlas = "AdventureMapIcon-Lock", size = 13 },
+	locked = { atlas = "AdventureMapIcon-Lock", size = 14 },
 }
 
 function ns.GetMarkSize(mark)
