@@ -1,0 +1,31 @@
+# Runs the repository's own check script on every push and pull request.
+# The upgrade and simulation tests need a real saved-variables file, which is not in the
+# repository, so they are skipped here and run locally (docs/development.md).
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Blizzard UI source for this client
+        uses: actions/checkout@v4
+        with:
+          repository: Gethe/wow-ui-source
+          # The Forever build the addon is written against (1.60.1, build 71037).
+          ref: 734f065329cff4992835b01a84f210a297db91b6
+          path: .ui-source
+      - name: Install LuaJIT and luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luajit luarocks
+          sudo luarocks install luacheck
+      - name: Check
+        run: tools/check.sh .ui-source
