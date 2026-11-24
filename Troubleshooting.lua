@@ -668,11 +668,49 @@ table.insert(troubleshooting, { "locks", "Preview locks as if a specialization w
 	ns.RefreshList()
 	ns.Log("Lock preview " .. (ns.previewLocks and "on" or "off"))
 end, quiet = true })
--- Mark comparison; remove with the lock preview.
-table.insert(troubleshooting, { "marks", "Show every mark on every unlearned row", function()
-	ns.previewMarks = not ns.previewMarks
+-- Mark comparison; remove with the lock preview. Each run shows the next set of art on every unlearned
+-- row; a set changes only the marks it lists. Art the client lacks is named in chat.
+local MARK_SETS = {
+	{ name = "current marks" },
+	{ name = "vanilla gossip icons: trainer book, vendor bag, drop skull",
+		trainer = { texture = "Interface\\GossipFrame\\TrainerGossipIcon" },
+		vendor = { texture = "Interface\\GossipFrame\\VendorGossipIcon" },
+		drop = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" } },
+	{ name = "gold coin, crossed swords for drop",
+		vendor = { texture = "Interface\\MoneyFrame\\UI-GoldIcon", size = 14 },
+		drop = { texture = "Interface\\GossipFrame\\BattleMasterGossipIcon" } },
+	{ name = "padlock: quest sharing", locked = { atlas = "QuestSharing-Padlock" } },
+	{ name = "padlock: group finder", locked = { atlas = "groupfinder-icon-lock" } },
+	{ name = "padlock: dungeon finder", locked = { atlas = "LFG-lock" } },
+	{ name = "padlock: pet battle", locked = { texture = "Interface\\PetBattles\\PetBattle-LockIcon" } },
+}
+local markSet, shippedMarks = 0, nil
+table.insert(troubleshooting, { "marks", "Show the next set of mark art on every unlearned row", function()
+	if not shippedMarks then
+		shippedMarks = {}
+		for _, mark in ipairs({ "trainer", "vendor", "quest", "drop", "locked", "unknown" }) do
+			shippedMarks[mark] = ns.sourceTypes[mark] or ns.marks[mark]
+		end
+	end
+	markSet = markSet % (#MARK_SETS + 1) + 1
+	local set = MARK_SETS[markSet]
+	ns.previewMarks = set ~= nil
+	local missing = {}
+	for mark, shipped in pairs(shippedMarks) do
+		local art = set and set[mark]
+		if art and art.atlas and not C_Texture.GetAtlasInfo(art.atlas) then
+			missing[#missing + 1], art = art.atlas, nil
+		end
+		local info = art and { label = shipped.label, size = art.size or shipped.size, atlas = art.atlas, texture = art.texture } or shipped
+		if ns.sourceTypes[mark] then
+			ns.sourceTypes[mark] = info
+		else
+			ns.marks[mark] = info
+		end
+	end
 	ns.RefreshRows()
-	ns.Log("Mark preview " .. (ns.previewMarks and "on" or "off"))
+	ns.Log(set and ("Mark set %d of %d: %s%s"):format(markSet, #MARK_SETS, set.name,
+		#missing > 0 and " (this client lacks " .. table.concat(missing, ", ") .. ")" or "") or "Mark preview off")
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
