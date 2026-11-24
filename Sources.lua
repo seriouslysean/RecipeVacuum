@@ -18,7 +18,7 @@ ns.sourceOrder = { "trainer", "vendor", "quest", "drop" }
 -- Labels reuse Blizzard's localized source names where they exist.
 ns.sourceTypes = {
 	trainer = { label = "Trainer",                       texture = "Interface\\GossipFrame\\GossipGossipIcon", size = 14 },
-	vendor  = { label = BATTLE_PET_SOURCE_3 or "Vendor", atlas = "bags-junkcoin", size = 18 },
+	vendor  = { label = BATTLE_PET_SOURCE_3 or "Vendor", atlas = "bags-junkcoin", size = 20 },
 	quest   = { label = BATTLE_PET_SOURCE_2 or "Quest",  texture = "Interface\\GossipFrame\\AvailableQuestIcon", size = 16 },
 	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   texture = "Interface\\GossipFrame\\VendorGossipIcon", size = 16 },
 }
@@ -257,8 +257,9 @@ ns.SOURCE_LABEL = SOURCE or "Source:"
 ns.marks = {
 	unknown = { atlas = "common-search-magnifyingglass", size = 11 },
 	-- Blizzard's padlock for a locked reagent slot (LockedIcon in
-	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml), kept in the art's own proportions.
-	locked = { atlas = "AdventureMapIcon-Lock", size = 16, ownShape = true },
+	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml). The art has a clear edge, so 13 draws it as tall
+	-- as the magnifier (docs/client-notes.md, "Requirements").
+	locked = { atlas = "AdventureMapIcon-Lock", size = 13 },
 }
 
 function ns.GetMarkSize(mark)
@@ -293,11 +294,12 @@ local MARK_DESATURATION = 0.7
 -- Draws a mark on an icon button that has a centered .Texture.
 function ns.ApplyMark(icon, mark)
 	local info = ns.sourceTypes[mark] or ns.marks[mark]
-	if info.ownShape and not info.aspect then
-		local atlas = C_Texture.GetAtlasInfo(info.atlas)
+	-- size is the height; atlas art keeps its own shape (the coin and the padlock are not square).
+	if not info.aspect then
+		local atlas = info.atlas and C_Texture.GetAtlasInfo(info.atlas)
 		info.aspect = atlas and atlas.width / atlas.height or 1
 	end
-	icon.Texture:SetSize(info.size * (info.aspect or 1), info.size)
+	icon.Texture:SetSize(info.size * info.aspect, info.size)
 	-- Compared by the art's own table, so a mark whose art is replaced redraws.
 	if icon.markInfo ~= info then
 		ns.SetSourceTexture(icon.Texture, mark)
