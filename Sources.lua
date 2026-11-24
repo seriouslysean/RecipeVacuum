@@ -301,9 +301,17 @@ end
 local MARK_ALPHA = 0.5
 local MARK_DESATURATION = 0.7
 
+local function SetArt(texture, info)
+	if info.atlas then
+		texture:SetAtlas(info.atlas)
+	else
+		texture:SetTexture(info.texture)
+	end
+end
+
 -- Draws a mark on an icon button that has a centered .Texture.
-function ns.ApplyMark(icon, mark)
-	local info = ns.sourceTypes[mark] or ns.marks[mark]
+function ns.ApplyMark(icon, mark, previewArt)
+	local info = previewArt or ns.sourceTypes[mark] or ns.marks[mark]
 	-- size is the height; atlas art keeps its own shape (the coin and the padlock are not square).
 	if not info.aspect then
 		local atlas = info.atlas and C_Texture.GetAtlasInfo(info.atlas)
@@ -312,7 +320,7 @@ function ns.ApplyMark(icon, mark)
 	icon.Texture:SetSize(info.size * info.aspect, info.size)
 	-- Compared by the art's own table, so a mark whose art is replaced redraws.
 	if icon.markInfo ~= info then
-		ns.SetSourceTexture(icon.Texture, mark)
+		SetArt(icon.Texture, info)
 		icon.markInfo = info
 	end
 	local dimmed = not ns.db.fullColorIcons
@@ -321,12 +329,7 @@ function ns.ApplyMark(icon, mark)
 end
 
 function ns.SetSourceTexture(texture, sourceType)
-	local info = ns.sourceTypes[sourceType] or ns.marks[sourceType]
-	if info.atlas then
-		texture:SetAtlas(info.atlas)
-	else
-		texture:SetTexture(info.texture)
-	end
+	SetArt(texture, ns.sourceTypes[sourceType] or ns.marks[sourceType])
 end
 
 function ns.SourcePosition(observation)
