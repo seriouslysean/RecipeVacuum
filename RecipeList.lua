@@ -8,9 +8,6 @@ local ICON_GAP = 4
 local SLOT_SIZE = ns.MARK_SLOT_SIZE
 
 local MAX_ICONS = #ns.sourceOrder + 1 -- every source type, plus the lock
---@debug@
-MAX_ICONS = MAX_ICONS + 1 -- /recipevacuum marks shows every mark at once
---@end-debug@
 
 -- Per-row state in a weak-keyed table, not on Blizzard's pooled rows.
 local rowState = setmetatable({}, { __mode = "k" })
@@ -109,11 +106,6 @@ local function UpdateRow(row, node)
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
 			ns.ApplyMark(icon, mark)
 			ns.SetMarkStrength(icon, false)
-			--@debug@
-			if ns.PreviewLook then
-				ns.PreviewLook(icon.Texture, data, mark)
-			end
-			--@end-debug@
 			icon:Show()
 			anchor, anchorPoint = icon, "LEFT"
 		else
