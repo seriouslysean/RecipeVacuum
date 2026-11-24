@@ -24,29 +24,6 @@ local function State(row)
 	return state
 end
 
---@debug@
--- Hover trace for the saved file, to find why a row's tooltip goes missing: what ran, on which recipe,
--- what the pointer was on, and what hid the tooltip. Remove once that is settled.
-local HOVER_LOG_LINES = 400
-function ns.HoverLog(what, row, extra)
-	local log = ns.db.devHoverLog or {}
-	ns.db.devHoverLog = log
-	local focus = GetMouseFoci and GetMouseFoci()[1]
-	local recipe = row and rowState[row] and rowState[row].recipe
-	log[#log + 1] = ("%.2f %s | %s | row %s | focus %s%s | tooltip %s%s"):format(GetTime(), what,
-		recipe and recipe.name or "no recipe", row and tostring(row):sub(-6) or "-",
-		focus == row and "row" or focus and (focus.GetDebugName and focus:GetDebugName() or "?"):sub(-40) or "none",
-		focus and focus ~= row and focus:GetParent() == row and " (child of row)" or "",
-		GameTooltip:IsShown() and "shown" or "hidden", extra or "")
-	if #log > HOVER_LOG_LINES then
-		table.remove(log, 1)
-	end
-end
-GameTooltip:HookScript("OnHide", function()
-	ns.HoverLog("tooltip hidden", nil, " | by " .. (debugstack(3, 2, 0) or ""):gsub("%s+", " "):sub(1, 160))
-end)
---@end-debug@
-
 -- One hover for the whole row: its marks go to full strength and one tooltip lists every source.
 -- The marks take no mouse input, so the pointer and clicks reach Blizzard's row as usual.
 local function SetRowStrength(row, full)
@@ -55,13 +32,11 @@ local function SetRowStrength(row, full)
 	end
 end
 
--- After Blizzard's own OnEnter, whose tooltip (the full name of a shortened label) ours replaces: the
--- recipe's name is our title.
+-- Runs inside Blizzard's own OnEnter, whose tooltip (the full name of a shortened label) ours
+-- replaces: the recipe's name is our title. Other recipe lists send the same event; their rows have
+-- no state here.
 local function RowOnEnter(row)
-	local recipeInfo = State(row).recipe
-	--@debug@
-	ns.HoverLog("our OnEnter", row)
-	--@end-debug@
+	local recipeInfo = rowState[row] and rowState[row].recipe
 	if recipeInfo then
 		SetRowStrength(row, true)
 		GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
@@ -72,9 +47,6 @@ end
 
 -- Blizzard's OnLeave has already hidden the tooltip.
 local function RowOnLeave(row)
-	--@debug@
-	ns.HoverLog("our OnLeave", row)
-	--@end-debug@
 	if State(row).recipe then
 		SetRowStrength(row, false)
 	end
@@ -90,13 +62,9 @@ local function GetIcons(row)
 			icon.Texture:SetPoint("CENTER")
 			State(row).icons[index] = icon
 		end
-		row:HookScript("OnEnter", RowOnEnter)
+		-- OnLeave only: the list sets each row's OnEnter script again on every Init, which drops a
+		-- hook on it (docs/client-notes.md, "Recipe list rows"), so entering comes from Blizzard's event.
 		row:HookScript("OnLeave", RowOnLeave)
-		--@debug@
-		-- Blizzard's child buttons call these methods directly, past the scripts hooked above.
-		hooksecurefunc(row, "OnEnter", function() ns.HoverLog("Blizzard OnEnter method", row) end)
-		hooksecurefunc(row, "OnLeave", function() ns.HoverLog("Blizzard OnLeave method", row) end)
-		--@end-debug@
 	end
 	return State(row).icons
 end
@@ -164,9 +132,6 @@ local function UpdateRow(row, node)
 	-- The list is redrawn often, and a redraw under a still pointer sends no new OnEnter: the row the
 	-- pointer is on gets its hover back here.
 	if row:IsMouseMotionFocus() then
-		--@debug@
-		ns.HoverLog("redraw under pointer", row)
-		--@end-debug@
 		RowOnEnter(row)
 	end
 end
@@ -200,6 +165,9 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	if not scrollBox then
 		return
 	end
+	EventRegistry:RegisterCallback("Professions.RecipeListOnEnter", function(_, row)
+		RowOnEnter(row)
+	end, rowState)
 	ScrollUtil.AddInitializedFrameCallback(scrollBox, function(_, row, node)
 		State(row).labelWidth = nil -- Init restored Blizzard's width on this pooled row
 		UpdateRow(row, node) -- first callback argument is the owner

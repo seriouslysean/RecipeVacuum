@@ -592,6 +592,8 @@ end
 local perfWriter = CreateFrame("Frame")
 perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
+	-- Retired probes' data, so it does not stay in the saved file.
+	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines = nil, nil, nil
 	local lines = PerfLines()
 	if #lines > 0 then
 		local version, build = GetBuildInfo()
