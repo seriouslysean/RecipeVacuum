@@ -11,6 +11,7 @@ end
 local defaults = {
 	showUnlearned = true, -- Blizzard default; Forever turns it off
 	sourceFilter = {},     -- [sourceType or "unknown"] = false when unchecked in the Sources filter
+	showUnavailable = true, -- recipes locked by another specialization stay listed
 	npcs = {},
 	objects = {},
 	-- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:

@@ -23,6 +23,7 @@ What WoW Forever's client does, where the addon depends on it. Measured in game 
 - The other faction's version of a recipe is marked only in the recipe's tooltip data: a `UsageRequirement` line of the `Faction` type.
 - A specialization ("Requires Goblin Engineer") is a requirement of the item the recipe makes, not of the recipe. The recipe's tooltip shows it only once that item has loaded.
 - That requirement line carries no ID for the specialization. Its fields on build 71037 (item 18984, Dimensional Ripper - Everlook): `leftText`, `requirementType` (Skill), `type` (UsageRequirement), `usable` (`false` when unmet).
+- Whether a specialization has been picked is read from the specialization spells (`SPECIALIZATIONS` in `Sources.lua`). Spells 20219 and 20222 return "Gnomish Engineer" and "Goblin Engineer" on build 71037. Not yet measured: the Blacksmithing and Leatherworking spell IDs on this client, that a character with a specialization knows its spell, and which event fires on picking one. Until then a lock can be stale after picking a specialization until the next skill change or reload.
 - A skill requirement with a rank ("Requires Engineering (300)", `ITEM_MIN_SKILL`) has a number in it; one without ("Requires Goblin Engineer", `ITEM_REQ_SKILL`) does not.
 - A requirement the character meets is drawn white (`ffffffff`), one it does not is red (`ffff2020`). That red is not `RED_FONT_COLOR`.
 

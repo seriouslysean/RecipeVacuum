@@ -186,7 +186,11 @@ do
     [3] = { { "Requires Gnomish Engineer", white } },
     [4] = { { "Requires Engineering (260)", red }, { "Requires Goblin Engineer", red } },
   }
-  C_TradeSkillUI = { GetRecipeSchematic = function(id) return { outputItemID = id ~= 5 and MADE + id or nil } end }
+  local ENGINEERING, GOBLIN = 202, 20222
+  local knownSpells = { [GOBLIN] = true }
+  C_TradeSkillUI = { GetRecipeSchematic = function(id) return { outputItemID = id ~= 5 and MADE + id or nil } end,
+    GetTradeSkillLineForRecipe = function() return ENGINEERING end }
+  C_SpellBook = { IsSpellKnown = function(id) return knownSpells[id] == true end }
   local itemLoaded, itemReads, loadCallbacks = {}, 0, {}
   C_Item.IsItemDataCachedByID = function(id) return itemLoaded[id] == true end
   Item = { CreateFromItemID = function(_, id) return { ContinueOnItemLoad = function(_, fn) loadCallbacks[id] = fn end } end }
@@ -208,6 +212,11 @@ do
   check("specialization lock uses the made item's requirement line", a.GetRecipeLock(1) == "Requires Gnomish Engineer"
     and a.GetRecipeLock(2) == false and a.GetRecipeLock(3) == false and a.GetRecipeLock(4) == "Requires Goblin Engineer"
     and a.GetRecipeLock(5) == false)
+  -- Before a specialization is picked nothing locks, and no made item is read to find out.
+  local a3 = boot(nil)
+  knownSpells[GOBLIN], itemReads = nil, 0
+  check("no lock before a specialization is picked", a3.GetRecipeLock(1) == false and itemReads == 0)
+  knownSpells[GOBLIN] = true
   -- A later session: recipes known to need no specialization are not looked up again.
   local kept = db.recipeFacts
   local a2 = boot(nil); a2.db.recipeFacts = kept

@@ -16,6 +16,17 @@ local function ToggleShowUnlearned()
 	ns.RefreshList()
 end
 
+local function IsShowUnavailableChecked()
+	return ns.db.showUnavailable
+end
+
+local function ToggleShowUnavailable()
+	ns.db.showUnavailable = not ns.db.showUnavailable
+	if ns.db.showUnlearned then
+		ns.RefreshList()
+	end
+end
+
 -- Sources submenu, laid out like Blizzard's Professions.InitSourcesFilter.
 local sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown" }
 
@@ -59,6 +70,8 @@ Menu.ModifyMenu("MENU_PROFESSIONS_FILTER", function(_, rootDescription)
 	rootDescription:CreateTitle(moduleTitle)
 	rootDescription:CreateCheckbox(PROFESSION_RECIPES_SHOW_UNLEARNED or "Show Unlearned",
 		IsShowUnlearnedChecked, ToggleShowUnlearned)
+	-- Blizzard's word for what a character can't learn, from its trainer filter.
+	rootDescription:CreateCheckbox(UNAVAILABLE or "Unavailable", IsShowUnavailableChecked, ToggleShowUnavailable)
 	AddSourcesSubmenu(rootDescription)
 end)
 
@@ -66,7 +79,7 @@ end)
 -- because its default check expects Show Unlearned on; left alone.
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	hooksecurefunc(Professions, "SetDefaultFilters", function()
-		ns.db.showUnlearned = true
+		ns.db.showUnlearned, ns.db.showUnavailable = true, true
 		wipe(ns.db.sourceFilter)
 		ns.RefreshList()
 	end)

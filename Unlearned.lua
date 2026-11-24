@@ -182,7 +182,8 @@ local function GetMatches(categories, searchText)
 			break
 		end
 	end
-	if searchText == "" and not filteringSources then
+	local hidingUnavailable = not ns.db.showUnavailable
+	if searchText == "" and not filteringSources and not hidingUnavailable then
 		return #categories > 0 and categories or nil
 	end
 	local matches = {}
@@ -191,7 +192,8 @@ local function GetMatches(categories, searchText)
 		for _, elementData in ipairs(category.recipes) do
 			local recipeInfo = elementData.recipeInfo
 			if (searchText == "" or recipeInfo.searchName:find(searchText, 1, true))
-				and (not filteringSources or ns.PassesSourceFilter(recipeInfo)) then
+				and (not filteringSources or ns.PassesSourceFilter(recipeInfo))
+				and not (hidingUnavailable and ns.GetRecipeLock(recipeInfo.recipeID)) then
 				table.insert(recipes, elementData)
 			end
 		end

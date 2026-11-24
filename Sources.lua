@@ -442,6 +442,26 @@ local function IsUnmet(color)
 	return color ~= nil and color.g < UNMET_MAX_GREEN
 end
 
+-- The spells a character learns on picking a specialization, by profession skill line. A recipe locks
+-- only once one is picked: before that it is open to the character, whatever its made item says. The
+-- requirement line names no ID (docs/client-notes.md, "Requirements"), so the spells are listed here.
+local BLACKSMITHING, LEATHERWORKING, ENGINEERING = 164, 165, 202
+local SPECIALIZATIONS = {
+	[BLACKSMITHING] = { 9787, 9788, 17039, 17040, 17041 }, -- Weaponsmith, Armorsmith, Sword-, Hammer-, Axesmith
+	[LEATHERWORKING] = { 10656, 10658, 10660 },            -- Dragonscale, Elemental, Tribal
+	[ENGINEERING] = { 20219, 20222 },                      -- Gnomish, Goblin
+}
+
+local function HasSpecialization(recipeID)
+	local line, _, parent = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID)
+	for _, spellID in ipairs(SPECIALIZATIONS[line] or SPECIALIZATIONS[parent] or {}) do
+		if C_SpellBook.IsSpellKnown(spellID) then
+			return true
+		end
+	end
+	return false
+end
+
 -- Rows waiting for a made item's data redraw once, shortly after the answers arrive.
 local LOCK_REFRESH_DELAY = 0.2
 local loadingItems, refreshQueued = {}, false
@@ -451,13 +471,18 @@ local function QueueRowRefresh()
 		refreshQueued = true
 		C_Timer.After(LOCK_REFRESH_DELAY, function()
 			refreshQueued = false
-			ns.RefreshRows()
+			-- Hiding unavailable recipes changes which rows exist, so the list is built again.
+			if ns.db.showUnavailable then
+				ns.RefreshRows()
+			else
+				ns.RefreshList()
+			end
 		end)
 	end
 end
 
--- The game's requirement text when the character lacks the specialization needed for what the recipe
--- makes, false when there is none or it is met, nil while the made item's data loads. Asked for the
+-- The game's requirement text when the character has picked a specialization other than the one needed
+-- for what the recipe makes, false when there is no lock, nil while the made item's data loads. Asked for the
 -- rows on screen only, so a profession's first open does not load every item it can make.
 function ns.GetRecipeLock(recipeID)
 	local lock = recipeLocks[recipeID]
@@ -465,7 +490,7 @@ function ns.GetRecipeLock(recipeID)
 		return lock
 	end
 	local facts = Facts()
-	if facts.spec[recipeID] == false then
+	if facts.spec[recipeID] == false or not HasSpecialization(recipeID) then
 		recipeLocks[recipeID] = false
 		return false
 	end
