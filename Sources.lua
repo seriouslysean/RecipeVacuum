@@ -417,7 +417,9 @@ end
 function ns.AddMarkLines(tooltip, recipeInfo, mark)
 	if mark == "locked" then
 		GameTooltip_SetTitle(tooltip, UNAVAILABLE)
-		GameTooltip_AddDisabledLine(tooltip, recipeInfo.lockReason)
+		if recipeInfo.lockReason then
+			GameTooltip_AddDisabledLine(tooltip, recipeInfo.lockReason)
+		end
 	elseif mark == "unknown" then
 		GameTooltip_SetTitle(tooltip, UnknownSource(), NORMAL_FONT_COLOR)
 	else

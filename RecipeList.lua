@@ -26,6 +26,8 @@ end
 
 local function IconOnEnter(icon)
 	local row = icon:GetParent()
+	-- The pointer has left the row's own frame for this icon, so the row is told to look hovered.
+	row:LockHighlight()
 	row:OnEnter()
 	ns.SetMarkStrength(icon, true) -- only the mark under the pointer brightens, to go with its tooltip
 	GameTooltip:SetOwner(icon, "ANCHOR_RIGHT")
@@ -34,6 +36,7 @@ local function IconOnEnter(icon)
 end
 
 local function IconOnLeave(icon)
+	icon:GetParent():UnlockHighlight()
 	icon:GetParent():OnLeave()
 	ns.SetMarkStrength(icon, false)
 end
