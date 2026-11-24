@@ -672,21 +672,13 @@ end, quiet = true })
 -- row; a set changes only the marks it lists. Art the client lacks is named in chat.
 local MARK_SETS = {
 	{ name = "current marks" },
-	{ name = "minimap tracking family: profession trainer, reagent vendor, quest, loot chest",
-		trainer = { atlas = "Profession", size = 16 }, vendor = { atlas = "Reagents", size = 16 },
-		quest = { atlas = "QuestNormal", size = 16 }, drop = { atlas = "VignetteLoot", size = 16 } },
-	{ name = "minimap tracking, banker for vendor",
-		trainer = { atlas = "Profession", size = 16 }, vendor = { atlas = "Banker", size = 16 },
-		quest = { atlas = "QuestNormal", size = 16 }, drop = { atlas = "VignetteLoot", size = 16 } },
-	{ name = "interact icon family: trainer, buy, quest, loot, lock",
-		trainer = { atlas = "crosshair_trainer_32", size = 16 }, vendor = { atlas = "crosshair_buy_32", size = 16 },
-		quest = { atlas = "crosshair_quest_32", size = 16 }, drop = { atlas = "crosshair_lootall_32", size = 16 },
-		locked = { atlas = "crosshair_lock_32", size = 16 } },
-	{ name = "loot roll pair: greed coin for vendor, need dice for drop",
-		vendor = { atlas = "lootroll-icon-greed", size = 14 }, drop = { atlas = "lootroll-icon-need", size = 14 } },
-	{ name = "auction house gold coin for vendor, skull for drop",
-		vendor = { atlas = "auctionhouse-icon-coin-gold", size = 14 },
-		drop = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull", size = 13 } },
+	{ name = "need dice for drop, current coin", drop = { atlas = "lootroll-icon-need", size = 14 } },
+	{ name = "coin: loot roll greed coin", drop = { atlas = "lootroll-icon-need", size = 14 }, vendor = { atlas = "lootroll-icon-greed", size = 14 } },
+	{ name = "coin: money gold coin", drop = { atlas = "lootroll-icon-need", size = 14 }, vendor = { atlas = "coin-gold-20x20", size = 14 } },
+	{ name = "coin: auction house gold coin", drop = { atlas = "lootroll-icon-need", size = 14 }, vendor = { atlas = "auctionhouse-icon-coin-gold", size = 14 } },
+	{ name = "coin: classic greed button", drop = { atlas = "lootroll-icon-need", size = 14 }, vendor = { texture = "Interface\\Buttons\\UI-GroupLoot-Coin-Up", size = 16 } },
+	{ name = "coin: large coin icon", drop = { atlas = "lootroll-icon-need", size = 14 }, vendor = { atlas = "coin-icon", size = 14 } },
+	{ name = "vendor: buy cursor bag", drop = { atlas = "lootroll-icon-need", size = 14 }, vendor = { atlas = "cursor_buy_32", size = 16 } },
 }
 local markSet, shippedMarks = 0, nil
 table.insert(troubleshooting, { "marks", "Show the next set of mark art on every unlearned row", function()
