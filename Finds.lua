@@ -137,8 +137,10 @@ end
 
 local function ValidRow(row)
 	if type(row) ~= "table" or not SourceField(row) then return false end
-	if row.k ~= "quest" and row.k ~= "drop" and (row.q or row.o or row.ci or row.fi or row.z) then return false end
-	if row.k == "quest" and (row.o or row.ci or row.fi or row.z) then return false end
+	-- Each kind carries only its own identity: a quest ID on quests, a drop's origin on drops.
+	if row.k ~= "quest" and row.q then return false end
+	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z) then return false end
+	if (row.x == nil) ~= (row.y == nil) then return false end
 	if not (ValidName(row.nm) and ValidName(row.on)) then return false end
 	if not (OptionalID(row.n) and OptionalID(row.fn) and OptionalID(row.gi)) then return false end
 	if row.m ~= nil and not (PositiveID(row.m) and C_Map.GetMapInfo(row.m)) then return false end

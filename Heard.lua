@@ -54,6 +54,7 @@ local function OnChat(event, message)
 				Note("recipes", recipeID, level)
 			else
 				Note("items", itemID, level)
+				ns.db.pendingItems[itemID] = ns.db.pendingItems[itemID] or {} -- linked by ns.LinkPending
 			end
 		end
 	end

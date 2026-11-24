@@ -271,11 +271,12 @@ for _, node in scrollBox:GetDataProvider():EnumerateEntireRange() do
 	end
 end
 local last = headers[#headers]
-local categoriesRight = perCategory[SOURCED] == 2 and perCategory[STRAY] == nil and perCategory[-1] == 3
-	and last.categoryID == -1 and last.name == MISCELLANEOUS
+local MISCELLANEOUS_ID = -2 -- the addon's own; -1 is Blizzard's Favorites header
+local categoriesRight = perCategory[SOURCED] == 2 and perCategory[STRAY] == nil and perCategory[MISCELLANEOUS_ID] == 3
+	and last.categoryID == MISCELLANEOUS_ID and last.name == MISCELLANEOUS
 failed = failed or not categoriesRight
 print(("%-58s sourced %s, stray %s, miscellaneous %s, last header %s  %s"):format("Unknown categories share Miscellaneous, last",
-	tostring(perCategory[SOURCED]), tostring(perCategory[STRAY]), tostring(perCategory[-1]), tostring(last.name), categoriesRight and "ok" or "FAIL"))
+	tostring(perCategory[SOURCED]), tostring(perCategory[STRAY]), tostring(perCategory[MISCELLANEOUS_ID]), tostring(last.name), categoriesRight and "ok" or "FAIL"))
 
 print(failed and "CHECKS FAILED" or "ALL SCROLL CHECKS PASSED")
 os.exit(failed and 1 or 0)

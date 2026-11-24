@@ -235,6 +235,7 @@ end
 -- 5. Sharing: every new kind round-trips, re-merge is a no-op
 local rows = a.FindsSince(0, math.huge)
 local b = boot(nil)
+local bFrames = frames
 check(("merge %d rows"):format(#rows), b.MergeFinds(rows, #rows) == true)
 local s = b.db.shared.items[1000]
 local kinds = {}
@@ -283,7 +284,17 @@ C_TooltipInfo.GetItemByID = function(id)
   return { lines = { { type = 22, leftText = "Pattern" }, teaches[id] and { type = 38, spellID = teaches[id] } or nil } }
 end
 check("link waits while an item's data loads", b.LinkPending() == false and b.db.itemRecipe[2000] == nil)
-for id in pairs(b.db.pendingItems) do cached[id] = true end
+-- Asked once: an item still loading neither blocks the list nor is requested again.
+local requests = 0
+C_Item.RequestLoadItemDataByID = function() requests = requests + 1 end
+check("an unanswered item is not asked twice and no longer blocks", b.LinkPending() == true and requests == 0)
+-- The client reports each item's data as it arrives.
+for id in pairs(b.db.pendingItems) do
+  cached[id] = true
+  for _, f in ipairs(bFrames) do
+    if f.events.ITEM_DATA_LOAD_RESULT then f.script(f, "ITEM_DATA_LOAD_RESULT", id, true) end
+  end
+end
 check("link made from the recipe ID in the item's tooltip", b.LinkPending() == true and b.db.itemRecipe[2000] == RED_LINEN_BAG
   and b.db.recipeItems[RED_LINEN_BAG][1] == 2000 and b.db.pendingItems[2000] == nil)
 check("an item that teaches nothing stays unlinked and is not asked again", b.db.itemRecipe[1000] == nil and b.db.pendingItems[1000].none == true)
@@ -319,6 +330,8 @@ check("reject quest without quest id", b.MergeFinds({ { k = "quest", i = 1 } }, 
 check("reject vendor carrying a quest", b.MergeFinds({ { k = "vendor", i = 1, n = 1, q = 5 } }, 10) == nil)
 check("reject bad object name", b.MergeFinds({ { k = "drop", i = 1, o = 2, on = "x|cff" } }, 10) == nil)
 check("reject unknown fishing zone", b.MergeFinds({ { k = "drop", i = 1, fi = UNKNOWN_MAP } }, 10) == nil)
+check("reject a position with one coordinate", b.MergeFinds({ { k = "drop", i = 1, fi = 1, x = 0.5 } }, 10) == nil)
+check("reject a drop carrying a quest", b.MergeFinds({ { k = "drop", i = 1, n = 1, q = 5 } }, 10) == nil)
 check("reject unknown roll zone", b.MergeFinds({ { k = "drop", i = 1, z = UNKNOWN_MAP } }, 10) == nil)
 check("shared roll keeps its zone", b.db.shared.items[3000] and b.db.shared.items[3000][1].zone == 1429)
 check("reject more rows than the limit", b.MergeFinds(rows, #rows - 1) == nil)

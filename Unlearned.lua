@@ -9,8 +9,9 @@ local _, ns = ...
 local GROUP_LEARNED = 2
 
 -- A category keeps its own header when a recipe in it is learned or has a known source. The rest
--- share MISCELLANEOUS, last. The ID is ours; the game's category IDs are positive.
-local MISCELLANEOUS_CATEGORY_ID = -1
+-- share MISCELLANEOUS, last. The ID is ours: the game's category IDs are positive, and -1 is its
+-- Favorites header (favoritesCategoryID, Blizzard_Professions.lua).
+local MISCELLANEOUS_CATEGORY_ID = -2
 
 -- Whether the open view is one where the player's own unlearned recipes belong.
 function ns.CanShowUnlearned()

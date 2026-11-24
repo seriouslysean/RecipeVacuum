@@ -38,17 +38,18 @@ function ns.Log(text)
 		color.r, color.g, color.b)
 end
 
-function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, keepName)
+function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 	local npc = npcs[npcID]
 	if not npc then
 		npc = { positions = {} }
 		npcs[npcID] = npc
 	end
-	-- Peers only fill a missing name, so a guildmate's client language never replaces ours.
-	if name and not (keepName and npc.name) then npc.name = name end
+	-- A peer only fills what is missing: a guildmate's client language never replaces our name for an
+	-- NPC, and their report never moves a position the player may have seen for themselves.
+	if name and not (fromPeer and npc.name) then npc.name = name end
 	if mapID and x and y then
 		local position = npc.positions[mapID]
-		if not position or (seen or 0) >= (position.seen or 0) then
+		if not position or (not fromPeer and (seen or 0) >= (position.seen or 0)) then
 			npc.positions[mapID] = { x = x, y = y, seen = seen }
 		end
 	end

@@ -173,7 +173,9 @@ function ns.PassesSourceFilter(recipeInfo)
 	local types = recipeInfo.sourceTypes
 	if not types then
 		-- No known source: shown once come across within the chosen level, or with Unknown ticked.
-		return (recipeInfo.met ~= nil and recipeInfo.met <= ns.db.sourceLevel) or ns.IsSourceShown("unknown")
+		-- Unknown unticked by hand (as Uncheck All does) hides them all.
+		local unknown = ns.db.sourceFilter.unknown
+		return unknown or (unknown == nil and recipeInfo.met ~= nil and recipeInfo.met <= ns.db.sourceLevel)
 	end
 	for sourceType in pairs(types) do
 		if ns.IsSourceShown(sourceType) then
@@ -200,13 +202,30 @@ function ns.GetTaughtRecipe(itemID)
 		return nil
 	end
 	local tooltip = C_TooltipInfo.GetItemByID(itemID)
-	for _, line in ipairs(tooltip and tooltip.lines or {}) do
+	if not (tooltip and tooltip.lines and tooltip.lines[1]) then
+		return nil -- no tooltip data yet is not an answer
+	end
+	for _, line in ipairs(tooltip.lines) do
 		if line.type == Enum.TooltipDataLineType.ItemSpellTriggerLearn and line.spellID then
 			return line.spellID
 		end
 	end
 	return false
 end
+
+-- Items asked for this session whose data has not arrived. Each is asked once: the list is built and
+-- cached without it, and its arrival (ITEM_DATA_LOAD_RESULT) rebuilds the list. One that never answers
+-- costs nothing more until the next session.
+local awaitedItems = {}
+
+local itemLoads = CreateFrame("Frame")
+itemLoads:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+itemLoads:SetScript("OnEvent", function(_, _, itemID, success)
+	if awaitedItems[itemID] and success then
+		awaitedItems[itemID] = nil
+		ns.SourcesChanged()
+	end
+end)
 
 -- The recipe items that teach a recipe: the seed and this session's scan turned around once, then
 -- the links saved in play for items they do not have.
@@ -243,9 +262,10 @@ function ns.LinkPending()
 	for itemID, item in pairs(db.pendingItems) do
 		if ns.GetSeededRecipe(itemID) then
 			db.pendingItems[itemID] = nil
-		elseif not item.none then
+		elseif not item.none and not awaitedItems[itemID] then
 			local recipeID = ns.GetTaughtRecipe(itemID)
 			if recipeID == nil then
+				awaitedItems[itemID] = true
 				loaded = false
 			elseif recipeID then
 				db.itemRecipe[itemID] = recipeID
@@ -563,18 +583,29 @@ function ns.ReadSpecialization(recipeID)
 		return nil
 	end
 	local tooltip = C_TooltipInfo.GetItemByID(itemID)
+	if not (tooltip and tooltip.lines and tooltip.lines[1]) then
+		return nil -- no tooltip data yet is not an answer
+	end
+	local hasLine
 	state = false
-	for _, line in ipairs(tooltip and tooltip.lines or {}) do
+	for _, line in ipairs(tooltip.lines) do
 		if line.type == Enum.TooltipDataLineType.UsageRequirement and line.leftText
 			and line.requirementType == Enum.TooltipDataUsageRequirementType.Skill
 			and not line.leftText:find("%d") then
-			state = IsUnmet(line.leftColor) and line.leftText or MET
+			hasLine = true
+			-- The line's own flag when it has one, else its color; with neither it says nothing.
+			if line.usable == false or IsUnmet(line.leftColor) then
+				state = line.leftText
+			elseif line.usable or line.leftColor then
+				state = MET
+			end
 		end
 	end
-	if state == MET then
-		specialized[Profession(recipeID)] = true
+	local profession = Profession(recipeID)
+	if state == MET and profession then
+		specialized[profession] = true
 	end
-	facts.spec[recipeID], recipeSpecs[recipeID] = state ~= false, state
+	facts.spec[recipeID], recipeSpecs[recipeID] = hasLine or false, state
 	return state
 end
 
@@ -586,7 +617,8 @@ function ns.GetRecipeLock(recipeID)
 	if state == nil then
 		return nil
 	end
-	return state ~= MET and state and specialized[Profession(recipeID)] and state or false
+	local profession = Profession(recipeID)
+	return state ~= MET and state and profession and specialized[profession] and state or false
 end
 
 -- Choosing or dropping a specialization changes which requirements are met.

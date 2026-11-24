@@ -15,7 +15,7 @@ ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeV
 Run before every commit:
 
 ```sh
-for f in $(git ls-files '*.lua' | grep -v '^Libs/A\|^Libs/C\|^Libs/L'); do luac -p "$f" || exit 1; done
+for f in $(git ls-files '*.lua' | grep -v '^Libs/A\|^Libs/C\|^Libs/L'); do luajit -bl "$f" > /dev/null || exit 1; done
 luacheck .
 luajit tests/upgrade.lua . <a schema 1 save>
 luajit tests/simulate.lua . <a current save>
