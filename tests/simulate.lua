@@ -84,7 +84,7 @@ local beforeRecipes, beforeItems = count(before.found)
 local beforeRevision = before.exchange.revision
 local a = boot(savedFile)
 local db = a.db
-check("schema is 6", db.schema == 6)
+check("schema is 7", db.schema == 7)
 check("trainerNames dropped", db.found.trainerNames == nil and db.shared.trainerNames == nil)
 -- Fails if the upgrade keeps NPCs no source names (earlier versions saved every vendor opened), or
 -- drops one a source does name.
@@ -310,6 +310,6 @@ RecipeVacuumDB = savedDB; loaded = {}
 local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-check("reload keeps schema and revision", c.db.schema == 6 and c.db.exchange.revision == savedDB.exchange.revision)
+check("reload keeps schema and revision", c.db.schema == 7 and c.db.exchange.revision == savedDB.exchange.revision)
 print(FAILED and "SOME CHECKS FAILED" or "ALL CHECKS PASSED")
 os.exit(FAILED and 1 or 0)

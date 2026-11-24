@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 6
+local SCHEMA = 7
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }
@@ -151,6 +151,11 @@ migrations[6] = function(db)
 		pending.name, pending.spellID = nil, nil
 	end
 	db.itemRecipe, db.recipeItems = {}, {}
+end
+
+-- Schema 7 drops the Full Color Source Icons option: marks are always in color, brighter under the pointer.
+migrations[7] = function(db)
+	db.fullColorIcons = nil
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()

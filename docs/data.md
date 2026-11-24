@@ -74,3 +74,4 @@ Who gets a whisper is decided before sending: a friend who is online, and for a 
 | 4 | Name-keyed trainer entries dropped |
 | 5 | NPCs and objects no source names are removed |
 | 6 | Recipe item links are made again from the ID in the item's tooltip data |
+| 7 | The Full Color Source Icons option is removed |
