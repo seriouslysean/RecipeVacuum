@@ -163,6 +163,13 @@ local IDENTITY = { n = "npc", o = "object", ci = "container", fi = "fishing", z 
 
 -- Merges valid rows into the shared layer, newest per source. Returns true if anything changed, false
 -- if not, nil for an invalid batch (nothing written).
+-- Saved field of a shared observation = its wire key.
+local MERGED_FIELDS = {
+	npc = "n", object = "o", container = "ci", fishing = "fi", zone = "z", quest = "q", faction = "f",
+	skill = "sk", cost = "c", price = "p", limited = "l", spellID = "sp", choice = "ch", finisher = "fn",
+	giverItem = "gi", map = "m", x = "x", y = "y",
+}
+
 function ns.MergeFinds(rows, maxRows)
 	if type(rows) ~= "table" or #rows > maxRows then return nil end
 	local count = 0
@@ -190,19 +197,25 @@ function ns.MergeFinds(rows, maxRows)
 				break
 			end
 		end
-		if not observation or (row.s or 0) > (observation.seen or 0) then
-			if not observation then
-				observation = { kind = row.k, [field] = value }
-				table.insert(bucket[id], observation)
-			end
-			observation.npc, observation.object, observation.container = row.n, row.o, row.ci
-			observation.fishing, observation.zone, observation.quest = row.fi, row.z, row.q
-			observation.faction, observation.seen, observation.build = row.f, row.s, row.b
-			observation.skill, observation.cost, observation.price = row.sk, row.c, row.p
-			observation.limited, observation.spellID, observation.choice = row.l, row.sp, row.ch
-			observation.finisher, observation.giverItem, observation.map = row.fn, row.gi, row.m
-			if row.fi then observation.x, observation.y = row.x, row.y end
+		if not observation then
+			observation = { kind = row.k, [field] = value }
+			table.insert(bucket[id], observation)
 			changed = true
+		end
+		-- Field by field: a value we lack is filled in, a newer sighting corrects one we had, and nothing
+		-- is cleared because a row leaves it out. The same facts again change nothing.
+		local newer = (row.s or 0) > (observation.seen or 0)
+		for name, key in pairs(MERGED_FIELDS) do
+			local incoming = row[key]
+			if (name ~= "x" and name ~= "y") or row.fi then -- other positions live on the NPC or object
+				if incoming ~= nil and incoming ~= observation[name] and (newer or observation[name] == nil) then
+					observation[name] = incoming
+					changed = true
+				end
+			end
+		end
+		if newer then
+			observation.seen, observation.build = row.s, row.b or observation.build
 		end
 		if row.i and not db.itemRecipe[row.i] and not ns.GetSeededRecipe(row.i) then
 			db.pendingItems[row.i] = db.pendingItems[row.i] or {}

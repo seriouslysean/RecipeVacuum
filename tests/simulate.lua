@@ -247,6 +247,25 @@ check("re-merge changes nothing", b.MergeFinds(rows, #rows) == false)
 -- Fails if the quest giver's own faction is not saved, not shared, or a bad value is accepted.
 check("NPC faction saved and shared", db.npcs[4784].faction == "Alliance" and b.db.npcs[4784].faction == "Alliance")
 local badFaction = CopyTable(rows[1]); badFaction.nf = "Pirates"
+-- 5b. Merging never loses detail. Fails if a newer row without a cost clears the cost, an older row
+-- cannot fill a gap, a newer value does not correct an older one, or repeating a row counts as a change.
+do
+  local m = boot(nil)
+  local function row(seen, extra)
+    local wire = { k = "trainer", r = 7001, n = 9001, nm = "Teacher", m = 1, x = 0.5, y = 0.5, s = seen, b = 1 }
+    for key, value in pairs(extra) do wire[key] = value end
+    return wire
+  end
+  local newerNoCost = row(200, { sk = 75 })
+  m.MergeFinds({ row(100, { c = 500 }) }, 1)
+  m.MergeFinds({ newerNoCost }, 1)
+  m.MergeFinds({ row(50, { sp = 1234, c = 1 }) }, 1)
+  local kept = m.db.shared.recipes[7001][1]
+  check("a merge fills gaps and keeps what was known", kept.cost == 500 and kept.skill == 75 and kept.spellID == 1234 and kept.seen == 200)
+  check("the same facts again change nothing", m.MergeFinds({ newerNoCost }, 1) == false)
+  m.MergeFinds({ row(300, { c = 800 }) }, 1)
+  check("a newer sighting corrects an older value", kept.cost == 800 and kept.seen == 300)
+end
 check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction }, 1) == nil)
 -- A source both received and seen firsthand is listed once
 b.db.shareWithFriends, b.db.recipeItems[99] = true, { 1000 }
