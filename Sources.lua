@@ -257,8 +257,8 @@ ns.SOURCE_LABEL = SOURCE or "Source:"
 ns.marks = {
 	unknown = { atlas = "common-search-magnifyingglass", size = 11 },
 	-- Blizzard's padlock for a locked reagent slot (LockedIcon in
-	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml), sized to sit with the source marks.
-	locked = { atlas = "AdventureMapIcon-Lock", size = 12 },
+	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml), kept in the art's own proportions.
+	locked = { atlas = "AdventureMapIcon-Lock", size = 16, ownShape = true },
 }
 
 function ns.GetMarkSize(mark)
@@ -292,10 +292,13 @@ local MARK_DESATURATION = 0.7
 
 -- Draws a mark on an icon button that has a centered .Texture.
 function ns.ApplyMark(icon, mark)
-	local size = ns.GetMarkSize(mark)
-	icon.Texture:SetSize(size, size)
-	-- Compared by the art's own table, so a mark whose art is replaced redraws.
 	local info = ns.sourceTypes[mark] or ns.marks[mark]
+	if info.ownShape and not info.aspect then
+		local atlas = C_Texture.GetAtlasInfo(info.atlas)
+		info.aspect = atlas and atlas.width / atlas.height or 1
+	end
+	icon.Texture:SetSize(info.size * (info.aspect or 1), info.size)
+	-- Compared by the art's own table, so a mark whose art is replaced redraws.
 	if icon.markInfo ~= info then
 		ns.SetSourceTexture(icon.Texture, mark)
 		icon.markInfo = info

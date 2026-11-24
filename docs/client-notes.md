@@ -24,6 +24,7 @@ What WoW Forever's client does, where the addon depends on it. Measured in game 
 - A specialization ("Requires Goblin Engineer") is a requirement of the item the recipe makes, not of the recipe. The recipe's tooltip shows it only once that item has loaded.
 - That requirement line carries no ID for the specialization. Its fields on build 71037 (item 18984, Dimensional Ripper - Everlook): `leftText`, `requirementType` (Skill), `type` (UsageRequirement), `usable` (`false` when unmet).
 - Whether a specialization has been picked is inferred, with no list of specializations: it is picked when the character meets a specialization requirement on any made item of the profession. Before that every such line is unmet and nothing locks. Not yet measured on build 71037: that a specialized character's own lines come back met (white), and which event fires on picking one; a lock can be stale after picking until the next skill change or reload.
+- The padlock art (`AdventureMapIcon-Lock`) is 28 by 37 in Blizzard's atlas table (UiTextureAtlasMember, read from wago.tools on 2026-11-24). The row mark reads the art's size from `C_Texture.GetAtlasInfo` and keeps that shape; at 16 tall it measured about 10 by 15 visible pixels in game, beside a 12 pixel magnifier.
 - A skill requirement with a rank ("Requires Engineering (300)", `ITEM_MIN_SKILL`) has a number in it; one without ("Requires Goblin Engineer", `ITEM_REQ_SKILL`) does not.
 - A requirement the character meets is drawn white (`ffffffff`), one it does not is red (`ffff2020`). That red is not `RED_FONT_COLOR`.
 
