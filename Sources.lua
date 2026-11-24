@@ -352,22 +352,11 @@ end
 
 -- Details lists specifics under each source the way Blizzard labels them elsewhere: a gold label
 -- (REQUIRES_LABEL, COSTS_LABEL, as the trainer and bank frames show them) and the value on the right,
--- money drawn with GetMoneyString like item sell prices.
-local function AddDetailLines(tooltip, observation)
-	if observation.skill and observation.skill > 0 then
-		local profession = Professions.GetProfessionInfo().professionName
-		GameTooltip_AddColoredDoubleLine(tooltip, REQUIRES_LABEL, ("%s (%d)"):format(profession, observation.skill),
-			NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR, false, SUBLINE_INDENT)
-	end
-	local money = observation.cost or observation.price
-	if money and money > 0 then
-		GameTooltip_AddColoredDoubleLine(tooltip, COSTS_LABEL, GetMoneyString(money, true),
-			NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR, false, SUBLINE_INDENT)
-	end
-end
-
 -- A line's text led by its row mark, so the tooltip explains the marks: the same art, at text height.
 local MARK_TEXT_HEIGHT = 14
+-- Lines under a marked heading start where the heading's text does: past the mark and the space after
+-- it (about 4 in the tooltip font), indented with Blizzard's own leftOffset.
+local MARK_TEXT_INDENT = MARK_TEXT_HEIGHT + 4
 
 local function MarkText(mark, text)
 	local info = ns.sourceTypes[mark] or ns.marks[mark]
@@ -375,6 +364,20 @@ local function MarkText(mark, text)
 	local art = info.atlas and CreateAtlasMarkup(info.atlas, width, MARK_TEXT_HEIGHT)
 		or ("|T%s:%d:%d|t"):format(info.texture, MARK_TEXT_HEIGHT, width)
 	return art .. " " .. text
+end
+
+-- money drawn with GetMoneyString like item sell prices.
+local function AddDetailLines(tooltip, observation)
+	if observation.skill and observation.skill > 0 then
+		local profession = Professions.GetProfessionInfo().professionName
+		GameTooltip_AddColoredDoubleLine(tooltip, REQUIRES_LABEL, ("%s (%d)"):format(profession, observation.skill),
+			NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR, false, MARK_TEXT_INDENT + SUBLINE_INDENT)
+	end
+	local money = observation.cost or observation.price
+	if money and money > 0 then
+		GameTooltip_AddColoredDoubleLine(tooltip, COSTS_LABEL, GetMoneyString(money, true),
+			NORMAL_FONT_COLOR, HIGHLIGHT_FONT_COLOR, false, MARK_TEXT_INDENT + SUBLINE_INDENT)
+	end
 end
 
 -- One source type's lines: a gold header when asked, one white "who | where" line per source (as the
@@ -394,10 +397,11 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 			if detailed and mapInfo and x then
 				where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
 			end
-			GameTooltip_AddColoredDoubleLine(tooltip, name or UNKNOWN, where, HIGHLIGHT_FONT_COLOR, GRAY_FONT_COLOR)
+			GameTooltip_AddColoredDoubleLine(tooltip, name or UNKNOWN, where, HIGHLIGHT_FONT_COLOR, GRAY_FONT_COLOR,
+				false, MARK_TEXT_INDENT)
 			local questNPC = observation.quest and (ns.GetNPC(observation.npc) or ns.GetNPC(observation.finisher))
 			if questNPC and questNPC.name then
-				GameTooltip_AddColoredLine(tooltip, questNPC.name, GRAY_FONT_COLOR, false, SUBLINE_INDENT)
+				GameTooltip_AddColoredLine(tooltip, questNPC.name, GRAY_FONT_COLOR, false, MARK_TEXT_INDENT + SUBLINE_INDENT)
 			end
 			if detailed then
 				AddDetailLines(tooltip, observation)
