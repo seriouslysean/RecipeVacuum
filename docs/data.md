@@ -64,6 +64,34 @@ Rows carry IDs; each client reads item, recipe and quest names in its own langua
 
 Who gets a whisper is decided before sending: a friend who is online, and for a Battle.net friend a character in this game, on this realm and of this faction. Nothing is hidden from chat. If a whisper still fails (a friend logging off at that moment), the game prints "No player named '%s' is currently playing."; the addon reads that line so the name is not whispered again until it has been offline.
 
+## Levels
+
+The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core.lua`). Each level includes the ones before it.
+
+| Level | Shows | Sends |
+|---|---|---|
+| Self Found (1) | The player's own finds | Nothing |
+| Friends (2), the default | Also the shared layer, and what party, raid, guild and whispers bring | The player's finds, to guild, group and friends |
+| Public (3) | Also what public chat brings | Same as Friends |
+
+Everything is recorded at every level, tagged with the level it arrived at; the choice only decides what is shown and whether finds are sent. The first-run question (`Heard.lua`) and the options page set the same setting.
+
+## Come across
+
+`RecipeVacuumDB.met` holds recipes the player has come across without learning their source: `met.recipes[recipeID]` and `met.items[recipe itemID]` (for an item no recipe is linked to yet), each a level. Nothing else is kept: not who, not which channel, not when. A nearer sighting replaces a farther one.
+
+| Signal | Level |
+|---|---|
+| A recipe item or recipe link in party, raid, instance, guild, officer or whisper chat | Friends |
+| A recipe item in a loot line (someone nearby looting) | Friends |
+| A recipe item or recipe link in say, yell or a numbered channel | Public |
+| The guild's profession view | Friends |
+| A linked profession the player opens | The level its link was seen at this session, else Public |
+
+A recipe with no known source is listed, with the unknown mark, once it has been come across within the chosen level. Recipes never come across stay hidden unless Unknown is ticked in the Sources filter.
+
+Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe, and the first-run dialog.
+
 ## Schema
 
 `RecipeVacuumDB.schema` is the saved layout's version; `Core.lua` runs the migrations in order.
@@ -75,3 +103,4 @@ Who gets a whisper is decided before sending: a friend who is online, and for a 
 | 5 | NPCs and objects no source names are removed |
 | 6 | Recipe item links are made again from the ID in the item's tooltip data |
 | 7 | The Full Color Source Icons option is removed |
+| 8 | The two source modes become three levels (`sourceLevel`); an earlier Self Found choice is kept |

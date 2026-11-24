@@ -1,11 +1,21 @@
 local addonName, ns = ...
 
--- Reuses the sharing preference, including an earlier opt-out.
-local function GetSourceModes()
-	local modes = Settings.CreateControlTextContainer()
-	modes:Add(true, "Everything", "Show every recipe you don't know yet, with the sources you, your friends, guild and group have found.")
-	modes:Add(false, "Self Found", "Show only recipes whose source you have seen yourself, and pause sharing.")
-	return modes:GetData()
+local LEVEL = ns.LEVEL
+local LEVEL_SETTING = addonName .. "_sourceLevel"
+
+-- How far the vacuum listens; each level includes the one before (docs/data.md, "Levels").
+local function GetSourceLevels()
+	local levels = Settings.CreateControlTextContainer()
+	levels:Add(LEVEL.SELF, "Self Found", "Only what you see yourself: trainers, vendors, quests and loot. Sharing is paused.")
+	levels:Add(LEVEL.FRIENDS, "Friends", "Also what your party, raid, guild and friends see, link or share.")
+	levels:Add(LEVEL.PUBLIC, "Public", "Also recipes linked in public chat.")
+	return levels:GetData()
+end
+
+-- The first-run question (Heard.lua) answers through the same setting as the options page.
+function ns.ChooseLevel(level)
+	ns.db.levelChosen = true
+	Settings.SetValue(LEVEL_SETTING, level)
 end
 
 local function Checkbox(category, key, name, tooltip, default, onChange)
@@ -36,12 +46,12 @@ function ns.InitSettings()
 	local category, layout = module.category, module.layout
 
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Recipe Sources"))
-	local mode = Settings.RegisterAddOnSetting(category, addonName .. "_shareWithFriends", "shareWithFriends",
-		ns.db, Settings.VarType.Boolean, "Recipe Sources", true)
-	Settings.CreateDropdown(category, mode, GetSourceModes,
-		"Choose which discoveries appear in the profession window. Both modes keep your saved finds.")
-	mode:SetValueChangedCallback(function(_, shared)
-		ns.SetSharing(shared)
+	local level = Settings.RegisterAddOnSetting(category, LEVEL_SETTING, "sourceLevel",
+		ns.db, Settings.VarType.Number, "Recipe Sources", LEVEL.FRIENDS)
+	Settings.CreateDropdown(category, level, GetSourceLevels,
+		"Choose how far Recipe Vacuum listens for recipes. Everything it comes across is kept at every level.")
+	level:SetValueChangedCallback(function(_, value)
+		ns.SetSharing(value >= LEVEL.FRIENDS)
 		ns.SourcesChanged()
 	end)
 

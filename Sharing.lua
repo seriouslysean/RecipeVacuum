@@ -424,7 +424,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", function(_, event, index)
 	if event == "PLAYER_ENTERING_WORLD" and not inWorld then
 		inWorld = true
-		if ns.db.shareWithFriends then ns.SetSharing(true) end
+		if ns.db.sourceLevel >= ns.LEVEL.FRIENDS then ns.SetSharing(true) end
 		return
 	end
 	if not enabled then return end

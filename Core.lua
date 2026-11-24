@@ -1,7 +1,11 @@
 local addonName, ns = ...
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 7
+local SCHEMA = 8
+
+-- How near to the player a piece of knowledge arrived, and how far the player chose to listen
+-- (docs/data.md, "Levels"). Each level includes the ones before it.
+ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }
@@ -10,6 +14,8 @@ end
 -- Option defaults live in Settings.lua.
 local defaults = {
 	showUnlearned = true, -- Blizzard default; Forever turns it off
+	sourceLevel = ns.LEVEL.FRIENDS, -- how far the player listens; the options page and first-run question set it
+	met = { recipes = {}, items = {} }, -- come across without a source: [recipeID or recipe itemID] = ns.LEVEL
 	sourceFilter = {},     -- [sourceType or "unknown"] = true or false once set in the Sources filter (ns.IsSourceShown)
 	showUnavailable = true, -- recipes locked by another specialization stay listed
 	npcs = {},
@@ -156,6 +162,12 @@ end
 -- Schema 7 drops the Full Color Source Icons option: marks are always in color, brighter under the pointer.
 migrations[7] = function(db)
 	db.fullColorIcons = nil
+end
+
+-- Schema 8 replaces the two source modes with three levels; an earlier Self Found choice is kept.
+migrations[8] = function(db)
+	db.sourceLevel = db.shareWithFriends == false and ns.LEVEL.SELF or ns.LEVEL.FRIENDS
+	db.shareWithFriends = nil
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()

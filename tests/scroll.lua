@@ -169,7 +169,7 @@ ProfessionsFrame = { CraftingPage = page }
 -- The addon's real source lookups, so the Self Found check below reads real code.
 Enum = { Profession = {}, ItemRecipeSubclass = {} }
 local WITNESSED = LEARNED + 5 -- one unlearned recipe the player saw at a trainer
-local ns = { Perf = function() end, PerfMs = function() end, db = { showUnlearned = true, showUnavailable = true, shareWithFriends = true, pendingItems = {}, sourceFilter = { unknown = true }, recipeItems = {},
+local ns = { LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }, Perf = function() end, PerfMs = function() end, db = { showUnlearned = true, showUnavailable = true, sourceLevel = 2, met = { recipes = {}, items = {} }, pendingItems = {}, sourceFilter = { unknown = true }, recipeItems = {},
 	found = { recipes = { [WITNESSED] = { { kind = "trainer", npc = 1 } } }, items = {} },
 	shared = { recipes = {}, items = {} } },
 	included = { recipes = {}, items = {} } }
@@ -237,7 +237,7 @@ page:Init({ professionID = 165 })
 check("unlearned turned off: Blizzard's own clamp", offset(), math.min(3000, math.max(0, (LEARNED + 1) * ROW - VISIBLE)))
 
 -- Self Found lists only recipes the player witnessed, with every source still checked
-ns.db.showUnlearned, ns.db.shareWithFriends = true, false
+ns.db.showUnlearned, ns.db.sourceLevel, ns.db.sourceFilter.unknown = true, 1, nil
 page:Init({ professionID = 165 })
 local unlearnedRows = 0
 for _, node in scrollBox:GetDataProvider():EnumerateEntireRange() do
@@ -257,7 +257,7 @@ for index, categoryID in ipairs({ STRAY, STRAY, STRAY, SOURCED, SOURCED }) do
 	table.insert(allIDs, id)
 end
 ns.db.found.recipes[9004] = { { kind = "trainer", npc = 1 } }
-ns.db.shareWithFriends = true
+ns.db.sourceLevel, ns.db.sourceFilter.unknown = 2, true
 ns.ClearUnlearnedCache()
 page:Init({ professionID = 165 })
 local headers, perCategory, current = {}, {}, nil

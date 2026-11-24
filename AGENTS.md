@@ -29,6 +29,7 @@ Every toolkit addon meets one checklist before a release, the [quality bar](http
 | `Voice.lua` | Every chat line the addon says, with the voice rules |
 | `Sources.lua` | Source types, lookups across data layers, tooltips, row marks |
 | `Record.lua` | Records trainers, vendors, loot and quest rewards |
+| `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions; the first-run level question |
 | `Finds.lua` | Revisions, wire rows, validation, merge, export |
 | `Sharing.lua` | Automatic sharing with guild, group and friends (AceComm) |
 | `Unlearned.lua` | Adds unlearned recipes to Blizzard's recipe list |

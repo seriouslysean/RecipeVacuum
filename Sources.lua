@@ -28,7 +28,7 @@ ns.sourceTypes = {
 -- Lookups read the data layers (docs/data.md). Self Found shows only the player's own finds.
 local function VisibleLayers()
 	local db = ns.db
-	if db.shareWithFriends then
+	if db.sourceLevel >= ns.LEVEL.FRIENDS then
 		return db.found, db.shared, ns.included
 	end
 	return db.found
@@ -121,8 +121,22 @@ end
 
 -- Caches sourceTypes (set) and primarySource (the type the row shows) on a recipe so redraws and
 -- filtering read fields; both nil when no source is known.
+-- The nearest level a recipe, or an item that teaches it, has been come across at; nil if never.
+function ns.MetLevel(recipeID)
+	local met = ns.db.met
+	local level = met.recipes[recipeID]
+	for _, itemID in ipairs(ns.GetRecipeItems(recipeID) or {}) do
+		local itemLevel = met.items[itemID]
+		if itemLevel and (not level or itemLevel < level) then
+			level = itemLevel
+		end
+	end
+	return level
+end
+
 function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes, recipeInfo.primarySource = nil, nil
+	recipeInfo.met = ns.MetLevel(recipeInfo.recipeID)
 	local entries = ns.GetSources(recipeInfo)
 	if not entries then
 		return
@@ -156,14 +170,10 @@ function ns.IsSourceShown(key)
 end
 
 function ns.PassesSourceFilter(recipeInfo)
-	-- Self Found shows only recipes the player witnessed; shared sources are
-	-- already hidden in that mode.
-	if not ns.db.shareWithFriends and not recipeInfo.sourceTypes then
-		return false
-	end
 	local types = recipeInfo.sourceTypes
 	if not types then
-		return ns.IsSourceShown("unknown")
+		-- No known source: shown once come across within the chosen level, or with Unknown ticked.
+		return (recipeInfo.met ~= nil and recipeInfo.met <= ns.db.sourceLevel) or ns.IsSourceShown("unknown")
 	end
 	for sourceType in pairs(types) do
 		if ns.IsSourceShown(sourceType) then

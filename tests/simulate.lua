@@ -84,7 +84,7 @@ local beforeRecipes, beforeItems = count(before.found)
 local beforeRevision = before.exchange.revision
 local a = boot(savedFile)
 local db = a.db
-check("schema is 7", db.schema == 7)
+check("schema is 8", db.schema == 8)
 check("trainerNames dropped", db.found.trainerNames == nil and db.shared.trainerNames == nil)
 -- Fails if the upgrade keeps NPCs no source names (earlier versions saved every vendor opened), or
 -- drops one a source does name.
@@ -268,7 +268,7 @@ do
 end
 check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction }, 1) == nil)
 -- A source both received and seen firsthand is listed once
-b.db.shareWithFriends, b.db.recipeItems[99] = true, { 1000 }
+b.db.sourceLevel, b.db.recipeItems[99] = 2, { 1000 }
 b.db.found.items[1000] = { { kind = "drop", npc = 732, seen = now } }
 check("own and shared find of one source listed once", #b.GetSources({ recipeID = 99 }) == #s)
 -- A received recipe item links to the recipe its tooltip data names, once the item has loaded.
@@ -337,12 +337,45 @@ do
   a.db.sourceFilter = kept
 end
 
+-- 6c. Come across: a recipe linked in chat or looted nearby is kept with how near it arrived and
+-- nothing else. Fails if a link is missed, a non-recipe is kept, who or where is saved, a farther
+-- sighting weakens a nearer one, or a recipe shows below the level it arrived at.
+do
+  local h = boot(nil)
+  StaticPopupDialogs = {}
+  local known = C_TradeSkillUI
+  C_TradeSkillUI = { GetTradeSkillLineForRecipe = function(id) return id == 5555 and 202 or nil end }
+  load("Heard.lua", h)
+  local heard = frames[#frames]
+  local function chat(event, text) heard.script(heard, event, text, "Someone-Realm") end
+  chat("CHAT_MSG_PARTY", "look |cffffffff|Hitem:1000::::|h[Pattern: Test]|h|r and |Hitem:777::::|h[A Sword]|h")
+  chat("CHAT_MSG_CHANNEL", "WTS |Henchant:5555|h[Engineering: Gizmo]|h and |Henchant:4444|h[Not a recipe]|h")
+  chat("CHAT_MSG_CHANNEL", "again |Hitem:1000::::|h[Pattern: Test]|h")
+  local met = h.db.met
+  check("links are noticed with how near they arrived", met.items[1000] == 2 and met.recipes[5555] == 3
+    and met.items[777] == nil and met.recipes[4444] == nil)
+  local onlyLevels = true
+  for _, bucket in pairs(met) do for _, value in pairs(bucket) do onlyLevels = onlyLevels and type(value) == "number" end end
+  check("nothing about who or where is kept", onlyLevels)
+  chat("CHAT_MSG_GUILD", "mine |Henchant:5555|h[Engineering: Gizmo]|h")
+  check("a nearer sighting replaces a farther one", met.recipes[5555] == 2)
+  h.db.recipeItems[99] = { 1000 }
+  local viaItem = { recipeID = 99, name = "x" }
+  h.SummarizeSources(viaItem)
+  h.db.sourceFilter, h.db.sourceLevel = {}, 2
+  local shownAtFriends = h.PassesSourceFilter(viaItem)
+  h.db.sourceLevel = 1
+  check("a recipe come across shows at its level and not below", viaItem.met == 2 and shownAtFriends == true
+    and h.PassesSourceFilter(viaItem) == false)
+  C_TradeSkillUI = known
+end
+
 -- 7. Reload is stable
 local savedDB = a.db
 RecipeVacuumDB = savedDB; loaded = {}
 local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-check("reload keeps schema and revision", c.db.schema == 7 and c.db.exchange.revision == savedDB.exchange.revision)
+check("reload keeps schema and revision", c.db.schema == 8 and c.db.exchange.revision == savedDB.exchange.revision)
 print(FAILED and "SOME CHECKS FAILED" or "ALL CHECKS PASSED")
 os.exit(FAILED and 1 or 0)

@@ -23,6 +23,7 @@ Finds.lua
 Sharing.lua
 Settings.lua
 Record.lua
+Heard.lua
 Filter.lua
 Unlearned.lua
 RecipeList.lua

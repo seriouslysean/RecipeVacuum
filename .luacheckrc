@@ -4,7 +4,8 @@
 -- the addon sets are its saved variables and slash commands, listed here.
 std = "lua51"
 exclude_files = { "Libs/AceComm-3.0", "Libs/CallbackHandler-1.0", "Libs/LibStub" }
-globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER_JIGBOLTGRIPTOOLKIT" }
+globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER_JIGBOLTGRIPTOOLKIT",
+	"StaticPopupDialogs" } -- one entry in Blizzard's dialog table (Heard.lua), the standard way to add a dialog
 max_line_length = false
 ignore = { "113", "21./self", "212" }
 
