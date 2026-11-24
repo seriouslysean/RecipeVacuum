@@ -16,11 +16,13 @@ end
 ns.sourceOrder = { "trainer", "vendor", "quest", "drop" }
 
 -- Labels reuse Blizzard's localized source names where they exist.
+-- Art (owner's pick, 2026-11-24): the book and coin stack are Blizzard's Class and Auctioneer atlases,
+-- the dice its loot roll Need icon (LootHistory.lua), the quest mark its gossip icon. size is the drawn height.
 ns.sourceTypes = {
-	trainer = { label = "Trainer",                       texture = "Interface\\GossipFrame\\GossipGossipIcon", size = 14 },
-	vendor  = { label = BATTLE_PET_SOURCE_3 or "Vendor", atlas = "bags-junkcoin", size = 20 },
+	trainer = { label = "Trainer",                       atlas = "Class", size = 14 },
+	vendor  = { label = BATTLE_PET_SOURCE_3 or "Vendor", atlas = "Auctioneer", size = 14 },
 	quest   = { label = BATTLE_PET_SOURCE_2 or "Quest",  texture = "Interface\\GossipFrame\\AvailableQuestIcon", size = 16 },
-	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   texture = "Interface\\GossipFrame\\VendorGossipIcon", size = 16 },
+	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   atlas = "lootroll-icon-need", size = 14 },
 }
 
 -- Lookups read the data layers (docs/data.md). Self Found shows only the player's own finds.
@@ -310,8 +312,8 @@ local function SetArt(texture, info)
 end
 
 -- Draws a mark on an icon button that has a centered .Texture.
-function ns.ApplyMark(icon, mark, previewArt)
-	local info = previewArt or ns.sourceTypes[mark] or ns.marks[mark]
+function ns.ApplyMark(icon, mark)
+	local info = ns.sourceTypes[mark] or ns.marks[mark]
 	-- size is the height; atlas art keeps its own shape (the coin and the padlock are not square).
 	if not info.aspect then
 		local atlas = info.atlas and C_Texture.GetAtlasInfo(info.atlas)

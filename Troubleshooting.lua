@@ -668,35 +668,11 @@ table.insert(troubleshooting, { "locks", "Preview locks as if a specialization w
 	ns.RefreshList()
 	ns.Log("Lock preview " .. (ns.previewLocks and "on" or "off"))
 end, quiet = true })
--- Mark comparison; remove with the lock preview. Every unlearned row shows every mark, and each row
--- down a category uses the next set below, so one screenshot holds them all. A set changes only the
--- marks it lists.
-local BOOK = { atlas = "Class", size = 14 }              -- minimap class trainer
-local LORE_BOOK = { atlas = "campaign-questlog-lorebook", size = 14 }
-local COIN_STACK = { atlas = "Auctioneer", size = 14 }   -- minimap auctioneer
-local DICE = { atlas = "lootroll-icon-need", size = 14 } -- loot roll Need
-local MARK_SETS = {
-	{ name = "shipped marks" },
-	{ name = "blue book, coin stack, dice", trainer = BOOK, vendor = COIN_STACK, drop = DICE },
-	{ name = "bubble, coin stack, dice", vendor = COIN_STACK, drop = DICE },
-	{ name = "lore book, coin stack, dice", trainer = LORE_BOOK, vendor = COIN_STACK, drop = DICE },
-	{ name = "bubble, current coin, dice", drop = DICE },
-}
-table.insert(troubleshooting, { "marks", "Show the candidate mark sets, one per row", function()
+-- Size check; remove with the lock preview once the marks' sizes are settled.
+table.insert(troubleshooting, { "marks", "Show every mark on every unlearned row", function()
 	ns.previewMarks = not ns.previewMarks
-	if not ns.previewMarks then
-		ns.PreviewArt = nil
-		ns.RefreshRows()
-		ns.Log("Mark preview off")
-		return
-	end
-	for index, set in ipairs(MARK_SETS) do
-		ns.Log(("Row %d: %s"):format(index, set.name))
-	end
-	ns.PreviewArt = function(data, mark)
-		return MARK_SETS[((data.previewIndex or 1) - 1) % #MARK_SETS + 1][mark]
-	end
 	ns.RefreshRows()
+	ns.Log("Mark preview " .. (ns.previewMarks and "on" or "off"))
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })

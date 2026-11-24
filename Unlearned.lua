@@ -159,9 +159,6 @@ local function GetUnlearnedCategories(professionInfo)
 		local divisor = #category.recipes + 1
 		for index, row in ipairs(category.recipes) do
 			row.order = index / divisor
-			--@debug@
-			row.previewIndex = index -- /recipevacuum marks gives each row down the list the next set of art
-			--@end-debug@
 		end
 	end
 	phases.grouping = debugprofilestop() - phaseStart

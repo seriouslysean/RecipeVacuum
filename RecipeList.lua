@@ -94,11 +94,7 @@ local function UpdateRow(row, node)
 		if mark then
 			icon:ClearAllPoints()
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
-			local previewArt
-			--@debug@
-			previewArt = ns.PreviewArt and ns.PreviewArt(data, mark)
-			--@end-debug@
-			ns.ApplyMark(icon, mark, previewArt)
+			ns.ApplyMark(icon, mark)
 			icon:Show()
 			anchor, anchorPoint = icon, "LEFT"
 		else
