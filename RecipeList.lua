@@ -36,6 +36,12 @@ end
 -- recipe's name is our title.
 local function RowOnEnter(row)
 	local recipeInfo = State(row).recipe
+	--@debug@
+	-- Counts for the hover report in the saved file: how often a row is entered with and without a recipe.
+	ns.db.devHover = ns.db.devHover or {}
+	local key = recipeInfo and "entered" or "enteredWithoutRecipe"
+	ns.db.devHover[key] = (ns.db.devHover[key] or 0) + 1
+	--@end-debug@
 	if recipeInfo then
 		SetRowStrength(row, true)
 		GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
@@ -106,7 +112,7 @@ local function UpdateRow(row, node)
 			icon:ClearAllPoints()
 			icon:SetPoint("RIGHT", anchor, anchorPoint, index == 1 and -ICON_GAP or -ns.MARK_SPACING, 0)
 			ns.ApplyMark(icon, mark)
-			ns.SetMarkStrength(icon, row:IsMouseOver())
+			ns.SetMarkStrength(icon, false)
 			--@debug@
 			if ns.PreviewLook then
 				ns.PreviewLook(icon.Texture, data, mark)
@@ -126,6 +132,16 @@ local function UpdateRow(row, node)
 	local iconsWidth = count * (SLOT_SIZE + ns.MARK_SPACING) + ICON_GAP
 	local maxWidth = row:GetWidth() - row.SkillUps:GetWidth() - lockWidth - countWidth - iconsWidth - 2 * ICON_GAP
 	row.Label:SetWidth(math.max(1, math.min(State(row).labelWidth, maxWidth)))
+
+	-- The list is redrawn often, and a redraw under a still pointer sends no new OnEnter: the row the
+	-- pointer is on gets its hover back here.
+	if row:IsMouseMotionFocus() then
+		--@debug@
+		ns.db.devHover = ns.db.devHover or {}
+		ns.db.devHover.restoredOnRedraw = (ns.db.devHover.restoredOnRedraw or 0) + 1
+		--@end-debug@
+		RowOnEnter(row)
+	end
 end
 
 --@debug@
