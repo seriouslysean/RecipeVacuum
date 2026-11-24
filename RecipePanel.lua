@@ -180,9 +180,10 @@ local function CreateMapControls(page)
 	mapButton:SetWidth(math.max(mapButton:GetWidth(), page.CreateButton:GetWidth()))
 	mapButton:SetScript("OnClick", OnMapClick)
 
-	-- Several places: the arrow dropdown of the window's Filter button, at its own size.
+	-- Several places: the arrow dropdown of the window's Filter button. It keeps the template's own
+	-- size, which fits its text, so one anchor places it; stretching it left the text off center.
 	mapMenu = CreateFrame("DropdownButton", nil, page, "WowStyle1FilterDropdownTemplate")
-	mapMenu:SetAllPoints(mapButton) -- the same place and size as Show Map, which it stands in for
+	mapMenu:SetPoint("RIGHT", mapButton, "RIGHT")
 	mapMenu:SetText(SHOW_MAP or "Show Map")
 	mapMenu:SetupMenu(MapMenu)
 end
