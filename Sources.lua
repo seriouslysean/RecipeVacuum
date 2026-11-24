@@ -395,7 +395,8 @@ end
 local MARK_TEXT_HEIGHT = 14
 -- Lines under a marked heading start where the heading's text does: past the mark and the space after
 -- it (about 4 in the tooltip font), indented with Blizzard's own leftOffset.
-local MARK_TEXT_INDENT = MARK_TEXT_HEIGHT + 4
+local MARK_TEXT_GAP = 4
+local MARK_TEXT_INDENT = MARK_TEXT_HEIGHT + MARK_TEXT_GAP
 
 local function MarkText(mark, text)
 	local info = ns.sourceTypes[mark] or ns.marks[mark]

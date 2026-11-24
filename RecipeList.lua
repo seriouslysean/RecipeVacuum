@@ -4,6 +4,7 @@ local _, ns = ...
 -- in ns.sourceOrder, or the search glass when none is known, with Blizzard's lock to their left when
 -- the recipe needs a specialization the character lacks.
 local ICON_GAP = 4
+local LABEL_PADDING = 2 * ICON_GAP -- clear space kept between the label and what follows it
 -- Marks are centered in equal-width slots so they line up down the list.
 local SLOT_SIZE = ns.MARK_SLOT_SIZE
 
@@ -118,7 +119,7 @@ local function UpdateRow(row, node)
 	local countWidth = row.Count:IsShown() and row.Count:GetStringWidth() or 0
 	local lockWidth = locked and row.LockedIcon:GetWidth() or 0
 	local iconsWidth = count * (SLOT_SIZE + ns.MARK_SPACING) + ICON_GAP
-	local maxWidth = row:GetWidth() - row.SkillUps:GetWidth() - lockWidth - countWidth - iconsWidth - 2 * ICON_GAP
+	local maxWidth = row:GetWidth() - row.SkillUps:GetWidth() - lockWidth - countWidth - iconsWidth - LABEL_PADDING
 	row.Label:SetWidth(math.max(1, math.min(State(row).labelWidth, maxWidth)))
 
 	-- The list is redrawn often, and a redraw under a still pointer sends no new OnEnter: the row the

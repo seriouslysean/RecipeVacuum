@@ -6,8 +6,11 @@ local _, ns = ...
 
 local revisions = {} -- session only: { { rev, observation, ref = "recipe" | "item", id }, ... } in rev order
 
+-- A collection is named by its creation time and a random number below this.
+local COLLECTION_ID_RANGE = 1000000000
+
 local function NewCollectionID()
-	return ("%d-%d"):format(GetServerTime(), math.random(1000000000))
+	return ("%d-%d"):format(GetServerTime(), math.random(COLLECTION_ID_RANGE))
 end
 
 function ns.MarkFind(observation, ref, id)
@@ -96,7 +99,7 @@ end
 -- Validate every received row before saving. Received data is parsed, never executed (another addon 2021 ran it
 -- through loadstring).
 local function PositiveID(value)
-	return type(value) == "number" and value > 0 and value < 2^32 and value == math.floor(value)
+	return type(value) == "number" and value > 0 and value < ns.MAX_WIRE_NUMBER and value == math.floor(value)
 end
 
 local function Coordinate(value)
@@ -155,7 +158,7 @@ local function ValidRow(row)
 	if row.s ~= nil and not (PositiveID(row.s) and row.s <= GetServerTime() + CLOCK_SKEW) then return false end
 	for _, field in ipairs({ "b", "sk", "c", "p", "sp" }) do
 		local value = row[field]
-		if value ~= nil and not (type(value) == "number" and value >= 0 and value < 2^32) then return false end
+		if value ~= nil and not (type(value) == "number" and value >= 0 and value < ns.MAX_WIRE_NUMBER) then return false end
 	end
 	if row.sp ~= nil and not PositiveID(row.sp) then return false end
 	if row.l ~= nil and type(row.l) ~= "boolean" then return false end

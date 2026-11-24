@@ -12,6 +12,8 @@ local GROUP_LEARNED = 2
 -- share MISCELLANEOUS, last. The ID is ours: the game's category IDs are positive, and -1 is its
 -- Favorites header (favoritesCategoryID, Blizzard_Professions.lua).
 local MISCELLANEOUS_CATEGORY_ID = -2
+-- Recipe rows in a category are ordered by fractions between 0 and 1; its padding rows sit outside.
+local ORDER_BEFORE_ROWS, ORDER_AFTER_ROWS = -1, 1
 
 -- Whether the open view is one where the player's own unlearned recipes belong.
 function ns.CanShowUnlearned()
@@ -274,13 +276,13 @@ local function AddUnlearnedRecipes(page)
 		if newCategory then
 			-- No learned recipes here: gray header, sorted among Blizzard's categories.
 			categoryNode = root:Insert({ categoryInfo = category.info, group = GROUP_LEARNED })
-			categoryNode:Insert({ topPadding = true, order = -1 })
+			categoryNode:Insert({ topPadding = true, order = ORDER_BEFORE_ROWS })
 		end
 		for _, elementData in ipairs(category.recipes) do
 			categoryNode:Insert(elementData)
 		end
 		if newCategory then
-			categoryNode:Insert({ bottomPadding = true, order = 1 })
+			categoryNode:Insert({ bottomPadding = true, order = ORDER_AFTER_ROWS })
 			if collapses and collapses[category.info.categoryID] then
 				categoryNode:SetCollapsed(true)
 			end

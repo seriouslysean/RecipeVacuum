@@ -8,6 +8,9 @@ local SCHEMA = 8
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo()))) -- the game build, as saved on finds and facts
 
+-- IDs, revisions and times on the wire are below this (unsigned 32 bit); larger numbers are rejected.
+ns.MAX_WIRE_NUMBER = 2^32
+
 ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 ns.levelNames = { "Self Found", "Friends", "Public" }
 

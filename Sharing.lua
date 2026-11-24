@@ -12,6 +12,10 @@ local EXPANDED_LIMIT = 65536 -- decompressed bytes accepted before CBOR decoding
 local MAX_ROWS = 64
 local REQUEST_TIMEOUT = 30
 local REQUEST_RETRIES = 2  -- re-asks after a timeout before giving up on a peer
+local MAX_COLLECTION_ID_LENGTH = 32
+-- Message kinds, the first letter of every message: a probe (hello), its answer, an offer of new
+-- finds, a request (get) and a reply (data). The letters are the wire format; do not change them.
+local KIND = { HELLO = "H", ANSWER = "A", OFFER = "O", GET = "G", DATA = "D" }
 
 local enabled, inWorld, deferred
 local friends, waiting, replied = {}, {}, {}
@@ -111,7 +115,7 @@ function ns.ScheduleFindOffer()
 	offerQueued = true
 	C_Timer.After(0, function()
 		offerQueued = nil
-		if Ready() then Broadcast("O") end
+		if Ready() then Broadcast(KIND.OFFER) end
 	end)
 end
 
@@ -140,7 +144,7 @@ local function Reply(after)
 		local encoded = Encode(rows)
 		if not encoded then return nil end
 		if #encoded <= SEND_LIMIT or limit <= 1 then
-			local message = ("D %s %d %d %s"):format(ns.db.exchange.id, after, through, encoded)
+			local message = ("%s %s %d %d %s"):format(KIND.DATA, ns.db.exchange.id, after, through, encoded)
 			cachedReplies[after] = message
 			return message
 		end
@@ -165,7 +169,7 @@ end
 
 local function Ask(peer)
 	if peer.timer then peer.timer:Cancel() end
-	SendData(("G %s %d"):format(peer.id, peer.after), peer.sender)
+	SendData(("%s %s %d"):format(KIND.GET, peer.id, peer.after), peer.sender)
 	peer.timer = C_Timer.NewTimer(REQUEST_TIMEOUT, function()
 		if active ~= peer then return end
 		if peer.retries > 0 and Ready() and Trusted(peer.sender) then
@@ -222,7 +226,7 @@ local function ScheduleChannelReply(channel)
 	replyTimers[channel] = C_Timer.NewTimer(REPLY_DELAY, function()
 		replyTimers[channel] = nil
 		if Ready() then
-			Send(Offer("A"), channel)
+			Send(Offer(KIND.ANSWER), channel)
 		end
 	end)
 end
@@ -230,7 +234,7 @@ end
 local function ParseHeader(message)
 	local kind, id, number, rest = message:match("^(%u) (%d+%-%d+) (%d+)(.*)$")
 	local revision = tonumber(number)
-	if not revision or revision > 2^32 or #id > 32 then return nil end
+	if not revision or revision >= ns.MAX_WIRE_NUMBER or #id > MAX_COLLECTION_ID_LENGTH then return nil end
 	return kind, id, revision, rest
 end
 
@@ -241,20 +245,20 @@ local function OnProbe(_, message, channel, sender)
 	elseif not discoveryChannels[channel] then return end
 	local kind, id, revision, rest = ParseHeader(message)
 	if not kind or rest ~= "" or id == ns.db.exchange.id then return end
-	if kind == "H" then
+	if kind == KIND.HELLO then
 		if channel == "WHISPER" then
 			-- Friends outside guild and group: answer the prober directly.
 			local now = GetTime()
 			if not replied[sender] or now - replied[sender] >= REPLY_DELAY then
 				replied[sender] = now
-				Send(Offer("A"), "WHISPER", sender)
+				Send(Offer(KIND.ANSWER), "WHISPER", sender)
 			end
 		else
 			ScheduleChannelReply(channel)
 		end
-	elseif kind == "A" then
+	elseif kind == KIND.ANSWER then
 		replied[sender] = GetTime()
-	elseif kind ~= "O" then
+	elseif kind ~= KIND.OFFER then
 		return
 	end
 	QueuePeer(sender, id, revision)
@@ -265,17 +269,17 @@ local function OnData(_, message, channel, sender)
 	if not Trusted(sender) then return end
 	local kind, id, after, rest = ParseHeader(message)
 	local exchange = ns.db.exchange
-	if kind == "G" then
+	if kind == KIND.GET then
 		if rest ~= "" or id ~= exchange.id or after >= exchange.revision then return end
 		local reply = Reply(after)
 		if reply then SendData(reply, sender) end
-	elseif kind == "D" then
+	elseif kind == KIND.DATA then
 		-- Accept only the reply to our own request.
 		local peer = active
 		if not peer or peer.sender ~= sender or peer.id ~= id or peer.after ~= after then return end
 		local through, encoded = rest:match("^ (%d+) (%S+)$")
 		through = tonumber(through)
-		if not through or through <= after or through >= 2^32 then return end
+		if not through or through <= after or through >= ns.MAX_WIRE_NUMBER then return end
 		local ok, rows = pcall(Decode, encoded)
 		local changed = ok and rows and ns.MergeFinds(rows, MAX_ROWS)
 		if changed == nil or not (ok and rows) then
@@ -312,7 +316,7 @@ local function RefreshChannels(force)
 	else
 		rosterRequested = nil
 	end
-	local probe = Offer("H")
+	local probe = Offer(KIND.HELLO)
 	if guildReady and (not guild or force) then Send(probe, "GUILD") end
 	if group and (group ~= home or force) then Send(probe, group) end
 	if instanced and (not instance or force) then Send(probe, "INSTANCE_CHAT") end
@@ -351,7 +355,7 @@ local function RefreshFriends(force)
 	for name in pairs(unreachable) do
 		if not online[name] then unreachable[name], whispered[name] = nil, nil end
 	end
-	local probe = Offer("H")
+	local probe = Offer(KIND.HELLO)
 	local previous = friends
 	friends = online
 	for name in pairs(online) do
@@ -480,7 +484,7 @@ function ns.ShareSelfTest(report)
 		local kind, id, replyAfter, rest = ParseHeader(message)
 		local through, encoded = (rest or ""):match("^ (%d+) (%S+)$")
 		through = tonumber(through)
-		if kind ~= "D" or id ~= exchange.id or replyAfter ~= after or not through or through <= after then
+		if kind ~= KIND.DATA or id ~= exchange.id or replyAfter ~= after or not through or through <= after then
 			return report("FAIL: the reply after revision " .. after .. " has a header the receiver would reject")
 		end
 		if #encoded > SEND_LIMIT then
