@@ -662,6 +662,12 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window too
 		Say(voice.perfNoScan)
 	end
 end })
+-- Lock preview for a character without a specialization; remove once the lock's look is settled.
+table.insert(troubleshooting, { "locks", "Preview locks as if a specialization were picked", function()
+	ns.previewLocks = not ns.previewLocks
+	ns.RefreshList()
+	ns.Log("Lock preview " .. (ns.previewLocks and "on" or "off"))
+end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
 --@end-debug@

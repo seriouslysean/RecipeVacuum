@@ -531,7 +531,11 @@ function ns.GetRecipeLock(recipeID)
 	if state == nil then
 		return nil
 	end
-	return state ~= MET and state and specialized[Profession(recipeID)] and state or false
+	local picked = specialized[Profession(recipeID)]
+	--@debug@
+	picked = picked or ns.previewLocks -- /recipevacuum locks, to see locks on a character without a specialization
+	--@end-debug@
+	return state ~= MET and state and picked and state or false
 end
 
 -- Choosing or dropping a specialization changes which requirements are met.
