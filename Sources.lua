@@ -542,9 +542,17 @@ end
 local MET = true
 local specialized = {}
 
+-- A recipe's profession never changes, and row redraws ask for it often, so it is looked up once.
+local professions = {}
+
 local function Profession(recipeID)
-	local line, _, parent = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID)
-	return parent or line
+	local profession = professions[recipeID]
+	if profession == nil then
+		local line, _, parent = C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID)
+		profession = parent or line or false
+		professions[recipeID] = profession
+	end
+	return profession
 end
 
 -- Reads the specialization requirement of what a recipe makes; nil while that item's data loads.
