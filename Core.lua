@@ -3,21 +3,20 @@ local addonName, ns = ...
 -- Saved data layout and migrations: docs/data.md.
 local SCHEMA = 8
 
--- How near to the player a piece of knowledge arrived, and how far the player chose to listen
--- (docs/data.md, "Levels"). Each level includes the ones before it.
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
-ns.BUILD = tonumber((select(2, GetBuildInfo()))) -- the game build, as saved on finds and facts
+ns.BUILD = tonumber((select(2, GetBuildInfo())))
 
--- IDs, revisions and times on the wire are below this (unsigned 32 bit); larger numbers are rejected.
+-- Wire limit: IDs, revisions and times must be below this (unsigned 32 bit).
 ns.MAX_WIRE_NUMBER = 2^32
 
+-- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 ns.levelNames = { "Self Found", "Friends", "Public" }
 -- Player-facing wording for each level (docs/voice.md, "Plain text"): the options cards and the help tip.
 ns.levelText = {
-	"Narrow nozzle. Keeps only what you see for yourself.",
-	"Wide nozzle. Also keeps what your party, guild and friends find.",
-	"Full suction. Also keeps recipes people link in chat.",
+	"Short range. Tracks only what you see for yourself.",
+	"Medium range. Also tracks what your party, guild and friends find.",
+	"Long range. Also tracks recipes people link in chat.",
 }
 ns.levelHeard = { "only you", "you and your friends", "everyone nearby" }
 
@@ -28,23 +27,20 @@ end
 -- Option defaults live in Settings.lua.
 local defaults = {
 	showUnlearned = true, -- Blizzard default; Forever turns it off
-	sourceLevel = ns.LEVEL.FRIENDS, -- how far the player listens; the options page and first-run question set it
+	sourceLevel = ns.LEVEL.FRIENDS,
 	met = { recipes = {}, items = {} }, -- come across without a source: [recipeID or recipe itemID] = ns.LEVEL
 	sourceFilter = {},     -- [sourceType or "unknown"] = true or false once set in the Sources filter (ns.IsSourceShown)
-	showUnavailable = true, -- recipes locked by another specialization stay listed
+	showUnavailable = true,
 	npcs = {},
 	objects = {},
-	-- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:
+-- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:
 	itemRecipe = {},       -- [recipe itemID] = recipeID
 	recipeItems = {},      -- [recipeID] = { recipe itemIDs }
 	pendingItems = {},     -- [recipe itemID] = {} until its data loads and names the recipe it teaches
-	-- recipeFacts: per-build facts read from recipe tooltips (Sources.lua), rebuilt on a new game build
+-- recipeFacts: per-build facts from recipe tooltips (Sources.lua), rebuilt on a new game build.
 }
 
--- The addon's chat lines are a log for the player: the addon's name, a colon, the text, all in the
--- color the game gives an NPC's speech (ChatTypeInfo.MONSTER_SAY), since the Vacuum is a machine
--- talking, as the game's gnomish machines do. One color throughout, as an NPC's line is. Only the
--- color is shared: no "says:", and no brackets, which Forever uses for player names.
+-- Chat lines use the NPC speech color (ChatTypeInfo.MONSTER_SAY), with no "says:" and no brackets, which Forever uses for player names.
 function ns.Log(text)
 	local color = ChatTypeInfo.MONSTER_SAY
 	DEFAULT_CHAT_FRAME:AddMessage(("%s: %s"):format(ns.title, text),
@@ -57,8 +53,7 @@ function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 		npc = { positions = {} }
 		npcs[npcID] = npc
 	end
-	-- A peer only fills what is missing: a guildmate's client language never replaces our name for an
-	-- NPC, and their report never moves a position the player may have seen for themselves.
+-- A peer only fills gaps: it never replaces our NPC name or a position the player saw.
 	if name and not (fromPeer and npc.name) then npc.name = name end
 	if mapID and x and y then
 		local position = npc.positions[mapID]
@@ -68,18 +63,16 @@ function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 	end
 end
 
--- The side an NPC belongs to, so the map never points a player at the other faction's trainer or
--- vendor (owner: sources stay listed, "no map pins cross faction"). Unknown stays nil.
+-- Keeps the map from pointing at the other faction's trainer or vendor; unknown stays nil.
 function ns.NoteNPCFaction(npcID, faction)
 	local npc = ns.db.npcs[npcID]
 	if npc and faction then npc.faction = faction end
 end
 
--- Ordered migrations, one per schema number, as other addons OnInitialize do.
--- Kept forever so old accounts still upgrade.
+-- One migration per schema number, in order (as other addons do); never remove one.
 local migrations = {}
 
--- Schema 1 keyed vendors and trainers by lowercased recipe name.
+-- Schema 2 reads schema 1 vendors and trainers keyed by lowercased recipe name.
 migrations[2] = function(db)
 	local sources, pending = {}, {}
 	for name, entries in pairs(db.sources or {}) do
@@ -99,8 +92,7 @@ migrations[2] = function(db)
 	db.sources, db.pendingItems = sources, pending
 end
 
--- Schema 3 splits self-found and shared layers and keeps each NPC once. Renumbered revisions get a new
--- collection ID so peers resync from zero.
+-- Schema 3 splits self-found and shared layers and keeps each NPC once; renumbered revisions get a new collection ID so peers resync.
 migrations[3] = function(db)
 	local found, shared, npcs = ns.NewLayer(), ns.NewLayer(), db.npcs or {}
 	for key, entries in pairs(db.sources or {}) do
@@ -120,7 +112,6 @@ migrations[3] = function(db)
 			elseif type(key) == "string" and key:match("^item:%d+$") then
 				bucket, id = layer.items, tonumber(key:sub(6))
 			end
-			-- Schema 4 drops these name keys.
 			if bucket and entry.type and entry.npcID then
 				bucket[id] = bucket[id] or {}
 				table.insert(bucket[id], observation)
@@ -131,16 +122,14 @@ migrations[3] = function(db)
 	db.sources, db.exchange, db.probe = nil, nil, nil
 end
 
--- Schema 4 drops schema 1 trainer finds keyed by name (rank lines, names both factions share).
--- Revisiting the trainer records them by recipe ID.
+-- Schema 4 drops trainer finds keyed by name; revisiting the trainer records them by recipe ID.
 migrations[4] = function(db)
 	for _, layer in ipairs({ db.found, db.shared }) do
 		if layer then layer.trainerNames = nil end
 	end
 end
 
--- Schema 5 keeps only the NPCs and objects a saved source names. Earlier versions saved every vendor
--- opened and every quest giver spoken to.
+-- Schema 5 keeps only the NPCs and objects a saved source names.
 migrations[5] = function(db)
 	local used = { npcs = {}, objects = {} }
 	for _, layer in ipairs({ db.found, db.shared }) do
@@ -161,8 +150,7 @@ migrations[5] = function(db)
 	end
 end
 
--- Schema 6 links recipe items to recipes by the ID in the item's tooltip data. Earlier links came from
--- matching names, which paired a few items wrongly, so every link is made again.
+-- Schema 6 links recipe items by the ID in the item's tooltip data, so every link is made again.
 migrations[6] = function(db)
 	for itemID in pairs(db.itemRecipe or {}) do
 		db.pendingItems[itemID] = {}
@@ -173,7 +161,7 @@ migrations[6] = function(db)
 	db.itemRecipe, db.recipeItems = {}, {}
 end
 
--- Schema 7 drops the Full Color Source Icons option: marks are always in color, brighter under the pointer.
+-- Schema 7 drops the Full Color Source Icons option.
 migrations[7] = function(db)
 	db.fullColorIcons = nil
 end
@@ -188,7 +176,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	local db = RecipeVacuumDB or {}
 	local version = db.schema or (db.sources and 1) or SCHEMA
 	if version > SCHEMA then
-		-- Newer save: leave it alone and run on an empty session copy.
+-- Newer save: leave it alone and run on an empty session copy.
 		db = {}
 		version = SCHEMA
 		ns.Log("saved data is from a newer version; it was left unchanged.")
@@ -205,8 +193,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 			db[key] = value
 		end
 	end
-	-- Saved links only cover items the seed does not have. A newer seed can take one over, so each
-	-- load drops the saved links and waiting items it now covers.
+-- A newer seed can take over saved links and waiting items, so each load drops the ones it covers.
 	local seeded = ns.seed and ns.seed.taught or {}
 	for itemID, recipeID in pairs(db.itemRecipe) do
 		if seeded[itemID] then

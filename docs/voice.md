@@ -16,7 +16,7 @@ Settings labels and tooltips are not in this voice: they follow Blizzard's wordi
 
 ## Plain text
 
-The help tip and the level cards speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the cards name the nozzle), never a second in the same text. The wording lives in `Core.lua` (`ns.levelText`, `ns.levelHeard`) and the tip in `Heard.lua`.
+The help tip and the level cards speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the cards give the scanner's range), never a second in the same text. The verb for what the addon does with a recipe is "tracks". The wording lives in `Core.lua` (`ns.levelText`, `ns.levelHeard`) and the tip in `Heard.lua`.
 
 ## Where the voice comes from
 
