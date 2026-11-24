@@ -6,7 +6,7 @@ Client: WoW Forever 1.60.1 (build 71037, Interface 16001), the modern client wit
 
 ## Rules
 
-The standards shared by every toolkit addon are in the library repository: [docs/standards.md](https://github.com/seriouslysean/JigBoltgripToolkit/blob/main/docs/standards.md). The rules below are the short form.
+Every toolkit addon meets one checklist before a release, the [quality bar](https://github.com/seriouslysean/JigBoltgripToolkit/blob/main/docs/quality-bar.md), and follows the shared [standards](https://github.com/seriouslysean/JigBoltgripToolkit/blob/main/docs/standards.md); both are in the library repository. The rules below are the short form.
 
 - Build on Blizzard's frames and look: its templates, atlases, fonts, colors, global strings, enums and APIs. Copy a Blizzard value only when no API exposes it, and mark the copy with the file it came from.
 - Use patterns established addons use, and say which one in a short comment. Nothing custom without a real need.
