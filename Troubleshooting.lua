@@ -672,17 +672,10 @@ end, quiet = true })
 -- row; a set changes only the marks it lists. Art the client lacks is named in chat.
 local MARK_SETS = {
 	{ name = "current marks" },
-	{ name = "vanilla gossip icons: trainer book, vendor bag, drop skull",
-		trainer = { texture = "Interface\\GossipFrame\\TrainerGossipIcon" },
-		vendor = { texture = "Interface\\GossipFrame\\VendorGossipIcon" },
-		drop = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull" } },
-	{ name = "gold coin, crossed swords for drop",
-		vendor = { texture = "Interface\\MoneyFrame\\UI-GoldIcon", size = 14 },
-		drop = { texture = "Interface\\GossipFrame\\BattleMasterGossipIcon" } },
-	{ name = "padlock: quest sharing", locked = { atlas = "QuestSharing-Padlock" } },
-	{ name = "padlock: group finder", locked = { atlas = "groupfinder-icon-lock" } },
-	{ name = "padlock: dungeon finder", locked = { atlas = "LFG-lock" } },
-	{ name = "padlock: pet battle", locked = { texture = "Interface\\PetBattles\\PetBattle-LockIcon" } },
+	{ name = "drop: skull, smaller", drop = { texture = "Interface\\TargetingFrame\\UI-TargetingFrame-Skull", size = 13 } },
+	{ name = "drop: loot roll dice", drop = { texture = "Interface\\Buttons\\UI-GroupLoot-Dice-Up", size = 16 } },
+	{ name = "drop: treasure chest (minimap loot)", drop = { atlas = "VignetteLoot", size = 16 } },
+	{ name = "drop: reward chest (profession window)", drop = { atlas = "ui_icon_chest_npcreward", size = 16 } },
 }
 local markSet, shippedMarks = 0, nil
 table.insert(troubleshooting, { "marks", "Show the next set of mark art on every unlearned row", function()
