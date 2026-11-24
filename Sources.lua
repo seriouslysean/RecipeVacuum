@@ -256,9 +256,9 @@ ns.SOURCE_LABEL = SOURCE or "Source:"
 -- eye, since the Gossip files draw their art smaller than the atlases.
 ns.marks = {
 	unknown = { atlas = "common-search-magnifyingglass", size = 11 },
-	-- Blizzard's own row lock, copied from LockedIcon in Blizzard_ProfessionsRecipeList.xml (file and
-	-- size). Drawn in full, as Blizzard draws it.
-	locked = { texture = "Interface\\LFGFrame\\UI-LFG-ICON-LOCK", size = 16, plain = true },
+	-- Blizzard's padlock for a locked reagent slot (LockedIcon in
+	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml), sized to sit with the source marks.
+	locked = { atlas = "AdventureMapIcon-Lock", size = 12 },
 }
 
 function ns.GetMarkSize(mark)
@@ -300,7 +300,7 @@ function ns.ApplyMark(icon, mark)
 		ns.SetSourceTexture(icon.Texture, mark)
 		icon.markInfo = info
 	end
-	local dimmed = not ns.db.fullColorIcons and not (ns.marks[mark] and ns.marks[mark].plain)
+	local dimmed = not ns.db.fullColorIcons
 	icon.Texture:SetDesaturation(dimmed and MARK_DESATURATION or 0)
 	icon.Texture:SetAlpha(dimmed and MARK_ALPHA or 1)
 end
@@ -496,18 +496,6 @@ function ns.GetRecipeLock(recipeID)
 			if IsUnmet(line.leftColor) then
 				lock = line.leftText
 			end
-			--@debug@
-			-- Which fields this line carries, to learn whether it names the specialization by ID.
-			local fields = {}
-			for key, value in pairs(line) do
-				if type(value) ~= "table" then
-					fields[#fields + 1] = key .. "=" .. tostring(value)
-				end
-			end
-			table.sort(fields)
-			ns.db.devSpecLines = ns.db.devSpecLines or {}
-			ns.db.devSpecLines[recipeID] = ("item %d | %s"):format(itemID, table.concat(fields, " | "))
-			--@end-debug@
 		end
 	end
 	facts.spec[recipeID], recipeLocks[recipeID] = spec or false, lock

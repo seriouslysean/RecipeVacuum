@@ -662,26 +662,6 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window too
 		Say(voice.perfNoScan)
 	end
 end })
--- Padlock comparison; remove once the owner has chosen. Each run puts the next candidate on the
--- locked rows: Blizzard's recipe row lock, its profession specialization lock, its reagent slot lock.
-local LOCK_ART = {
-	{ name = "recipe row lock", texture = "Interface\\LFGFrame\\UI-LFG-ICON-LOCK" },
-	{ name = "specialization lock", atlas = "Professions_Specialization_Lock" },
-	{ name = "reagent slot lock", atlas = "AdventureMapIcon-Lock" },
-}
-local lockArt = 1
-table.insert(troubleshooting, { "locks", "Show the next padlock candidate on locked rows", function()
-	lockArt = lockArt % #LOCK_ART + 1
-	local art = LOCK_ART[lockArt]
-	local exists = not art.atlas or C_Texture.GetAtlasInfo(art.atlas) ~= nil
-	ns.marks.locked = { texture = art.texture, atlas = exists and art.atlas or nil, size = ns.marks.locked.size, plain = true }
-	if not exists then
-		ns.marks.locked.texture = LOCK_ART[1].texture
-	end
-	ns.RefreshRows()
-	ns.Log(("Padlock %d of %d: %s%s"):format(lockArt, #LOCK_ART, art.name,
-		exists and "" or " (this client lacks the art; showing the recipe row lock)"))
-end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
 --@end-debug@

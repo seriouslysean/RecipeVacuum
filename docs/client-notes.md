@@ -22,6 +22,7 @@ What WoW Forever's client does, where the addon depends on it. Measured in game 
 
 - The other faction's version of a recipe is marked only in the recipe's tooltip data: a `UsageRequirement` line of the `Faction` type.
 - A specialization ("Requires Goblin Engineer") is a requirement of the item the recipe makes, not of the recipe. The recipe's tooltip shows it only once that item has loaded.
+- That requirement line carries no ID for the specialization. Its fields on build 71037 (item 18984, Dimensional Ripper - Everlook): `leftText`, `requirementType` (Skill), `type` (UsageRequirement), `usable` (`false` when unmet).
 - A skill requirement with a rank ("Requires Engineering (300)", `ITEM_MIN_SKILL`) has a number in it; one without ("Requires Goblin Engineer", `ITEM_REQ_SKILL`) does not.
 - A requirement the character meets is drawn white (`ffffffff`), one it does not is red (`ffff2020`). That red is not `RED_FONT_COLOR`.
 
