@@ -1,16 +1,14 @@
 local _, ns = ...
 
--- Marks on the right of unlearned rows, where Blizzard puts its status icons. One icon per source type
--- in ns.sourceOrder, or the search glass when none is known, with Blizzard's lock to their left when
--- the recipe needs a specialization the character lacks.
+-- Source marks on the right of unlearned rows, where Blizzard puts its status icons, with Blizzard's lock to their left.
 local ICON_GAP = 4
-local LABEL_PADDING = 2 * ICON_GAP -- clear space kept between the label and what follows it
--- Marks are centered in equal-width slots so they line up down the list.
+local LABEL_PADDING = 2 * ICON_GAP
+-- Marks sit in equal-width slots so they line up down the list.
 local SLOT_SIZE = ns.MARK_SLOT_SIZE
 
-local MAX_ICONS = #ns.sourceOrder + 1 -- every source type, plus the lock
+local MAX_ICONS = #ns.sourceOrder + 1 -- every source type plus the lock
 
--- Per-row state in a weak-keyed table, not on Blizzard's pooled rows.
+-- Row state is kept in a weak-keyed table, not on Blizzard's pooled rows.
 local rowState = setmetatable({}, { __mode = "k" })
 
 local function State(row)
@@ -22,17 +20,14 @@ local function State(row)
 	return state
 end
 
--- One hover for the whole row: its marks go to full strength and one tooltip lists every source.
--- The marks take no mouse input, so the pointer and clicks reach Blizzard's row as usual.
+-- One hover for the whole row: marks go to full strength and one tooltip lists every source. The marks take no mouse input.
 local function SetRowStrength(row, full)
 	for _, icon in ipairs(State(row).icons) do
 		ns.SetMarkStrength(icon, full)
 	end
 end
 
--- Runs inside Blizzard's own OnEnter, whose tooltip (the full name of a shortened label) ours
--- replaces: the recipe's name is our title. Other recipe lists send the same event; their rows have
--- no state here.
+-- Runs inside Blizzard's OnEnter and replaces its tooltip; other recipe lists send the same event, and their rows have no state here.
 local function RowOnEnter(row)
 	local recipeInfo = rowState[row] and rowState[row].recipe
 	if recipeInfo then
@@ -60,18 +55,16 @@ local function GetIcons(row)
 			icon.Texture:SetPoint("CENTER")
 			State(row).icons[index] = icon
 		end
-		-- OnLeave only: the list sets each row's OnEnter script again on every Init, which drops a
-		-- hook on it (docs/client-notes.md, "Recipe list rows"), so entering comes from Blizzard's event.
+		-- OnLeave only: the list sets each row's OnEnter again on every Init, dropping a hook (docs/client-notes.md, "Recipe list rows").
 		row:HookScript("OnLeave", RowOnLeave)
-		-- Blizzard's lock and skill-up buttons leave through the row's OnLeave method, past the script
-		-- (ProfessionsRecipeListRecipeMixin:OnLoad), so that path is hooked as well.
+		-- The lock and skill-up buttons leave through the row's OnLeave method (ProfessionsRecipeListRecipeMixin:OnLoad), so hook it too.
 		hooksecurefunc(row, "OnLeave", RowOnLeave)
 	end
 	return State(row).icons
 end
 
 local function HideIcons(row)
-	State(row).recipe = nil -- a pooled row now showing a learned recipe: our hover does nothing
+	State(row).recipe = nil -- a pooled row showing a learned recipe
 	for _, icon in ipairs(State(row).icons or {}) do
 		icon:Hide()
 	end
@@ -94,7 +87,7 @@ local function UpdateRow(row, node)
 		return
 	end
 
-	-- Asked as the row is drawn, so only recipes scrolled into view have their made item looked up.
+	-- Asked as the row is drawn, so only recipes in view have their made item looked up.
 	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
 	local count = ns.GetMarks(recipeInfo, marks)
 	local icons = GetIcons(row)
@@ -125,15 +118,14 @@ local function UpdateRow(row, node)
 	local maxWidth = row:GetWidth() - row.SkillUps:GetWidth() - lockWidth - countWidth - iconsWidth - LABEL_PADDING
 	row.Label:SetWidth(math.max(1, math.min(State(row).labelWidth, maxWidth)))
 
-	-- The list is redrawn often, and a redraw under a still pointer sends no new OnEnter: the row the
-	-- pointer is on gets its hover back here.
+	-- A redraw under a still pointer sends no new OnEnter, so the hovered row gets its hover back here.
 	if row:IsMouseMotionFocus() then
 		RowOnEnter(row)
 	end
 end
 
 --@debug@
--- Timed in a checkout build (ns.Perf, Troubleshooting.lua); released builds call UpdateRow directly.
+-- Timed in a checkout build; released builds call UpdateRow directly.
 do
 	local inner = UpdateRow
 	UpdateRow = function(row, node)
@@ -165,7 +157,7 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 		RowOnEnter(row)
 	end, rowState)
 	ScrollUtil.AddInitializedFrameCallback(scrollBox, function(_, row, node)
-		State(row).labelWidth = nil -- Init restored Blizzard's width on this pooled row
+		State(row).labelWidth = nil -- Init restored Blizzard's width
 		UpdateRow(row, node) -- first callback argument is the owner
 	end, ns)
 	ns.RefreshRows()

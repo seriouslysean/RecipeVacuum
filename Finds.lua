@@ -1,12 +1,10 @@
 local _, ns = ...
 
--- Self-found finds are one collection with an ID and a revision counter. Each observation carries the
--- revision of its last change; a peer that saved revision N asks for everything after N. Renumbering
--- revisions (migration, reset) issues a new collection ID so peers resync from zero.
+-- Self-found finds are one collection with an ID and a revision counter; renumbering revisions issues a new ID so peers resync.
 
-local revisions = {} -- session only: { { rev, observation, ref = "recipe" | "item", id }, ... } in rev order
+local revisions = {} -- session only: { { rev, observation, ref = "recipe" | "item", id } } in rev order
 
--- A collection is named by its creation time and a random number below this.
+-- A collection ID is its creation time and a random number below this.
 local COLLECTION_ID_RANGE = 1000000000
 
 local function NewCollectionID()
@@ -21,7 +19,7 @@ function ns.MarkFind(observation, ref, id)
 	ns.ScheduleFindOffer()
 end
 
--- Derived from the saved layer, so not saved.
+-- Derived from the saved layer, not saved.
 function ns.InitFinds()
 	local db = ns.db
 	if not db.exchange then
@@ -40,7 +38,7 @@ function ns.InitFinds()
 	table.sort(revisions, function(a, b) return a.rev < b.rev end)
 	local highest = revisions[#revisions] and revisions[#revisions].rev or 0
 	if highest > db.exchange.revision then
-		-- Revisions ahead of the counter mean it was reset: renumber.
+		-- A counter behind its revisions was reset: renumber.
 		db.exchange.id, db.exchange.revision = NewCollectionID(), highest
 	end
 	for _, row in ipairs(unrevised) do
@@ -51,7 +49,7 @@ function ns.InitFinds()
 end
 
 -- Wire rows carry IDs; names are sent only for NPCs and objects. Keys: docs/data.md, "Sharing".
-local MAX_NAME_LENGTH = 64   -- caps what a peer can send
+local MAX_NAME_LENGTH = 64 -- caps what a peer can send
 
 -- Names a receiver would reject are left out, so one long name never stalls a peer's sync.
 local function WireName(name)
@@ -79,12 +77,11 @@ local function WireRow(row)
 	}
 end
 
--- Rows after revision `after`, oldest first, up to `limit`. Returns the rows and the revision they
--- cover.
+-- Rows after revision `after`, oldest first, up to `limit`; returns the rows and the revision they cover.
 function ns.FindsSince(after, limit)
 	local rows, through = {}, after
 	for _, row in ipairs(revisions) do
-		-- Stale: the observation changed again, the newer row covers it.
+		-- Stale: the observation changed again and a newer row covers it.
 		if row.rev > after and row.observation.rev == row.rev then
 			if #rows >= limit then
 				return rows, through
@@ -96,8 +93,7 @@ function ns.FindsSince(after, limit)
 	return rows, ns.db.exchange.revision
 end
 
--- Validate every received row before saving. Received data is parsed, never executed (another addon 2021 ran it
--- through loadstring).
+-- Validate every received row before saving; received data is parsed, never executed (another addon 2021 ran it through loadstring).
 local function PositiveID(value)
 	return type(value) == "number" and value > 0 and value < ns.MAX_WIRE_NUMBER and value == math.floor(value)
 end
@@ -108,7 +104,7 @@ end
 
 local FACTIONS = { Alliance = true, Horde = true }
 local NPC_FACTIONS = { Alliance = true, Horde = true, Neutral = true }
-local CLOCK_SKEW = 300       -- seconds a peer's clock may run ahead of ours
+local CLOCK_SKEW = 300 -- seconds a peer's clock may run ahead
 
 local function ValidName(value)
 	return value == nil or (type(value) == "string" and #value <= MAX_NAME_LENGTH and not value:find("[%c|]"))
@@ -169,9 +165,8 @@ end
 -- Wire key of each identifying field, and the observation field it fills.
 local IDENTITY = { n = "npc", o = "object", ci = "container", fi = "fishing", z = "zone", q = "quest" }
 
--- Merges valid rows into the shared layer, newest per source. Returns true if anything changed, false
--- if not, nil for an invalid batch (nothing written).
--- Saved field of a shared observation = its wire key.
+-- Merges valid rows into the shared layer, newest per source; true if anything changed, false if not, nil for an invalid batch (nothing written).
+-- Wire key of each saved field of a shared observation.
 local MERGED_FIELDS = {
 	npc = "n", object = "o", container = "ci", fishing = "fi", zone = "z", quest = "q", faction = "f",
 	skill = "sk", cost = "c", price = "p", limited = "l", spellID = "sp", choice = "ch", finisher = "fn",
@@ -210,9 +205,8 @@ function ns.MergeFinds(rows, maxRows)
 			table.insert(bucket[id], observation)
 			changed = true
 		end
-		-- Field by field, each with the time it was learned (observation.at): a value we lack is filled
-		-- in, a newer sighting of that field corrects it, and nothing is cleared because a row leaves it
-		-- out. Reports reach the same result in any order; the same facts again change nothing.
+		-- Per field, with the time it was learned (observation.at): fill what is missing, let a newer sighting correct, never clear.
+		-- Reports reach the same result in any order; repeating the same facts changes nothing.
 		local at = observation.at
 		if not at then
 			at = {}
@@ -227,8 +221,7 @@ function ns.MergeFinds(rows, maxRows)
 			-- Positions other than a fishing spot live on the NPC or object.
 			if incoming ~= nil and ((name ~= "x" and name ~= "y") or row.fi) then
 				local current, learned = observation[name], at[name]
-				-- Two different values learned at the same moment: the one that sorts higher, so every
-				-- player settles on the same one.
+				-- Equal times: the higher value wins, so every player settles on the same one.
 				local tie = seen == learned and incoming ~= current and tostring(incoming) > tostring(current)
 				if current == nil or seen > learned or tie then
 					if incoming ~= current then

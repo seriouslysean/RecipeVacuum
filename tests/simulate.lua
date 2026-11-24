@@ -87,8 +87,7 @@ local a = boot(savedFile)
 local db = a.db
 check("schema is 8", db.schema == 8)
 check("trainerNames dropped", db.found.trainerNames == nil and db.shared.trainerNames == nil)
--- Fails if the upgrade keeps NPCs no source names (earlier versions saved every vendor opened), or
--- drops one a source does name.
+-- Fails if the upgrade keeps NPCs no source names, or drops one a source does name.
 local named, strays, missing = {}, 0, 0
 for _, layer in ipairs({ db.found, db.shared }) do
   for _, bucket in ipairs({ layer.recipes, layer.items }) do
@@ -170,10 +169,8 @@ check("SourceInfo container", info(db.found.items[1000][3]) == "A Bulging Coin P
 check("SourceInfo fishing", select(1, info(f4)) == "Fishing" and select(2, info(f4)) == 1429)
 check("SourceInfo quest", info(q[1]) == "Quest Title 1199")
 
--- 4b. Specialization lock: read from the item a recipe makes. An unmet skill requirement with no rank
--- locks, in the game's own words. Fails if a rank requirement locks (nearly every unlearned recipe
--- has one), a met one does, the answer is given before the item has loaded, or a later session reads
--- items it already knows need no specialization.
+-- 4b. Specialization lock from the made item: an unmet skill requirement without a rank locks.
+-- Fails if a rank requirement or a met line locks, the answer comes before the item loads, or a later session rereads known items.
 do
   -- The tooltip's own red and white, as measured in game (ffff2020, ffffffff).
   local red, white = { r = 1, g = 0.125, b = 0.125 }, { r = 1, g = 1, b = 1 }
@@ -248,8 +245,7 @@ check("re-merge changes nothing", b.MergeFinds(rows, #rows) == false)
 -- Fails if the quest giver's own faction is not saved, not shared, or a bad value is accepted.
 check("NPC faction saved and shared", db.npcs[4784].faction == "Alliance" and b.db.npcs[4784].faction == "Alliance")
 local badFaction = CopyTable(rows[1]); badFaction.nf = "Pirates"
--- 5b. Merging never loses detail. Fails if a newer row without a cost clears the cost, an older row
--- cannot fill a gap, a newer value does not correct an older one, or repeating a row counts as a change.
+-- 5b. Merging never loses detail. Fails if a newer row without a cost clears it, an older row cannot fill a gap, a newer value does not correct an older one, or a repeat counts as a change.
 do
   local m = boot(nil)
   local function row(seen, extra)
@@ -267,8 +263,7 @@ do
   m.MergeFinds({ row(300, { c = 800 }) }, 1)
   check("a newer sighting corrects an older value", kept.cost == 800 and kept.seen == 300)
 end
--- 5c. Merging reaches the same result whatever order reports arrive in. Fails if a later-arriving
--- report about one field is lost because another field's report already advanced the record.
+-- 5c. Merge order does not matter. Fails if a later report about one field is lost because another field's report already advanced the record.
 do
   local function report(seen, extra)
     local wire = { k = "trainer", r = 7002, n = 9002, nm = "Teacher", m = 1, x = 0.5, y = 0.5, s = seen, b = 1 }
@@ -292,9 +287,7 @@ check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction },
 b.db.sourceLevel, b.db.recipeItems[99] = 2, { 1000 }
 b.db.found.items[1000] = { { kind = "drop", npc = 732, seen = now } }
 check("own and shared find of one source listed once", #b.GetSources({ recipeID = 99 }) == #s)
--- A received recipe item links to the recipe its tooltip data names, once the item has loaded.
--- Fails if a link is made before the data loads, from anything but that ID, or for an item that
--- teaches nothing.
+-- A received recipe item links to the recipe its tooltip data names once loaded. Fails if a link is made early, from anything but that ID, or for an item that teaches nothing.
 local RED_LINEN_BAG = 501
 local cached = {}
 C_Item.IsItemDataCachedByID = function(id) return cached[id] == true end
@@ -319,8 +312,7 @@ check("link made from the recipe ID in the item's tooltip", b.LinkPending() == t
   and b.db.recipeItems[RED_LINEN_BAG][1] == 2000 and b.db.pendingItems[2000] == nil)
 check("an item that teaches nothing stays unlinked and is not asked again", b.db.itemRecipe[1000] == nil and b.db.pendingItems[1000].none == true)
 
--- Seed data answers before any item data loads, gives a recipe its items, and stays out of the saved
--- data. Fails if a seeded pair is ignored, or a seeded item gets a saved link or waits in pending.
+-- Seed data answers before item data loads and stays out of the saved data. Fails if a seeded pair is ignored, or a seeded item gets a saved link or waits in pending.
 local seedSave = { schema = 6, found = { recipes = {}, items = {} }, shared = { recipes = {}, items = {} },
   itemRecipe = { [7777] = 888, [9999] = 111 }, recipeItems = { [888] = { 7777 }, [111] = { 9999 } },
   pendingItems = { [7778] = {} }, npcs = {}, objects = {} }
@@ -368,9 +360,8 @@ do
   a.db.sourceFilter = kept
 end
 
--- 6c. Come across: a recipe linked in chat or looted nearby is kept with how near it arrived and
--- nothing else. Fails if a link is missed, a non-recipe is kept, who or where is saved, a farther
--- sighting weakens a nearer one, or a recipe shows below the level it arrived at.
+-- 6c. Come across: a chat-linked or nearby-looted recipe is kept with how near it arrived and nothing else.
+-- Fails if a link is missed, a non-recipe is kept, who or where is saved, a farther sighting weakens a nearer one, or a recipe shows below its level.
 do
   local h = boot(nil)
   local known = C_TradeSkillUI

@@ -1,7 +1,6 @@
 local _, ns = ...
 
--- Reviewed finds shipped with the addon (data layer 2): the saved layer layout (Core.lua) plus its NPCs.
--- another addon ships its sources the same way (Database/Trainer.lua, Vendor.lua).
+-- Reviewed finds shipped with the addon (data layer 2): the saved layer layout plus NPCs, as another addon ships sources.
 -- Bump `format` whenever the layout changes.
 ns.included = {
 	format = 2,

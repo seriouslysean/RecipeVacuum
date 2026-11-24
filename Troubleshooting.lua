@@ -1,14 +1,12 @@
--- Troubleshooting commands. watch and log ship in every build; development commands sit between the
--- packager's debug markers (docs/development.md, "Working build").
+-- Troubleshooting commands: watch and log ship in every build; development commands sit between the debug markers (docs/development.md, "Working build").
 local _, ns = ...
 
 --@debug@
-local UseScan -- defined with the scan code below
+local UseScan -- defined below
 --@end-debug@
 
 --@debug@
--- Performance record: each named piece keeps its run count, total and slowest run, written to the
--- saved log when the session ends.
+-- Performance record: each piece keeps its run count, total and slowest run, written to the saved log at session end.
 local perfRecord, perfOrder = {}, {}
 
 function ns.PerfMs(name, ms)
@@ -60,14 +58,11 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 end)
 --@end-debug@
 
--- Keeps the last LOG_LINES lines across commands and reloads. The copy window shows the current run:
--- the lines since the last command, or since watch was turned on (another addon shows the current session
--- the same way and keeps earlier ones). "log all" shows everything kept.
+-- Keeps the last LOG_LINES lines across commands and reloads; the copy window shows the current run, "log all" everything kept.
 local LOG_LINES = 2000
 local toolkit = LibStub("JigBoltgripToolkit-1.0")
 
--- A command's window shows that command's own lines (viewStart), even while a watch run is going;
--- "log" goes back to the run.
+-- A command's window shows its own lines (viewStart), even during a watch run; "log" goes back to the run.
 local viewStart
 
 local function ShowLog(all)
@@ -76,7 +71,7 @@ local function ShowLog(all)
 	toolkit:ShowText(ns.title .. ": " .. ns.voice.logTitle, table.concat(log, "\n", first))
 end
 
--- Lines are timestamped, so a long watch reads as a timeline; a dated line is kept as it is.
+-- Lines are timestamped so a long watch reads as a timeline; a dated line is kept as it is.
 local function Append(line, dated)
 	ns.db.devLog = ns.db.devLog or {}
 	table.insert(ns.db.devLog, (dated or line == "") and line or date("%H:%M:%S ") .. line)
@@ -87,18 +82,17 @@ local function Append(line, dated)
 	end
 end
 
--- The next line starts a new run. A running watch keeps its run, so other commands don't cut it short.
+-- The next line starts a new run; a running watch keeps its run.
 local function StartRun(force)
 	if force or not ns.db.watch then
 		ns.db.devLogRun = #(ns.db.devLog or {}) + 1
 	end
 end
 
--- Watch lines go to the log only: it runs while playing, and chat stays clear.
+-- Watch lines go to the log only, so chat stays clear.
 local logOnly
 
--- A line from Voice.lua goes to chat through ns.Log, which tags it, and to the saved log with the
--- same tag.
+-- A line from Voice.lua goes to chat through ns.Log and to the saved log with the same tag.
 local LOG_TAG = ns.title .. ": "
 local voice = ns.voice
 
@@ -125,9 +119,7 @@ local function Say(line, ...)
 	end
 end
 
--- The one chat line a watch event may print: it found recipes. Everything else stays in the log.
--- Chat lines speak like the game's gnomish machines, in the vacuum's own words: a state, then what it
--- is doing (Homing Robot OOX-17/TN: "Flight systems online! Engaging rockets for transport to Booty Bay!").
+-- The one chat line a watch event may print: it found recipes (voice rules: docs/voice.md; Homing Robot OOX-17/TN is the model).
 local function WatchFound(count)
 	if count > 0 then
 		local line = voice.detected:format(count, count == 1 and "recipe" or "recipes")
@@ -138,7 +130,7 @@ end
 
 local IsRecipeItem = ns.IsRecipeItem
 
--- Wraps a watch callback so its lines skip chat; the flag is cleared even when the callback errors.
+-- Wraps a watch callback so its lines skip chat; the flag is cleared even when it errors.
 local function LogOnly(callback)
 	return function(...)
 		logOnly = true
@@ -149,8 +141,7 @@ local function LogOnly(callback)
 end
 
 
--- Logs loot windows, quest dialogs and spell targets, to learn what Forever reports for mob, object,
--- container and fishing loot and for quest givers and rewards.
+-- Logs loot windows, quest dialogs and spell targets, to learn what Forever reports for loot and quest givers and rewards.
 local watcher
 
 -- tostring that never touches a secret value (Forever can hand addons secret GUIDs and names).
@@ -176,8 +167,7 @@ local function Where()
 		position and ("%.3f,%.3f"):format(position:GetXY()) or "nil", tostring((IsInInstance())))
 end
 
--- One entry per loot window (LOOT_READY can fire twice, then LOOT_OPENED), with the last spell target,
--- which names gathered and chest objects.
+-- One entry per loot window (LOOT_READY can fire twice, then LOOT_OPENED), with the last spell target, which names gathered and chest objects.
 local castTarget, lootLogged
 local handlers = {
 	UNIT_SPELLCAST_SENT = function(unit, target)
@@ -224,8 +214,7 @@ local function Quest(event)
 	WatchFound(recipes)
 end
 handlers.QUEST_DETAIL = function() Quest("QUEST_DETAIL") end
--- A group roll names the item but not what dropped it. The loot handle is logged in case it turns
--- out to match something that does (a corpse's GUID in a later loot line, for one).
+-- A group roll names the item but not what dropped it; the handle is logged in case it matches something later.
 handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
 	local link = GetLootRollItemLink(rollID)
 	print(("ROLL %s | item %s | handle %s | time %s | unit target %s | %s"):format(Describe(rollID), Describe(link),
@@ -233,12 +222,11 @@ handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
 	local itemID = link and not issecretvalue(link) and C_Item.GetItemInfoInstant(link)
 	WatchFound(IsRecipeItem(itemID) and 1 or 0)
 end
--- Vendors and trainers are recorded when their window opens, not on a purchase, so the watch logs the
--- visit: who it is and how many items or services they list.
+-- Vendors and trainers are recorded on window open, so the watch logs the visit: who and how many items or services.
 handlers.MERCHANT_SHOW = function()
 	print(("VENDOR %s %s | faction %s | %d items | %s"):format(Describe(UnitName("npc")), Describe(UnitGUID("npc")),
 		Describe((UnitFactionGroup("npc"))), GetMerchantNumItems(), Where()))
-	-- Each item with its class, since only the Recipe class (9) is recorded. Log only, to keep chat clear.
+	-- Each item with its class, since only the Recipe class (9) is recorded; log only.
 	local recipes = 0
 	for index = 1, GetMerchantNumItems() do
 		local itemID = GetMerchantItemID(index)
@@ -258,8 +246,7 @@ handlers.GOSSIP_SHOW = function()
 		Describe(UnitGUID("npc")), C_GossipInfo.GetNumAvailableQuests(),
 		#options > 0 and table.concat(options, "; ") or "none", Where()))
 end
--- Services can arrive after the window opens and the window's filter hides some, so list them a moment
--- later with every filter on, then put the player's filter back.
+-- Services can arrive after the window opens and its filter hides some, so list them later with every filter on, then restore the player's filter.
 local TRAINER_LIST_DELAY = 0.5
 handlers.TRAINER_SHOW = function()
 	print(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
@@ -267,8 +254,7 @@ handlers.TRAINER_SHOW = function()
 	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function() ns.WithAllTrainerServices(function(shown)
 		print(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
 			GetNumTrainerServices(), Describe(shown.available), Describe(shown.unavailable), Describe(shown.used)))
-		-- Recipes have a category and ranks have none, which is how the recorder tells them apart.
-		-- Anything skipped is named, so a real recipe without a category would show up here.
+		-- Recipes have a category and ranks none, which is how the recorder tells them apart; skipped ones are named.
 		local recipes, skipped = 0, {}
 		for index = 1, GetNumTrainerServices() do
 			local tooltip = C_TooltipInfo.GetTrainerService(index)
@@ -283,7 +269,7 @@ handlers.TRAINER_SHOW = function()
 			Append(("  service %d %s | spell %s | profession line %s"):format(index, DescribeAll(GetTrainerServiceInfo(index)),
 				Describe(tooltip and tooltip.id),
 				tooltip and tooltip.id and DescribeAll(C_TradeSkillUI.GetTradeSkillLineForRecipe(tooltip.id)) or "nil")
-				-- Does the game know the spell as a recipe? Ranks ("Journeyman Fishing") should not be.
+				-- Does the game know the spell as a recipe? Ranks ("Journeyman Fishing") do not count.
 				.. " | recipe info " .. Describe(tooltip and tooltip.id and C_TradeSkillUI.GetRecipeInfo(tooltip.id) ~= nil)
 				.. " | step " .. Describe(GetTrainerServiceStepIndex()))
 		end
@@ -295,8 +281,7 @@ handlers.TRAINER_SHOW = function()
 end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
 
--- watch on | off (no word toggles). Saved, so it resumes after /reload; the log reaches disk on /reload
--- or logout.
+-- watch on | off (no word toggles). Saved, so it resumes after /reload.
 local function StartWatch()
 	watcher = CreateFrame("Frame")
 	for event in pairs(handlers) do
@@ -332,9 +317,9 @@ end
 
 -- Called by Core once saved data is loaded (an ADDON_LOADED callback here could run before it).
 --@debug@
--- A scan kept from this game build is used from the start of each session, ahead of the seed.
+-- A scan from this game build is used from the session start, ahead of the seed.
 local function UseKeptScan()
-	ns.scannedMade = ns.db.devMade -- what recipes make, from the `made` command
+	ns.scannedMade = ns.db.devMade -- from the `made` command
 	local scan = ns.db.devScan
 	if scan and scan.teaches and scan.build == select(2, GetBuildInfo()) then
 		UseScan(scan)
@@ -354,20 +339,19 @@ end
 
 
 --@debug@
--- Seeding scan: finds every recipe item and the recipe it teaches (docs/development.md, "Seeding").
-local SCAN_FRAME_MS = 4        -- work per frame, so the game stays smooth
-local SCAN_STEP = 500          -- IDs between clock checks
-local SCAN_GAP = 50000         -- stop after this many IDs in a row with no item
+-- Seeding scan: every recipe item and the recipe it teaches (docs/development.md, "Seeding").
+local SCAN_FRAME_MS = 4 -- work per frame
+local SCAN_STEP = 500 -- IDs between clock checks
+local SCAN_GAP = 50000 -- stop after this many IDs in a row with no item
 local SCAN_CAP = 2000000
-local LOAD_BATCH = 50          -- items requested per tick (500 a second)
+local LOAD_BATCH = 50 -- items requested per tick
 local LOAD_INTERVAL = 0.1
-local LOAD_TIMEOUT = 5         -- seconds to wait for the last answers
-local NO_ANSWER = 0            -- saved for an item the game never answered, so it is not asked again
-local ITEM_LIMIT = 10000       -- more recipe items than this means the walk went wrong; load nothing
-local MISSING_LINES = 200      -- unlearned recipes without an item listed in the log
+local LOAD_TIMEOUT = 5 -- seconds to wait for the last answers
+local NO_ANSWER = 0 -- saved for an item the game never answered
+local ITEM_LIMIT = 10000 -- more than this means the walk went wrong; load nothing
+local MISSING_LINES = 200 -- unlearned recipes without an item listed in the log
 
--- Makes a scan this session's layer over the seed (ns.scanned): only the items that teach a recipe.
--- Nothing is written to the seed or to the saved links.
+-- Makes a scan this session's layer over the seed (ns.scanned): only items that teach a recipe; nothing is written to the seed or saved links.
 function UseScan(scan)
 	local scanned = {}
 	for itemID, recipeID in pairs(scan.teaches) do
@@ -380,7 +364,7 @@ function UseScan(scan)
 end
 
 local scanning
--- When the running scan began, and its phases' timings (kept in devScan.timing for the perf command).
+-- When the running scan began, and its phase timings (kept in devScan.timing).
 local scanStarted
 
 local function Timing(scan)
@@ -426,8 +410,7 @@ local function Report(scan)
 	for index = 1, math.min(#without, MISSING_LINES) do
 		Append("    " .. without[index])
 	end
-	-- What the scan learned is used at once, as this session's layer over the seed: the list redraws
-	-- with the recipe items it found.
+	-- The scan result is used at once as this session's layer, so the list redraws with the items it found.
 	UseScan(scan)
 	ns.SourcesChanged()
 	local timing = Timing(scan)
@@ -436,7 +419,7 @@ local function Report(scan)
 	Say(voice.scanDone, withItem, unlearned, profession.professionName or UNKNOWN, timing.totalSeconds)
 end
 
--- Loads each unanswered recipe item and reads the recipe it teaches. An item is asked once per build.
+-- Loads each unanswered recipe item and reads its recipe; an item is asked once per build.
 local function ReadTaught(scan)
 	local pending = {}
 	for _, itemID in ipairs(scan.items) do
@@ -451,15 +434,14 @@ local function ReadTaught(scan)
 		return
 	end
 	local requested, answered, finished, started = 0, 0, false, GetTime()
-	-- Loads still waiting at the end are cancelled, so no callback stays registered, and remembered
-	-- as unanswered.
+	-- Loads still waiting at the end are cancelled, so no callback stays registered, and remembered as unanswered.
 	local waiting = {}
 	local function Finish()
 		if finished then return end
 		finished = true
 		for itemID, cancel in pairs(waiting) do
 			cancel()
-			-- An item already loaded answers at once, before its cancel handle is stored here.
+			-- An item already loaded answers at once, before its cancel handle is stored.
 			if scan.teaches[itemID] == nil then scan.teaches[itemID] = NO_ANSWER end
 		end
 		timing.answered, timing.loadSeconds = answered, GetTime() - started
@@ -483,7 +465,7 @@ local function ReadTaught(scan)
 			local item = Item:CreateFromItemID(itemID)
 			waiting[itemID] = item:ContinueWithCancelOnItemLoad(function()
 				waiting[itemID] = nil
-				-- An answer that still carries no data counts as none, so the item is not asked again.
+				-- An answer that still carries no data counts as none.
 				local recipeID = ns.GetTaughtRecipe(itemID)
 				scan.teaches[itemID] = recipeID == nil and NO_ANSWER or recipeID
 				answered = answered + 1
@@ -496,8 +478,7 @@ end
 local function WalkItems()
 	local found = {}
 	local id, lastItem, existing, cpu, started = 0, 0, 0, 0, GetTime()
-	-- One slice of the walk. Every pass of the outer loop ends on the clock or on done, and done is
-	-- certain by SCAN_CAP, so the walk cannot run away.
+	-- One slice of the walk; each pass ends on the clock or on done, and done is certain by SCAN_CAP.
 	local function Walk()
 		local frameStart = debugprofilestop()
 		local done = false
@@ -530,7 +511,7 @@ local function WalkItems()
 		end
 		Append(("SCAN walked %d IDs | %d items exist | highest item %d | %d recipe items | %.0f ms of work over %.1f s"):format(
 			id, existing, lastItem, #found, cpu, GetTime() - started))
-		-- Loading costs a server request per item, so it only starts when the count is believable.
+		-- Loading costs a server request per item, so start only when the count is believable.
 		if #found == 0 or #found > ITEM_LIMIT then
 			scanning = nil
 			Say(voice.scanBadCount)
@@ -542,8 +523,7 @@ local function WalkItems()
 	end)
 end
 
--- Runs only with a profession open. The item list and what each item teaches are kept per game
--- build, so a second profession reuses them and asks the server nothing.
+-- Runs only with a profession open; the item list and what each item teaches are kept per game build, so a second profession asks the server nothing.
 local function Scan()
 	if scanning then
 		Say(voice.scanBusy)
@@ -557,7 +537,7 @@ local function Scan()
 	scanning, scanStarted = true, GetTime()
 	local scan = ns.db.devScan
 	if scan and scan.build == select(2, GetBuildInfo()) and scan.items and scan.teaches then
-		-- The item walk is reused, so this run's walk cost is nothing.
+		-- The item walk is reused, so its cost here is nothing.
 		Timing(scan).walkMs, Timing(scan).walkSeconds, Timing(scan).walkedIDs = 0, 0, 0
 		ReadTaught(scan)
 	else
@@ -568,7 +548,7 @@ end
 --@end-debug@
 
 --@debug@
--- Shared functions timed from here, and the record written out when the session ends.
+-- Shared functions timed from here; the record is written out at session end.
 for name, label in pairs({ AddSourceLines = "source tooltip", MergeFinds = "merge shared finds", LinkPending = "link recipe items" }) do
 	local inner = ns[name]
 	ns[name] = function(...)
@@ -597,8 +577,7 @@ perfWriter:SetScript("OnEvent", function()
 end)
 --@end-debug@
 
--- Each command logs a header (time, client build, character, open profession), runs, then shows the log
--- in the copy window; "log" only shows it.
+-- Each command logs a header (time, client build, character, open profession), runs, then shows the log in the copy window; "log" only shows it.
 local function Logged(run)
 	return function(arguments)
 		local version, build = GetBuildInfo()
@@ -630,8 +609,7 @@ local troubleshooting = {
 }
 
 --@debug@
--- Each goes once its question is answered.
--- Backs the performance claims; part of the release regression checks.
+-- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
 table.insert(troubleshooting, { "perf", "Show how long the profession window took to open", function()
 	local function Ms(value)
 		return value and ("%.1f ms"):format(value) or voice.noSample
@@ -654,8 +632,7 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window too
 		Say(voice.perfNoScan)
 	end
 end })
--- Made-item scan: what each recipe of the open profession makes, saved for the generator and used at
--- once as ns.scannedMade. Spread over frames, a batch at a time.
+-- Made-item scan: what each recipe of the open profession makes, saved for the generator and used at once as ns.scannedMade, spread over frames.
 local MADE_BATCH = 50
 table.insert(troubleshooting, { "made", "Scan what the open profession's recipes make", function()
 	local recipeIDs = C_TradeSkillUI.IsTradeSkillReady() and C_TradeSkillUI.GetAllRecipeIDs()

@@ -6,15 +6,14 @@ LibStub("AceComm-3.0"):Embed(comm)
 -- The version is in both prefixes; other versions are ignored.
 local PROBE_PREFIX = "RecipeVacuum2"
 local DATA_PREFIX = "RecipeVacuum2D"
-local SEND_LIMIT = 4000     -- encoded bytes per reply (about 16 AceComm chunks)
-local RECEIVE_LIMIT = 6000  -- larger replies are rejected before decoding
+local SEND_LIMIT = 4000 -- encoded bytes per reply, about 16 AceComm chunks
+local RECEIVE_LIMIT = 6000 -- larger replies are rejected before decoding
 local EXPANDED_LIMIT = 65536 -- decompressed bytes accepted before CBOR decoding
 local MAX_ROWS = 64
 local REQUEST_TIMEOUT = 30
-local REQUEST_RETRIES = 2  -- re-asks after a timeout before giving up on a peer
+local REQUEST_RETRIES = 2 -- re-asks after a timeout
 local MAX_COLLECTION_ID_LENGTH = 32
--- Message kinds, the first letter of every message: a probe (hello), its answer, an offer of new
--- finds, a request (get) and a reply (data). The letters are the wire format; do not change them.
+-- Message kinds, the first letter of every message. The letters are the wire format; do not change them.
 local KIND = { HELLO = "H", ANSWER = "A", OFFER = "O", GET = "G", DATA = "D" }
 
 local enabled, inWorld, deferred
@@ -32,15 +31,12 @@ local function Ready()
 	return true
 end
 
--- A whisper to someone the game cannot reach is answered with the system line "No player named '%s'
--- is currently playing." Nothing is hidden from chat. The line is only read, so a name that failed is
--- not whispered again until it has been offline; who gets a whisper at all is decided before sending
--- (BattleNetCharacters, RefreshFriends).
-local WHISPER_ERROR_WINDOW = 10 -- seconds after a send in which the line counts as ours
+-- A whisper to someone the game cannot reach is answered with the system line ERR_CHAT_PLAYER_NOT_FOUND_S; it is only read, so a failed name is not whispered again until it has been offline.
+local WHISPER_ERROR_WINDOW = 10 -- seconds after a send in which the line counts
 local NOT_FOUND_PATTERN = "^" .. ERR_CHAT_PLAYER_NOT_FOUND_S:gsub("[%^%$%(%)%.%[%]%*%+%-%?]", "%%%0"):gsub("%%s", "(.+)") .. "$"
 local whispered, unreachable = {}, {}
 
--- AceComm calls this as each piece really leaves, which can be later than the request (ChatThrottleLib).
+-- AceComm calls this as each piece leaves, which can be later than the request (ChatThrottleLib).
 local function WhisperSent(target)
 	whispered[target] = GetTime()
 end
@@ -133,8 +129,7 @@ local function Decode(text)
 	return C_EncodingUtil.DeserializeCBOR(bytes)
 end
 
--- Builds the reply for one request, halving the row count until it fits SEND_LIMIT. Cached per starting
--- revision, so peers asking after one guild probe cost one encode; any new find clears it.
+-- Builds the reply for one request, halving the row count until it fits SEND_LIMIT; cached per starting revision, so a new find clears it.
 local function Reply(after)
 	local cached = cachedReplies[after]
 	if cached then return cached end
@@ -213,9 +208,7 @@ end
 
 local discoveryChannels = { GUILD = true, PARTY = true, RAID = true, INSTANCE_CHAT = true }
 
--- another addon Loader.lua VersionCheck pattern: a probe on a guild or group channel starts a 3 second timer,
--- restarted by further probes, then one reply goes to the channel. Players arriving together cost each
--- member one reply, not one whisper per arrival.
+-- another addon Loader.lua VersionCheck pattern: a probe starts a 3 second timer, restarted by further probes, then one reply goes to the channel.
 local REPLY_DELAY = 3
 local replyTimers = {}
 
@@ -300,8 +293,7 @@ local function OnData(_, message, channel, sender)
 	end
 end
 
--- Event driven: broadcast once on joining each channel, whisper only newly online friends who won't get
--- the group or guild probe.
+-- Event driven: broadcast once on joining each channel, whisper only newly online friends who won't get the group or guild probe.
 local function RefreshChannels(force)
 	local group = IsInGroup(LE_PARTY_CATEGORY_HOME) and
 		(IsInRaid(LE_PARTY_CATEGORY_HOME) and "RAID" or "PARTY")
@@ -325,13 +317,11 @@ end
 
 local bnetPresence, changedFriends = {}, {}
 local function BattleNetCharacters(index, online)
-	-- BN_FRIEND_INFO_CHANGED also fires for zone or status changes; compare this friend's reachable
-	-- character names before rebuilding the roster.
+	-- BN_FRIEND_INFO_CHANGED also fires for zone or status changes; compare reachable character names before rebuilding the roster.
 	local names = ""
 	for j = 1, C_BattleNet.GetFriendNumGameAccounts(index) do
 		local game = C_BattleNet.GetFriendGameAccountInfo(index, j)
-		-- A whisper only goes to a character it can reach: online in this game, on this realm and of
-		-- this faction. Anyone the game gives no realm or faction for is left out.
+		-- A whisper only goes to a character it can reach: online in this game, on this realm, same faction.
 		if game and game.isOnline and game.isInCurrentRegion and game.clientProgram == BNET_CLIENT_WOW
 			and game.wowProjectID == WOW_PROJECT_ID and game.characterName and game.characterName ~= ""
 			and game.realmID == GetRealmID() and game.factionName == UnitFactionGroup("player") then
@@ -351,7 +341,7 @@ local function RefreshFriends(force)
 	end
 	wipe(bnetPresence)
 	for i = 1, BNGetNumFriends() do bnetPresence[i] = BattleNetCharacters(i, online) end
-	-- A name the game couldn't reach is tried again once it has been offline.
+	-- A name the game could not reach is tried again once it has been offline.
 	for name in pairs(unreachable) do
 		if not online[name] then unreachable[name], whispered[name] = nil, nil end
 	end
@@ -417,7 +407,7 @@ function ns.SetSharing(value)
 			timer:Cancel()
 			replyTimers[channel] = nil
 		end
-		sourcesDirty = nil -- the mode change refreshes the visible source list
+		sourcesDirty = nil -- the mode change refreshes the source list
 		wipe(friends)
 		wipe(whispered)
 		wipe(replied)
@@ -456,10 +446,8 @@ frame:SetScript("OnEvent", function(_, event, index)
 end)
 
 --@debug@
--- /recipevacuum sharetest: checks sharing with one account. Every reply this character would send is
--- built by the real code, checked against the limits, decoded and merged into a scratch copy (nothing
--- real is written), then whispered to this same character over a test prefix and compared byte for
--- byte on arrival. Not covered: choosing who to share with, and the probe exchange between two players.
+-- /recipevacuum sharetest: one-account check. Every reply is built by the real code, checked against the limits, decoded, merged into a scratch copy and whispered to this character over a test prefix.
+-- Not covered: choosing who to share with, and the probe exchange between two players.
 local TEST_PREFIX = "RecipeVacuum2T"
 local TEST_TIMEOUT = 60
 

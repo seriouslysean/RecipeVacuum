@@ -1,14 +1,7 @@
--- Builds Data/Seed.lua from a scan saved by the working build.
---   1. In game, on a checkout build: open a profession, /recipevacuum scan, then /reload.
---   2. luajit tools/seed.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua> Data/Seed.lua
--- The scan reads, for every recipe item in the client, the recipe ID its own tooltip data names
--- (Sources.lua, ns.GetTaughtRecipe), so the table is the game's data, not a guess. Run it again for
--- each new game build.
---
--- The seed only ever grows without being asked. If the new scan would remove a pair the current file
--- has, or change which recipe an item teaches, nothing is written and the differences are listed: a
--- scan cut short loses pairs (seen 2026-11-23: one answered for 630 of 2,974 items). Pass --accept as
--- a third argument once the differences have been checked against the game.
+-- Builds Data/Seed.lua from a scan saved by the working build (docs/development.md, "Seeding").
+-- The scan reads each recipe item's recipe ID from its own tooltip data (Sources.lua, ns.GetTaughtRecipe), so the table is the game's data.
+-- The seed only grows unasked: if a scan would remove a pair or change what an item teaches, nothing is written and the differences are listed.
+-- A scan cut short loses pairs; pass --accept as a third argument once the differences are checked against the game (docs/development.md, "Seeding").
 local savedPath, outPath, accept = arg[1], arg[2], arg[3] == "--accept"
 assert(savedPath and outPath, "usage: luajit tools/seed.lua <saved variables file> <output file> [--accept]")
 dofile(savedPath)
@@ -29,7 +22,7 @@ end
 table.sort(pairsList, function(a, b) return a[1] < b[1] end)
 assert(#pairsList > 0, "the scan holds no item that teaches a recipe")
 
--- Compare with the seed already on disk.
+-- Compare with the seed on disk.
 local current = {}
 local existing = loadfile(outPath)
 if existing then

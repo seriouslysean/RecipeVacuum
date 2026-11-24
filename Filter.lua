@@ -1,11 +1,12 @@
 local _, ns = ...
 
+-- The Recipe Vacuum section of Blizzard's profession filter menu.
+
 local function IsShowUnlearnedChecked()
 	return ns.db.showUnlearned
 end
 
--- Forever turns Show Unlearned off after every list rebuild, so enabling it always makes Blizzard
--- rebuild the list. Unlearned.lua then adds our recipes.
+-- Forever turns Show Unlearned off after every list rebuild, so enabling it makes Blizzard rebuild the list; Unlearned.lua then adds ours.
 function ns.RefreshList()
 	C_TradeSkillUI.SetShowUnlearned(true)
 end
@@ -66,13 +67,11 @@ Menu.ModifyMenu("MENU_PROFESSIONS_FILTER", function(_, rootDescription)
 	rootDescription:CreateTitle(ns.title)
 	rootDescription:CreateCheckbox(PROFESSION_RECIPES_SHOW_UNLEARNED or "Show Unlearned",
 		IsShowUnlearnedChecked, ToggleShowUnlearned)
-	-- Blizzard's word for what a character can't learn, from its trainer filter.
 	rootDescription:CreateCheckbox(UNAVAILABLE or "Unavailable", IsShowUnavailableChecked, ToggleShowUnavailable)
 	AddSourcesSubmenu(rootDescription)
 end)
 
--- Blizzard's filter reset (red X) also resets ours. Forever shows the X whenever the menu opens,
--- because its default check expects Show Unlearned on; left alone.
+-- Blizzard's filter reset also resets ours. Forever shows its reset X on every menu open (its default check expects Show Unlearned on); left alone.
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	hooksecurefunc(Professions, "SetDefaultFilters", function()
 		ns.db.showUnlearned, ns.db.showUnavailable = true, true

@@ -76,7 +76,7 @@ end
 function ns.AddLevelCards(layout, setting)
 	local initializer = Settings.CreateElementInitializer(TEMPLATE, {})
 	local shown -- the frame while on screen
--- The list builds the frame when it scrolls into view; cards are made once per frame.
+	-- The list builds the frame when it scrolls into view; cards are made once per frame.
 	function initializer:InitFrame(frame)
 		if not frame.cards then
 			frame.cards = {}

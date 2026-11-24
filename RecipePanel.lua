@@ -1,11 +1,8 @@
 local _, ns = ...
 
--- The recipe panel for an unlearned recipe: Blizzard's own source line under the description
--- (RecipeSourceButton, which Forever never fills because GetRecipeSourceText is empty), and Show on
--- Map where Create sits (Create is hidden for unlearned recipes by ValidateControls).
+-- Source line and Show on Map for a selected unlearned recipe; Forever never fills Blizzard's RecipeSourceButton (docs/client-notes.md, "Profession window").
 
--- Copied from ProfessionsRecipeSchematicFormMixin:Init: the source line sits 10 below the
--- description, and reagents move to 50 below it while the line shows (20 without).
+-- Copied from ProfessionsRecipeSchematicFormMixin:Init: the source line sits 10 below the description, reagents 50 below while it shows.
 local SOURCE_LINE_GAP = -10
 local REAGENTS_GAP_WITH_SOURCE = -50
 
@@ -17,20 +14,19 @@ local function SelectedRecipe(page)
 	end
 end
 
--- Same tooltip as Blizzard's source line: the source text as highlight lines, wrapped at 350.
+-- Same tooltip as Blizzard's source line, wrapped at 350.
 local SOURCE_TOOLTIP_WIDTH = 350 -- copied from the same Init
-local sourceLineRecipe -- the recipe the source line stands for; kept here, not on Blizzard's button
+local sourceLineRecipe -- kept here, not on Blizzard's button
 
 local function SourceOnEnter(button)
 	GameTooltip:SetOwner(button.Text, "ANCHOR_RIGHT")
 	GameTooltip:SetCustomWordWrapMinWidth(SOURCE_TOOLTIP_WIDTH)
 	sourceLineRecipe.lockReason = ns.GetRecipeLock(sourceLineRecipe.recipeID) or nil
-	ns.AddSourceLines(GameTooltip, sourceLineRecipe, true) -- with coordinates, skill and cost
+	ns.AddSourceLines(GameTooltip, sourceLineRecipe, true)
 	GameTooltip:Show()
 end
 
--- The recipe item (the pattern or plans that teach the recipe): icon and name at the pane's bottom
--- left, with Blizzard's own item tooltip and modified clicks.
+-- The recipe item (the pattern or plans that teach it): icon and name at the pane's bottom left, with Blizzard's item tooltip and modified clicks.
 local ITEM_ROW_X = 30 -- copied from AllocateBestQualityCheckbox's anchor in that XML
 local ITEM_ICON_SIZE = 20
 local ITEM_NAME_GAP = 6
@@ -84,7 +80,7 @@ local function ShowItem(form, recipeInfo)
 	row.itemID = itemID
 	row.Icon:SetTexture(C_Item.GetItemIconByID(itemID))
 	row.Name:SetText("")
-	-- The name and quality load on demand (Blizzard's ItemMixin), so a later recipe may be showing.
+	-- Name and quality load on demand (Blizzard's ItemMixin), so a later recipe may be showing.
 	local item = Item:CreateFromItemID(itemID)
 	item:ContinueOnItemLoad(function()
 		if row.itemID == itemID then
@@ -112,8 +108,7 @@ local function ShowSourceLine(form, recipeInfo, isRecraft)
 	ns.SummarizeSources(recipeInfo)
 	sourceLineRecipe = recipeInfo
 	button.Text:SetText(TRADESKILL_UNLEARNED_RECIPE_HEADER)
-	-- Blizzard sets this button's OnEnter itself on every Init (ProfessionsRecipeSchematicFormMixin:Init),
-	-- so setting it after that Init is the same pattern, and a hook would not survive.
+	-- Blizzard sets this button's OnEnter on every Init (ProfessionsRecipeSchematicFormMixin:Init), so setting it after is the same pattern; a hook would not survive.
 	button:SetScript("OnEnter", SourceOnEnter)
 	button:ClearAllPoints()
 	button:SetPoint("TOPLEFT", form.Description, "BOTTOMLEFT", 0, SOURCE_LINE_GAP)
@@ -199,16 +194,14 @@ local function CreateMapControls(page)
 	mapButton:SetWidth(math.max(mapButton:GetWidth(), page.CreateButton:GetWidth()))
 	mapButton:SetScript("OnClick", OnMapClick)
 
-	-- Several places: the arrow dropdown of the window's Filter button. It keeps the template's own
-	-- size, which fits its text, so one anchor places it; stretching it left the text off center.
+	-- The arrow dropdown of the window's Filter button keeps the template's size, so one anchor places it; stretching it left the text off center.
 	mapMenu = CreateFrame("DropdownButton", nil, page, "WowStyle1FilterDropdownTemplate")
 	mapMenu:SetPoint("RIGHT", mapButton, "RIGHT")
 	mapMenu:SetText(SHOW_MAP or "Show Map")
 	mapMenu:SetupMenu(MapMenu)
 end
 
--- ValidateControls runs on every bag and skill update while the window is open. The map controls
--- only change with the selected recipe, the known sources or the player's zone, so the rest is skipped.
+-- ValidateControls runs on every bag and skill update (docs/client-notes.md, "Profession window"); the map controls change only with the selected recipe, sources or zone, so skip the rest.
 local shownRecipeID, shownVersion, shownMapID
 
 local function UpdateMap(page)
@@ -237,7 +230,7 @@ local function UpdateMap(page)
 end
 
 --@debug@
--- Timed in a checkout build (ns.Perf, Troubleshooting.lua).
+-- Timed in a checkout build.
 do
 	local innerMap, innerLine = UpdateMap, ShowSourceLine
 	UpdateMap = function(...)

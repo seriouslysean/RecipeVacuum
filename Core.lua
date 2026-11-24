@@ -33,7 +33,7 @@ local defaults = {
 	showUnavailable = true,
 	npcs = {},
 	objects = {},
--- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:
+	-- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:
 	itemRecipe = {},       -- [recipe itemID] = recipeID
 	recipeItems = {},      -- [recipeID] = { recipe itemIDs }
 	pendingItems = {},     -- [recipe itemID] = {} until its data loads and names the recipe it teaches
@@ -53,7 +53,7 @@ function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 		npc = { positions = {} }
 		npcs[npcID] = npc
 	end
--- A peer only fills gaps: it never replaces our NPC name or a position the player saw.
+	-- A peer only fills gaps: it never replaces our NPC name or a position the player saw.
 	if name and not (fromPeer and npc.name) then npc.name = name end
 	if mapID and x and y then
 		local position = npc.positions[mapID]
@@ -176,7 +176,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	local db = RecipeVacuumDB or {}
 	local version = db.schema or (db.sources and 1) or SCHEMA
 	if version > SCHEMA then
--- Newer save: leave it alone and run on an empty session copy.
+		-- Newer save: leave it alone and run on an empty session copy.
 		db = {}
 		version = SCHEMA
 		ns.Log("saved data is from a newer version; it was left unchanged.")
@@ -193,7 +193,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 			db[key] = value
 		end
 	end
--- A newer seed can take over saved links and waiting items, so each load drops the ones it covers.
+	-- A newer seed can take over saved links and waiting items, so each load drops the ones it covers.
 	local seeded = ns.seed and ns.seed.taught or {}
 	for itemID, recipeID in pairs(db.itemRecipe) do
 		if seeded[itemID] then

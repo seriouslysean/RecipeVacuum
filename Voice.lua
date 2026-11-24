@@ -1,24 +1,23 @@
 local _, ns = ...
 
--- Every line the Vacuum says. The voice rules are in docs/voice.md; read them before adding a line.
+-- Every line the Vacuum says; read docs/voice.md before adding one.
 ns.voice = {
-	-- New sources recorded from one place: count, "source" or "sources", who or where.
+	-- Arguments: count, "source" or "sources", who or where.
 	intake = "Intake complete! %d new recipe %s from %s!",
-	-- Watch switched on and off.
 	watchOn = "Suction enabled! Calibrating recipe sensors!",
 	watchOff = "Suction disabled! Returning to standby!",
-	-- The watch saw recipes in a loot, quest, vendor or trainer window: count, "recipe" or "recipes".
+	-- Arguments: count, "recipe" or "recipes".
 	detected = "%d %s detected! Engaging nozzle!",
-	-- Something went wrong inside a troubleshooting command: where, the error.
+	-- Arguments: where, the error.
 	malfunction = "Malfunction in %s! %s!",
 	logPurged = "Log purged! Memory banks clear!",
-	-- Window titles: the log, and the export of finds.
+	-- Window titles.
 	logTitle = "Log ready! Select all, then copy!",
 	exportTitle = "Export ready! Copy it and send it to the maintainer as a .json file!",
 }
 
 --@debug@
--- Development commands; stripped from released builds with the commands themselves.
+-- Development commands, stripped from released builds.
 ns.voice.scanBusy = "Scan in progress! Stand clear!"
 ns.voice.scanStart = "Scanners engaged! Sweeping %s schemata!" -- profession
 ns.voice.scanDone = "Analysis complete! %d of %d unlearned %s recipes traced to their recipe items in %.1f s!"

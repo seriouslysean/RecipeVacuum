@@ -1,8 +1,7 @@
 local _, ns = ...
 
--- Self Found: records where recipes come from, for every profession, into the self-found layer (Core.lua),
--- with the player's faction and position. Trainers by recipe ID from tooltips (another addon Scanner.lua).
--- Only Enum.ItemClass.Recipe items are kept; anything else costs one item-class check.
+-- Records where recipes come from, for every profession, into the self-found layer (Core.lua); trainers by recipe ID from tooltips (another addon Scanner.lua).
+-- Only Enum.ItemClass.Recipe items are kept, so other loot costs one item-class check.
 
 -- Positions are rounded to three decimals of the 0..1 map coordinate.
 local COORDINATE_PRECISION = 1000
@@ -23,8 +22,7 @@ end
 
 local BUILD = ns.BUILD
 
--- The NPC being talked to, or nil when the client hides it (secret values). Its name and position are
--- saved by NoteVisit, and only for an NPC that has a recipe: every trainer and vendor passes through here.
+-- The NPC being talked to, or nil when the client hides it (secret values); saved by NoteVisit only for an NPC with a recipe.
 local function CurrentNPC()
 	local guid = UnitGUID("npc")
 	if issecretvalue(guid) or not guid then
@@ -41,26 +39,22 @@ local function CurrentNPC()
 		name = UnitName("npc"), mapID = mapID, x = x, y = y, npcFaction = (UnitFactionGroup("npc")) }
 end
 
--- Called when a scan found at least one recipe, new or already saved, so a trainer whose recipes are
--- all known still gets its position refreshed.
+-- Runs when a scan found at least one recipe, new or saved, so a trainer whose recipes are all known still refreshes its position.
 local function NoteVisit(npc)
 	ns.NoteNPC(ns.db.npcs, npc.npcID, npc.name, npc.mapID, npc.x, npc.y, npc.seen)
 	ns.NoteNPCFaction(npc.npcID, npc.npcFaction)
 end
 
--- A source of another kind; field names the observation field that identifies it (object, container,
--- fishing, zone, quest, or npc for a creature).
+-- A source of another kind; field is the observation field that identifies it (object, container, fishing, zone, quest, or npc).
 local function Source(field, value)
 	return { field = field, value = value, faction = (UnitFactionGroup("player")), seen = GetServerTime() }
 end
 
--- Details compared on every sighting. A missing field keeps its saved value. npc is a detail for quests
--- (the giver), the identity otherwise.
+-- Details compared on every sighting; a missing field keeps its saved value. npc is a detail for quests (the giver), the identity otherwise.
 local DETAIL_FIELDS = { "faction", "skill", "cost", "price", "limited", "spellID", "choice", "npc",
 	"finisher", "giverItem", "map", "x", "y" }
 
--- Adds or updates one self-found observation. Returns isNew and whether anything besides the seen time
--- changed (which bumps the revision).
+-- Adds or updates one self-found observation; returns isNew and whether anything besides the seen time changed (which bumps the revision).
 local function Save(bucket, id, kind, npc, details)
 	local observations = ns.db.found[bucket][id]
 	if not observations then
@@ -101,8 +95,7 @@ local function Announce(count, name)
 	end
 end
 
--- A recipe item waits here until its tooltip data has loaded and names the recipe it teaches
--- (ns.LinkPending).
+-- A recipe item waits here until its tooltip data loads and names its recipe (ns.LinkPending).
 local function NotePendingItem(itemID)
 	if not ns.db.itemRecipe[itemID] and not ns.GetSeededRecipe(itemID) then
 		ns.db.pendingItems[itemID] = ns.db.pendingItems[itemID] or {}
@@ -113,13 +106,11 @@ local function IsRecipeItem(itemID)
 	return itemID ~= nil and ns.IsRecipeItem(itemID) ~= nil
 end
 
--- Some NPCs teach recipes without the profession trainer flag, so at other trainers a service counts
--- only when its spell belongs to a profession (docs/client-notes.md, "Trainers"). All three filters
--- are on for the read, and the player's choice is put back after.
+-- Some NPCs teach recipes without the profession trainer flag, so a service counts only when its spell belongs to a profession (docs/client-notes.md, "Trainers").
+-- All three filters are on for the read; the player's choice is put back after.
 local TRAINER_SERVICE_TYPES = { "available", "unavailable", "used" }
 
--- Runs read with every kind of trainer service shown, then puts the player's filter back, also when
--- read fails. read is given what the filter was.
+-- Runs read with every trainer service shown, then restores the player's filter, also when read fails; read is given the old filter.
 function ns.WithAllTrainerServices(read)
 	local shown = {}
 	for _, serviceType in ipairs(TRAINER_SERVICE_TYPES) do
@@ -170,7 +161,7 @@ function ReadTrainerServices(npc, professionTrainer)
 			-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id.
 			local tooltip = C_TooltipInfo.GetTrainerService(index)
 			local spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
-			-- No Spell tooltip means no recipe ID to list; skip it.
+			-- No Spell tooltip means no recipe ID; skip it.
 			if spellID and (professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
 				local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })
 				recipes = recipes + 1
@@ -183,8 +174,7 @@ function ReadTrainerServices(npc, professionTrainer)
 	return count, npc, services > 0, changed
 end
 
--- Vendor recipe items. A row's details can arrive after the window opens, so this also runs on
--- MERCHANT_UPDATE.
+-- Vendor recipe items; also runs on MERCHANT_UPDATE, since a row's details can arrive after the window opens.
 local missingItems = {}
 local function RecordVendor()
 	if not ns.db.selfFound then
@@ -201,7 +191,7 @@ local function RecordVendor()
 		local itemID = GetMerchantItemID(index)
 		if IsRecipeItem(itemID) then
 			local info = C_MerchantFrame.GetItemInfo(index)
-			-- The merchant's row can arrive after the window opens; MERCHANT_UPDATE reads it again.
+			-- The row can arrive after the window opens; MERCHANT_UPDATE reads it again.
 			if not info then
 				missingItems[itemID] = true
 			end
@@ -222,8 +212,7 @@ local function RecordVendor()
 	return count, npc, items > 0, changed
 end
 
--- Coalesce late names within the visit. Filter changes also fire TRAINER_UPDATE, so wait for service
--- names. Report the total once.
+-- Coalesce late names within the visit and report the total once; filter changes also fire TRAINER_UPDATE, so wait for service names.
 local SCAN_DELAY = 0.2
 local frame = CreateFrame("Frame")
 local record, timer, visitNPC
@@ -292,8 +281,7 @@ frame:SetScript("OnEvent", function(_, event, itemID)
 	end
 end)
 
--- Loot windows, read once each. Sources come from GetLootSourceInfo; fishing is kept by zone
--- (docs/client-notes.md, "Loot, quests and vendors").
+-- Loot windows, read once each; sources come from GetLootSourceInfo and fishing is kept by zone (docs/client-notes.md, "Loot, quests and vendors").
 local castTarget, lootRead
 local loot = CreateFrame("Frame")
 
@@ -324,7 +312,7 @@ local function LootSource(guid)
 	end
 end
 
--- Recipe items seen in the player's own loot window, by time, so a roll on the same item adds nothing.
+-- Recipe items in the player's own loot window, by time, so a roll on the same item adds nothing.
 local lootedAt = {}
 
 local function ReadLoot()
@@ -358,8 +346,7 @@ local function ReadLoot()
 	end
 end
 
--- QUEST_DETAIL has the giver, QUEST_COMPLETE the finisher; both list rewards (GetQuestItemInfo returns
--- the item ID before the name loads). Quests started from an item report an Item GUID as giver.
+-- QUEST_DETAIL has the giver, QUEST_COMPLETE the finisher; both list rewards, and an item-started quest reports an Item GUID as giver.
 local function ReadQuest(event)
 	if not (ns.db and ns.db.selfFound) then
 		return
@@ -368,7 +355,7 @@ local function ReadQuest(event)
 	if not questID or questID == 0 then
 		return
 	end
-	-- The quest NPC is saved only when the quest rewards a recipe (NoteQuestNPC below).
+	-- The quest NPC is saved only when the quest rewards a recipe (NoteQuestNPC).
 	local details, questNPC = {}, nil
 	local guid = UnitGUID("questnpc")
 	if guid and not issecretvalue(guid) then
@@ -378,7 +365,7 @@ local function ReadQuest(event)
 			local mapID, x, y = GetPlayerLocation()
 			questNPC = { id, UnitName("questnpc"), mapID, x, y, GetServerTime(), faction = (UnitFactionGroup("questnpc")) }
 			details[event == "QUEST_COMPLETE" and "finisher" or "npc"] = id
-			-- The quest's place is where it is given; the turn-in may be elsewhere.
+			-- A quest's place is where it is given; the turn-in may be elsewhere.
 			if event == "QUEST_DETAIL" then details.map = mapID end
 		elseif unitType == "Item" and event == "QUEST_DETAIL" then
 			details.giverItem = C_Item.GetItemIDByGUID(guid)
@@ -410,10 +397,9 @@ local function ReadQuest(event)
 	end
 end
 
--- A group roll on a recipe someone else looted: the roll names no source, so the find is kept by
--- zone. Read a moment later, so the player's own loot window is counted first.
-local ROLL_SETTLE = 1        -- seconds before a roll is read
-local ROLL_AFTER_LOOT = 120  -- a roll this soon after looting the same item is that same drop
+-- A group roll names no source, so the find is kept by zone, read a moment later so the player's own loot window counts first.
+local ROLL_SETTLE = 1 -- seconds before a roll is read
+local ROLL_AFTER_LOOT = 120 -- a roll this soon after looting the same item is that drop
 
 local function ReadRoll(rollID)
 	if not (ns.db and ns.db.selfFound) then

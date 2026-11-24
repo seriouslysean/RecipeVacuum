@@ -1,7 +1,5 @@
--- Lint on the client's Lua (5.1); vendored libraries are not ours (another addon excludes its Libs
--- the same way). The only globals the addon sets are its saved variables and slash commands
--- (`globals`). Every game global it reads is listed in `read_globals`, so a misspelled API name is
--- reported; add a name here when the code starts using one.
+-- Lint for the client's Lua 5.1; vendored libraries are excluded, as another addon does.
+-- `globals` lists the only globals the addon sets; add each game global it reads to `read_globals`.
 std = "lua51"
 exclude_files = { "Libs/AceComm-3.0", "Libs/CallbackHandler-1.0", "Libs/LibStub" }
 globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER_JIGBOLTGRIPTOOLKIT" }

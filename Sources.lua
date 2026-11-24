@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Counts changes to the known sources, so anything computed from them can tell when it is stale.
+-- Bumped on every change to the known sources, so cached results can tell they are stale.
 ns.sourcesVersion = 0
 
 function ns.SourcesChanged()
@@ -12,12 +12,9 @@ function ns.SourcesChanged()
 	end
 end
 
--- Source types in row order: easiest way to learn first.
 ns.sourceOrder = { "trainer", "vendor", "quest", "drop" }
 
--- Labels reuse Blizzard's localized source names where they exist.
--- Art (owner's pick, 2026-11-24): the book and coin stack are Blizzard's Class and Auctioneer atlases,
--- the dice its loot roll Need icon (LootHistory.lua), the quest mark its gossip icon. size is the drawn height.
+-- Labels reuse Blizzard's localized source names; marks are Blizzard art, size is the drawn height (docs/client-notes.md, "Requirements").
 ns.sourceTypes = {
 	trainer = { label = "Trainer",                       atlas = "Class", size = 14 },
 	vendor  = { label = BATTLE_PET_SOURCE_3 or "Vendor", atlas = "Auctioneer", size = 14 },
@@ -25,7 +22,7 @@ ns.sourceTypes = {
 	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   atlas = "lootroll-icon-need", size = 14 },
 }
 
--- Lookups read the data layers (docs/data.md). Self Found shows only the player's own finds.
+-- Self Found shows only the player's own finds (docs/data.md).
 local function VisibleLayers()
 	local db = ns.db
 	if db.sourceLevel >= ns.LEVEL.FRIENDS then
@@ -42,9 +39,8 @@ local function GetObject(objectID)
 	return ns.db.objects[objectID] or ns.included.objects[objectID]
 end
 
--- Name and positions ({ [mapID] = { x, y, seen } }) of any observation, plus a map ID to name when
--- there is no position (instance drops). Names come from the client where it can say them (items,
--- quests, the Fishing spell), else the saved NPC and object tables.
+-- Name and positions ({ [mapID] = { x, y, seen } }) of an observation, plus a map ID when it has no position (instance drops).
+-- Names come from the client where it can say them (items, quests, the Fishing spell), else the saved NPC and object tables.
 function ns.SourceInfo(observation)
 	if observation.quest then
 		local giver = ns.GetNPC(observation.npc) or ns.GetNPC(observation.finisher)
@@ -59,14 +55,13 @@ function ns.SourceInfo(observation)
 		local positions = observation.x and { [observation.fishing] = { x = observation.x, y = observation.y, seen = observation.seen } }
 		return C_Spell.GetSpellName(ns.FISHING_SPELL_ID), positions, observation.fishing
 	elseif observation.zone then
-		-- A drop seen only as a group roll: the zone is known, what dropped it is not.
+		-- A group-roll drop: the zone is known, what dropped it is not.
 		return UNKNOWN, nil, observation.zone
 	end
 	local npc = ns.GetNPC(observation.npc)
 	return npc and npc.name, npc and npc.positions, observation.map
 end
 
--- Newest position: mapID, position.
 function ns.NewestPosition(positions)
 	local newestMap, newest
 	for mapID, position in pairs(positions or {}) do
@@ -85,7 +80,7 @@ local function SameSource(a, b)
 		and a.zone == b.zone
 end
 
--- A source the player and a peer both found is in two layers; the first layer read wins.
+-- A source found by the player and a peer is in two layers; the first layer read wins.
 local function AppendOnce(list, observation)
 	for _, listed in ipairs(list) do
 		if SameSource(listed, observation) then return end
@@ -105,7 +100,6 @@ local function AppendLayer(list, layer, recipeInfo, itemIDs)
 	end
 end
 
--- Visible observations for a recipe, or nil when none known.
 function ns.GetSources(recipeInfo)
 	if not ns.db then
 		return nil
@@ -119,20 +113,19 @@ function ns.GetSources(recipeInfo)
 	return #list > 0 and list or nil
 end
 
--- The recipe that makes an item, when known: this session's scan first, then the seed. Seeing a
--- crafted item is coming across its recipe (docs/data.md, "Come across").
+-- The recipe that makes an item: this session's scan first, then the seed (docs/data.md, "Come across").
 function ns.GetMadeRecipe(itemID)
 	local made = ns.scannedMade and ns.scannedMade[itemID]
 	return made or (ns.seed and ns.seed.made and ns.seed.made[itemID]) or nil
 end
 
--- The item ID when an item (ID or link) is a recipe item, else nil. One instant lookup, no server.
+-- Instant client lookup, no server request.
 function ns.IsRecipeItem(item)
 	local itemID, _, _, _, _, classID = C_Item.GetItemInfoInstant(item)
 	return classID == Enum.ItemClass.Recipe and itemID or nil
 end
 
--- The nearest level a recipe, or an item that teaches it, has been come across at; nil if never.
+-- The nearest level at which a recipe, or an item that teaches it, was come across; nil if never.
 function ns.MetLevel(recipeID)
 	local met = ns.db.met
 	local level = met.recipes[recipeID]
@@ -145,8 +138,7 @@ function ns.MetLevel(recipeID)
 	return level
 end
 
--- Caches sourceTypes (a set, nil when no source is known) and met on a recipe, so redraws and
--- filtering read fields.
+-- Caches sourceTypes (nil when no source is known) and met on the recipe, so redraws and filtering read fields.
 function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = nil
 	recipeInfo.met = ns.MetLevel(recipeInfo.recipeID)
@@ -161,9 +153,7 @@ function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = types
 end
 
--- The Sources filter. Recipes with a known source are shown unless their type is unticked. Recipes
--- with no known source are hidden unless Unknown is ticked: the list shows what the player or their
--- friends have come across, not everything the game's data holds.
+-- Recipes with a known source show unless their type is unticked; those without show only when Unknown is ticked or they were come across.
 ns.sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown" }
 
 function ns.IsSourceShown(key)
@@ -177,8 +167,7 @@ end
 function ns.PassesSourceFilter(recipeInfo)
 	local types = recipeInfo.sourceTypes
 	if not types then
-		-- No known source: shown once come across within the chosen level, or with Unknown ticked.
-		-- Unknown unticked by hand (as Uncheck All does) hides them all.
+		-- No known source: shown once come across within the level, or with Unknown ticked; unticked by hand (as Uncheck All does) hides them all.
 		local unknown = ns.db.sourceFilter.unknown
 		return unknown or (unknown == nil and recipeInfo.met ~= nil and recipeInfo.met <= ns.db.sourceLevel)
 	end
@@ -190,17 +179,15 @@ function ns.PassesSourceFilter(recipeInfo)
 	return false
 end
 
--- The recipe a recipe item teaches, by ID: the seed, a session scan, or the item's own tooltip data
--- (docs/data.md, "Recipe items").
+-- The recipe an item teaches, by ID (docs/data.md, "Recipe items").
 
--- From the seed or this session's scan; nil when neither knows the item.
+-- From the seed or this session's scan.
 function ns.GetSeededRecipe(itemID)
 	local scanned = ns.scanned and ns.scanned[itemID]
 	return scanned or (ns.seed and ns.seed.taught[itemID]) or nil
 end
 
--- From the item's tooltip data: the recipe ID, false when the item teaches nothing, or nil while the
--- item's data loads.
+-- From the item's tooltip data: the recipe ID, false when it teaches nothing, nil while its data loads.
 function ns.GetTaughtRecipe(itemID)
 	if not C_Item.IsItemDataCachedByID(itemID) then
 		C_Item.RequestLoadItemDataByID(itemID)
@@ -218,9 +205,7 @@ function ns.GetTaughtRecipe(itemID)
 	return false
 end
 
--- Items asked for this session whose data has not arrived. Each is asked once: the list is built and
--- cached without it, and its arrival (ITEM_DATA_LOAD_RESULT) rebuilds the list. One that never answers
--- costs nothing more until the next session.
+-- Items awaiting data are asked once; ITEM_DATA_LOAD_RESULT rebuilds the list, and one that never answers costs nothing more.
 local awaitedItems = {}
 
 local itemLoads = CreateFrame("Frame")
@@ -232,8 +217,7 @@ itemLoads:SetScript("OnEvent", function(_, _, itemID, success)
 	end
 end)
 
--- The recipe items that teach a recipe: the seed and this session's scan turned around once, then
--- the links saved in play for items they do not have.
+-- The recipe items per recipe: the seed and this session's scan inverted once, then the links saved in play.
 local seededItems
 local joinedItems = {}
 
@@ -261,8 +245,7 @@ function ns.GetRecipeItems(recipeID)
 	if not (seeded and saved) then
 		return seeded or saved
 	end
-	-- Both: an item the seed lacks was linked in play to a recipe the seed also knows. Rare, so the
-	-- joined list is made once and dropped with the index.
+	-- Both layers: the joined list is made once and dropped with the index.
 	local joined = joinedItems[recipeID]
 	if not joined or #joined ~= #seeded + #saved then
 		joined = {}
@@ -273,9 +256,7 @@ function ns.GetRecipeItems(recipeID)
 	return joined
 end
 
--- Links recorded recipe items (vendor, drop, quest) to the recipes they teach. An item the seed knows
--- needs no saved link. Returns false while an item's data is still loading, so the caller links again
--- on a later build.
+-- Links recorded recipe items to the recipes they teach; false while an item's data loads, so the caller retries on a later build.
 function ns.LinkPending()
 	local db = ns.db
 	local loaded = true
@@ -302,34 +283,32 @@ function ns.LinkPending()
 	return loaded
 end
 
--- The Fishing spell; the client localizes its name for fishing sources.
+-- The client localizes the Fishing spell's name for fishing sources.
 ns.FISHING_SPELL_ID = 7620
 
--- Tooltip lines under a source (quest NPC, Details specifics) are indented this many pixels.
+-- Indent in pixels for tooltip lines under a source.
 local SUBLINE_INDENT = 10
-local COORDINATE_SCALE = 100 -- map coordinates are 0..1; players read them as 0..100
+local COORDINATE_SCALE = 100 -- map coordinates are 0..1, shown as 0..100
 
--- Row and bottom-bar marks sit centered in square slots of this size, one pixel apart.
+-- Marks sit centered in square slots of this size, one pixel apart.
 ns.MARK_SLOT_SIZE = 16
 ns.MARK_SPACING = 1
 
--- "Source: Unknown" from Blizzard's strings (SOURCE, UNKNOWN), as journals label sources.
+-- From Blizzard's strings (SOURCE, UNKNOWN), as journals label sources.
 ns.SOURCE_LABEL = SOURCE or "Source:"
 
--- The row mark that isn't a source type: the search glass for "not found yet". Pixel sizes are set by
--- eye, since the Gossip files draw their art smaller than the atlases.
+-- The mark for "not found yet"; pixel sizes are set by eye, since the Gossip files draw smaller than the atlases.
 ns.marks = {
 	unknown = { atlas = "common-search-magnifyingglass", size = 11 },
-	-- Blizzard's padlock for a locked reagent slot (LockedIcon in
-	-- Blizzard_ProfessionsRecipeReagentSlotBase.xml). The art has a clear edge, so 14 draws it as tall
-	-- as the magnifier (docs/client-notes.md, "Requirements").
+	-- Blizzard's padlock for a locked reagent slot (Blizzard_ProfessionsRecipeReagentSlotBase.xml, LockedIcon).
+	-- Its art has a clear edge, so 14 draws as tall as the magnifier (docs/client-notes.md, "Requirements").
 	locked = { atlas = "AdventureMapIcon-Lock", size = 14 },
 }
 
 -- Marks for a recipe in display order, filled into out; returns the count.
 function ns.GetMarks(recipeInfo, out)
 	wipe(out)
-	-- The lock comes first, so it sits left of the source marks and they stay in line down the list.
+	-- The lock comes first so the source marks stay in line down the list.
 	if recipeInfo.lockReason then
 		out[1] = "locked"
 	end
@@ -345,8 +324,7 @@ function ns.GetMarks(recipeInfo, out)
 	return #out
 end
 
--- Marks are drawn in full color at half strength, so they sit behind the recipe names, and at full
--- strength under the pointer.
+-- Marks are drawn in color at half strength, so they sit behind the recipe names, and at full strength under the pointer.
 local MARK_ALPHA = 0.5
 
 local function SetArt(texture, info)
@@ -365,12 +343,12 @@ function ns.GetMarkAspect(info)
 	return info.aspect
 end
 
--- Draws a mark on an icon frame that has a centered .Texture.
+-- Draws a mark on an icon frame with a centered .Texture.
 function ns.ApplyMark(icon, mark)
 	local info = ns.sourceTypes[mark] or ns.marks[mark]
 	-- size is the height; atlas art keeps its own shape (the padlock is not square).
 	icon.Texture:SetSize(info.size * ns.GetMarkAspect(info), info.size)
-	-- Compared by the art's own table, so a mark whose art is replaced redraws.
+	-- Compared by the art's own table, so replaced art redraws.
 	if icon.markInfo ~= info then
 		SetArt(icon.Texture, info)
 		icon.markInfo = info
@@ -394,12 +372,10 @@ function ns.SourcePosition(observation)
 	return fallbackMap
 end
 
--- Details lists specifics under each source the way Blizzard labels them elsewhere: a gold label
--- (REQUIRES_LABEL, COSTS_LABEL, as the trainer and bank frames show them) and the value on the right,
--- A line's text led by its row mark, so the tooltip explains the marks: the same art, at text height.
+-- Detail lines use Blizzard's gold labels (REQUIRES_LABEL, COSTS_LABEL) as the trainer and bank frames do.
+-- Tooltip text is led by its row mark at text height.
 local MARK_TEXT_HEIGHT = 14
--- Lines under a marked heading start where the heading's text does: past the mark and the space after
--- it (about 4 in the tooltip font), indented with Blizzard's own leftOffset.
+-- Lines under a marked heading align with its text: the mark plus the space after it (about 4 in the tooltip font).
 local MARK_TEXT_GAP = 4
 local MARK_TEXT_INDENT = MARK_TEXT_HEIGHT + MARK_TEXT_GAP
 
@@ -411,7 +387,7 @@ local function MarkText(mark, text)
 	return art .. " " .. text
 end
 
--- money drawn with GetMoneyString like item sell prices.
+-- Money is drawn with GetMoneyString like item sell prices.
 local function AddDetailLines(tooltip, observation)
 	if observation.skill and observation.skill > 0 then
 		local profession = Professions.GetProfessionInfo().professionName
@@ -425,9 +401,7 @@ local function AddDetailLines(tooltip, observation)
 	end
 end
 
--- One source type's lines: a gold header when asked, one white "who | where" line per source (as the
--- Wardrobe sources tooltip, CollectionsUtil.lua), and indented lines under it. detailed adds
--- coordinates, skill and cost.
+-- One source type's lines: an optional gold header, one "who | where" line per source (as the Wardrobe sources tooltip, CollectionsUtil.lua), and indented lines under it.
 local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 	for _, observation in ipairs(entries) do
 		if observation.kind == kind then
@@ -438,7 +412,7 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 			local name = ns.SourceInfo(observation)
 			local mapID, x, y = ns.SourcePosition(observation)
 			local mapInfo = mapID and C_Map.GetMapInfo(mapID)
-			local where = mapInfo and mapInfo.name or UNKNOWN -- known how, not yet where
+			local where = mapInfo and mapInfo.name or UNKNOWN
 			if detailed and mapInfo and x then
 				where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
 			end
@@ -456,11 +430,10 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 end
 
 
--- The whole source tooltip, for the recipe pane: the recipe as title, then every source type.
+-- The source tooltip for the recipe pane: the recipe as title, then every source type.
 function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	GameTooltip_SetTitle(tooltip, recipeInfo.name)
-	-- The game's own requirement line, shown as Blizzard shows a row's disabled reason
-	-- (Blizzard_ProfessionsRecipeList.lua, LockedIcon OnEnter).
+	-- Blizzard's row disabled reason (Blizzard_ProfessionsRecipeList.lua, LockedIcon OnEnter).
 	if recipeInfo.lockReason then
 		GameTooltip_AddDisabledLine(tooltip, MarkText("locked", recipeInfo.lockReason))
 	end
@@ -474,8 +447,8 @@ function ns.AddSourceLines(tooltip, recipeInfo, detailed)
 	end
 end
 
--- Faction comes from the recipe's tooltip, a specialization from the tooltip of the item it makes
--- (docs/client-notes.md, "Requirements"). What is fixed for a game build is kept in recipeFacts.
+-- Faction comes from the recipe's tooltip, a specialization from the made item's (docs/client-notes.md, "Requirements").
+-- recipeFacts keeps what is fixed for a game build.
 local recipeFactions, recipeSpecs = {}, {}
 
 local function Facts()
@@ -522,15 +495,14 @@ function ns.GetRecipeFaction(recipeID)
 	return faction
 end
 
--- A met requirement is drawn white and an unmet one red, a red of the tooltip's own, so the test is
--- on the channels: a red line has little green (docs/client-notes.md, "Requirements").
+-- Met requirements draw white and unmet ones red; that red is the tooltip's own, so the test is low green (docs/client-notes.md, "Requirements").
 local UNMET_MAX_GREEN = 0.5
 
 local function IsUnmet(color)
 	return color ~= nil and color.g < UNMET_MAX_GREEN
 end
 
--- Rows waiting for a made item's data redraw once, shortly after the answers arrive.
+-- Rows waiting for a made item's data redraw once after the answers arrive.
 local LOCK_REFRESH_DELAY = 0.2
 local loadingItems, refreshQueued = {}, false
 
@@ -539,7 +511,7 @@ local function QueueRowRefresh()
 		refreshQueued = true
 		C_Timer.After(LOCK_REFRESH_DELAY, function()
 			refreshQueued = false
-			-- Hiding unavailable recipes changes which rows exist, so the list is built again.
+			-- Hiding unavailable recipes changes which rows exist, so rebuild the list.
 			if ns.db.showUnavailable then
 				ns.RefreshRows()
 			else
@@ -549,13 +521,12 @@ local function QueueRowRefresh()
 	end
 end
 
--- recipeSpecs: what a recipe's made item says this session: false for no specialization requirement,
--- MET, or the game's requirement text when unmet. specialized: professions where the character meets
--- at least one, which is how a picked specialization is told (docs/client-notes.md, "Requirements").
+-- recipeSpecs: false for no specialization requirement, MET, or the requirement text when unmet.
+-- specialized: professions where the character meets one, which is how a picked specialization is told (docs/client-notes.md, "Requirements").
 local MET = true
 local specialized = {}
 
--- A recipe's profession never changes, and row redraws ask for it often, so it is looked up once.
+-- Cached: row redraws ask often and it never changes.
 local professions = {}
 
 local function Profession(recipeID)
@@ -569,8 +540,7 @@ local function Profession(recipeID)
 end
 
 -- Reads the specialization requirement of what a recipe makes; nil while that item's data loads.
--- The list build asks for every recipe of the profession, learned ones too, so one met requirement
--- anywhere is found. Recipes known to have none are skipped, so only a first open reads them all.
+-- Learned recipes are read too, so one met requirement anywhere is found; recipes known to have none are skipped.
 function ns.ReadSpecialization(recipeID)
 	local state = recipeSpecs[recipeID]
 	if state ~= nil then
@@ -630,9 +600,8 @@ function ns.ReadSpecialization(recipeID)
 	return state
 end
 
--- The game's requirement text when the character has picked a specialization other than the one the
--- recipe's made item needs; false when there is no lock, nil while the made item's data loads. Nothing
--- locks before a specialization is picked: every recipe is still open to the character.
+-- The requirement text when a specialization other than the made item's is picked; false for no lock, nil while data loads.
+-- Nothing locks before a specialization is picked.
 function ns.GetRecipeLock(recipeID)
 	local state = ns.ReadSpecialization(recipeID)
 	if state == nil then

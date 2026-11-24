@@ -1,12 +1,10 @@
 local _, ns = ...
 
--- Recipes the player has come across without learning where they come from (docs/data.md, "Come
--- across"): linked in chat, looted by someone nearby, or listed in a profession another player showed.
--- Only the recipe and how near to the player it arrived (ns.LEVEL) are kept: not who, not which channel.
+-- Recipes come across without a known source: chat links, nearby loot, shown professions (docs/data.md, "Come across").
+-- Only the recipe and its level are kept, never who or which channel.
 local LEVEL = ns.LEVEL
 
--- How near each chat event is. Loot lines cover the player's own loot too, which the recorder already
--- saves with its source.
+-- Loot lines include the player's own loot, which the recorder already saves with its source.
 local CHAT_LEVELS = {
 	CHAT_MSG_LOOT = LEVEL.FRIENDS,
 	CHAT_MSG_PARTY = LEVEL.FRIENDS, CHAT_MSG_PARTY_LEADER = LEVEL.FRIENDS,
@@ -17,7 +15,7 @@ local CHAT_LEVELS = {
 	CHAT_MSG_SAY = LEVEL.PUBLIC, CHAT_MSG_YELL = LEVEL.PUBLIC, CHAT_MSG_CHANNEL = LEVEL.PUBLIC,
 }
 
--- One list refresh after a burst of new recipes, and only when the chosen level shows them.
+-- One refresh after a burst of new recipes, and only when the chosen level shows them.
 local REFRESH_DELAY = 1
 local refreshQueued
 
@@ -36,9 +34,9 @@ local function Note(bucket, id, level)
 	end
 end
 
-local linkLevels = {} -- [character name] = nearest level their profession link was seen at
+local linkLevels = {} -- [character name] = nearest level seen
 
--- Chat lines are frequent, so a line without a link costs one plain search.
+-- A line without a link costs one plain search.
 local function OnChat(event, message)
 	if issecretvalue(message) or not message:find("|H", 1, true) then
 		return
@@ -56,15 +54,14 @@ local function OnChat(event, message)
 				ns.db.pendingItems[itemID] = ns.db.pendingItems[itemID] or {} -- linked by ns.LinkPending
 			end
 		else
-			-- Something a profession makes: its recipe exists, though not yet where to learn it.
+			-- A made item's recipe exists, though not yet where to learn it.
 			local madeBy = ns.GetMadeRecipe(linkedID)
 			if madeBy then
 				Note("recipes", madeBy, level)
 			end
 		end
 	end
-	-- A profession link names its owner; where it was seen decides how near the profession counts
-	-- when opened. Kept for the session only.
+	-- Where a profession link was seen decides how near its owner's profession counts; session only.
 	for guid in message:gmatch("|Htrade:([^:|]+)") do
 		local name = select(6, GetPlayerInfoByGUID(guid))
 		if name and (not linkLevels[name] or level < linkLevels[name]) then
@@ -80,9 +77,7 @@ local function OnChat(event, message)
 	end
 end
 
--- A profession another player showed: every recipe they know. The guild's views count as
--- Friends; a linked one as Public unless its link was seen in a friends channel. Read once per
--- window, when its list is ready.
+-- A shown profession lists every recipe its owner knows: guild views count as Friends, links as Public unless seen in a friends channel.
 local shownPending
 
 local function ReadShownProfession()
@@ -104,8 +99,7 @@ local function ReadShownProfession()
 	end
 end
 
--- Shown once, the first time the player's own profession window opens: Blizzard's help tip, saying
--- how far the vacuum listens and where that is set. Nothing is chosen for the player.
+-- Shown once on the player's first own profession window: how far the vacuum listens and where to change it.
 local function ShowLevelTip()
 	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
 	if ns.db.levelTipSeen or not page or not Professions.InLocalCraftingMode() then

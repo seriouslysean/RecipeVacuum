@@ -1,5 +1,5 @@
--- Offline check: Blizzard's real ScrollBox / tree data provider code + the addon's real Unlearned.lua,
--- with stub frames and a CraftingPage:Init that mirrors Blizzard_ProfessionsCrafting.lua 899-922, 976-979.
+-- Offline check: Blizzard's real ScrollBox and tree data provider code with the addon's real Unlearned.lua and stub frames.
+-- CraftingPage:Init mirrors Blizzard_ProfessionsCrafting.lua 899-922, 976-979.
 -- luajit tests/scroll.lua <wow-ui-source Interface/AddOns dir> Unlearned.lua
 local ADDONS, UNLEARNED = arg[1], arg[2]
 
@@ -248,8 +248,7 @@ local selfFoundOnly = unlearnedRows == 1
 failed = failed or not selfFoundOnly
 print(("%-58s rows %d, want 1  %s"):format("Self Found: only the witnessed unlearned recipe", unlearnedRows, selfFoundOnly and "ok" or "FAIL"))
 
--- Categories: one with a known source keeps its header; one where nothing is learned or found shares
--- the Miscellaneous header, which comes last.
+-- Categories: one with a known source keeps its header; one with nothing learned or found shares the Miscellaneous header, last.
 local SOURCED, STRAY = 9, 8
 for index, categoryID in ipairs({ STRAY, STRAY, STRAY, SOURCED, SOURCED }) do
 	local id = 9000 + index
@@ -278,9 +277,7 @@ failed = failed or not categoriesRight
 print(("%-58s sourced %s, stray %s, miscellaneous %s, last header %s  %s"):format("Unknown categories share Miscellaneous, last",
 	tostring(perCategory[SOURCED]), tostring(perCategory[STRAY]), tostring(perCategory[MISCELLANEOUS_ID]), tostring(last.name), categoriesRight and "ok" or "FAIL"))
 
--- A recipe opened from a link, which only the addon's rows hold, is the one selected. Blizzard's Init
--- cannot find it in its own list and falls back to the recipe already shown. Fails if that fallback
--- stays selected.
+-- A recipe opened from a link that only the addon's rows hold is selected; Blizzard's Init falls back to the recipe already shown. Fails if the fallback stays selected.
 page.RecipeList:SelectRecipe({ recipeID = 1 })
 page:Init({ professionID = 165, openRecipeID = WITNESSED })
 local openedRight = formRecipe ~= nil and formRecipe.recipeID == WITNESSED

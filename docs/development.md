@@ -63,6 +63,8 @@ A file must still compile with the marked blocks removed.
 3. The script adds new pairs by itself. If the scan would remove a pair or change what an item teaches, it writes nothing and lists the differences; check them in game, then run it again with `--accept`.
 4. Commit the file with the release.
 
+A scan cut short loses pairs: one scan answered for 630 of 2,974 items (2026-11-23).
+
 The file holds IDs only. Names are left out on purpose: they differ by language and change between builds.
 
 ## Release

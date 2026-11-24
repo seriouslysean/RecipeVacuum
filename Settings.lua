@@ -12,8 +12,7 @@ local function Checkbox(category, key, name, tooltip, default, onChange)
 	return Settings.CreateCheckbox(category, setting, tooltip), setting
 end
 
--- Player commands; Troubleshooting.lua adds diagnostics. One table drives the chat help and the
--- Commands rows.
+-- Player commands; Troubleshooting.lua adds diagnostics. One table drives the chat help and the Commands rows.
 ns.commands = ns.commands or {}
 table.insert(ns.commands, 1, { action = "", description = "Open Recipe Vacuum's options", run = function()
 	Settings.OpenToCategory(ns.module.category:GetID())
@@ -22,8 +21,7 @@ table.insert(ns.commands, 2, { action = "export", description = "Copy your finds
 	ns.ExportFinds()
 end })
 
--- Called once saved variables load. Sections follow Blizzard's pages; explanations go in row tooltips.
--- Labels are capitalized as Blizzard's options are ("Auto Loot", "Enable Sound").
+-- Called once saved variables load. Sections follow Blizzard's pages; labels are capitalized as Blizzard's are.
 function ns.InitSettings()
 	local toolkit = LibStub("JigBoltgripToolkit-1.0")
 	local module = toolkit:RegisterModule(addonName)
@@ -45,9 +43,8 @@ function ns.InitSettings()
 		"Remember recipe sources from the trainers, vendors, quests and loot you see, even on characters without that profession.", true)
 	local announce = Checkbox(category, "announceNewFinds", "Announce New Finds",
 		"Print one message in your chat window after a visit with new recipe sources.", true)
-	-- Indented under Record Personal Finds; active only while it is on.
+	-- Indented under Record Personal Finds, active only while it is on.
 	announce:SetParentInitializer(record, function() return recordSetting:GetValue() end)
-	-- Export Finds is a command, so it appears once, under Commands.
 
 	toolkit:RegisterCommands(module, "recipevacuum", ns.commands)
 	toolkit:FinishModule(module)
