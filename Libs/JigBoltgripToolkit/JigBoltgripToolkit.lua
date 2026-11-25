@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 22
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 23
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -207,10 +207,15 @@ end
 
 -- One listener for every module's watch: each event is registered once and passed to every watching
 -- module that asked for it, after the kit's own zone context.
+-- IDs first (the map and the explored area IDs at the player's spot, as both addons place things), then the
+-- names for a person reading it.
 local function ZoneLine()
 	local mapID = C_Map.GetBestMapForUnit("player")
 	local info = mapID and C_Map.GetMapInfo(mapID)
-	return ("zone %s %s | %s"):format(tostring(mapID), info and info.name or "?", GetSubZoneText() or "")
+	local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+	local areas = position and C_MapExplorationInfo.GetExploredAreaIDsAtPosition(mapID, position)
+	return ("zone %s areas %s | %s | %s"):format(tostring(mapID), areas and table.concat(areas, ",") or "-",
+		info and info.name or "?", GetSubZoneText() or "")
 end
 local CONTEXT_EVENTS = { ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ZONE_CHANGED_INDOORS = true }
 
