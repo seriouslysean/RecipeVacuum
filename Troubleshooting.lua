@@ -687,6 +687,36 @@ end
 local madeFrame = CreateFrame("Frame")
 madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 madeFrame:SetScript("OnEvent", ScanMade)
+-- Line color sample; remove once the family's color is chosen. Prints the announcement in each candidate
+-- and saves the game's own chat colors, so candidates can be measured against them.
+local COLOR_CANDIDATES = {
+	{ "pale NPC yellow (now)" },
+	{ "light cyan-blue, as another addon", 0x69, 0xCC, 0xF0 },
+	{ "between the two", 0x5B, 0xD9, 0xDE },
+	{ "aqua, as Auctioneer", 0x4D, 0xE6, 0xCC },
+	{ "between, softer", 0x7F, 0xD8, 0xD8 },
+	{ "between, greener", 0x5F, 0xE0, 0xC8 },
+}
+local SAVED_CHAT_TYPES = { "SYSTEM", "SAY", "YELL", "EMOTE", "WHISPER", "BN_WHISPER", "PARTY", "RAID", "GUILD", "OFFICER",
+	"CHANNEL", "MONSTER_SAY", "MONSTER_EMOTE", "SKILL", "LOOT", "MONEY", "COMBAT_XP_GAIN", "COMBAT_FACTION_CHANGE" }
+table.insert(troubleshooting, { "colors", "Show the announcement in each candidate line color", function()
+	local brown = ns.device.color
+	local name = ("|cff%02x%02x%02x%s|r"):format(brown.r * 255, brown.g * 255, brown.b * 255, ns.title)
+	for index, candidate in ipairs(COLOR_CANDIDATES) do
+		local label, r, g, b = unpack(candidate)
+		local line = ChatTypeInfo.MONSTER_SAY
+		r, g, b = (r or line.r * 255) / 255, (g or line.g * 255) / 255, (b or line.b * 255) / 255
+		DEFAULT_CHAT_FRAME:AddMessage(("|TInterface\\WorldMap\\GEAR_64GREY:0|t Boltgrip's %s sucks up 8 recipes from Stephen Ryback! (%d: %s)")
+			:format(name, index, label), r, g, b)
+	end
+	ns.db.devChatColors = {}
+	for _, chatType in ipairs(SAVED_CHAT_TYPES) do
+		local info = ChatTypeInfo[chatType]
+		if info then
+			ns.db.devChatColors[chatType] = ("%.3f %.3f %.3f"):format(info.r, info.g, info.b)
+		end
+	end
+end, quiet = true })
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode and whisper every reply to yourself", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
