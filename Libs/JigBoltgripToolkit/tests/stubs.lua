@@ -66,6 +66,33 @@ EventUtil = { ContinueOnAddOnLoaded = function(name, callback)
 end }
 hooksecurefunc = function() end
 
+-- Frames record their event handlers, so a test can fire the client's events (client.Fire). Any other
+-- frame method is a stub.
+client.frames = {}
+local frameMeta = { __index = function(frame, name) return client.Stub("frame." .. name) end }
+function CreateFrame()
+	local frame = setmetatable({ events = {}, scripts = {} }, frameMeta)
+	function frame:RegisterEvent(event) self.events[event] = true end
+	function frame:UnregisterEvent(event) self.events[event] = nil end
+	function frame:UnregisterAllEvents() wipe(self.events) end
+	function frame:SetScript(name, handler) self.scripts[name] = handler end
+	function frame:HookScript(name, handler) self.scripts[name] = self.scripts[name] or handler end
+	function frame:GetScript(name) return self.scripts[name] end
+	client.frames[#client.frames + 1] = frame
+	return frame
+end
+
+-- Fires an event at every frame registered for it. A handler that fails on the stand-ins is counted, not
+-- raised: the stand-ins cannot answer everything a real handler reads.
+function client.Fire(event, ...)
+	local failed = 0
+	for _, frame in ipairs(client.frames) do
+		local handler = frame.events[event] and frame.scripts.OnEvent
+		if handler and not pcall(handler, frame, event, ...) then failed = failed + 1 end
+	end
+	return failed
+end
+
 -- Settings: every row the kit adds is recorded in order.
 client.rows = {}
 local function Category()
@@ -98,10 +125,14 @@ function CreateSettingsListSectionHeaderInitializer(title) return { header = tit
 function CreateSettingsButtonInitializer(title) return { button = title } end
 
 -- Runs the ADDON_LOADED callbacks registered for addonName, as the client does once saved data is read.
+-- Then the start-up events, in the client's order, for code that waits for login (key bindings are read then).
 function client.Loaded(addonName)
 	for _, entry in ipairs(client.loaded or {}) do
 		if entry.name == addonName then entry.callback() end
 	end
+	client.Fire("ADDON_LOADED", addonName)
+	client.Fire("PLAYER_LOGIN")
+	client.Fire("PLAYER_ENTERING_WORLD", true, false)
 end
 
 return client

@@ -178,7 +178,11 @@ for _, entries in ipairs(commandTables) do
 	end
 end
 
--- Voiced lines: every { noise, report } table the addon keeps.
+-- Nothing to check is a failure, not a pass: the page and commands must have been reached.
+check("the addon's options page was built", #pages > 0, "BuildOptions never ran on the stand-ins")
+check("the addon's commands were registered", #commandTables > 0, "RegisterCommands never ran on the stand-ins")
+
+-- Voiced lines: every { noise = , report = } table the addon keeps.
 local function VoicedLines(t, seen, found)
 	if seen[t] then return end
 	seen[t] = true
@@ -189,6 +193,12 @@ local function VoicedLines(t, seen, found)
 end
 local voiced = {}
 VoicedLines(ns, {}, voiced)
+local speaks = false
+for _, file in ipairs(files) do
+	speaks = speaks or (Read(addonDir .. "/" .. file) or ""):find(":Say%(") ~= nil
+end
+check("the addon's voiced lines were found", not speaks or #voiced > 0,
+	"it calls Say, but keeps no { noise = , report = } table in its namespace")
 for _, line in ipairs(voiced) do
 	GameTerms(("voiced %q"):format(line.noise), line.noise .. " " .. line.report)
 	check(("voiced %q: noise without an end mark, report in beats ending \"!\""):format(line.noise),
