@@ -7,5 +7,6 @@ ignore:
   - docs
   - tests
   - tools
+  - Libs/JigBoltgripToolkit/tests
   - research_notes
   - reports

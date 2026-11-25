@@ -12,7 +12,7 @@ ns.voice = {
 	-- Argument: where. The error itself follows on its own line.
 	malfunction = "Malfunction in %s!",
 	-- Window titles.
-	exportTitle = "Export ready! Copy it and send it to the maintainer as a .json file!",
+	exportTitle = "Recipe sources ready! Select all, then copy!",
 }
 
 --@debug@

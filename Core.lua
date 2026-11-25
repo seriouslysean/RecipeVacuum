@@ -12,12 +12,6 @@ ns.MAX_WIRE_NUMBER = 2^32
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 -- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
 ns.LEVEL = LibStub("JigBoltgripToolkit-1.0").SOURCE_LEVEL
--- What each range tracks here, after the toolkit's opening (docs/voice.md, "Plain text").
-ns.levelText = {
-	"Tracks only what you see for yourself.",
-	"Also tracks what your party, guild and friends find.",
-	"Also tracks recipes people link in chat.",
-}
 ns.levelHeard = { "only you", "you and your friends", "everyone nearby" }
 
 function ns.NewLayer()

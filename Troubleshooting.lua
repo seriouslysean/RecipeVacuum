@@ -60,10 +60,10 @@ local function Chat(line)
 	ns.Log(line)
 end
 
-local function print(...)
-	local line = strjoin(" ", tostringall(...))
+-- A watch line: logged, and shown in chat through the kit unless a watch handler is running.
+local function Show(line)
 	Append(line)
-	if not logOnly then _G.print(line) end
+	if not logOnly then toolkit:Print(line) end
 end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
@@ -143,7 +143,7 @@ local handlers = {
 	LOOT_READY = function(...)
 		if lootLogged then return end
 		lootLogged = true
-		print(("LOOT %s | cast target %s | fishing %s | unit target %s | %s"):format(DescribeAll(...),
+		Show(("LOOT %s | cast target %s | fishing %s | unit target %s | %s"):format(DescribeAll(...),
 			Describe(castTarget), Describe(IsFishingLoot()), Describe(UnitGUID("target")), Where()))
 		local recipes = 0
 		for slot = 1, GetNumLootItems() do
@@ -155,7 +155,7 @@ local handlers = {
 			-- Containers opened from bags report an Item GUID with no item ID in it.
 			local container = type(source) == "string" and not issecretvalue(source)
 				and source:find("^Item%-") and C_Item.GetItemIDByGUID and C_Item.GetItemIDByGUID(source)
-			print(("  slot %d type %s %s | sources %s%s"):format(slot, Describe(GetLootSlotType(slot)),
+			Show(("  slot %d type %s %s | sources %s%s"):format(slot, Describe(GetLootSlotType(slot)),
 				Describe(GetLootSlotLink(slot)), DescribeAll(GetLootSourceInfo(slot)),
 				container and (" | container item " .. Describe(container)) or ""))
 		end
@@ -165,13 +165,13 @@ local handlers = {
 }
 handlers.LOOT_OPENED = handlers.LOOT_READY
 local function Quest(event)
-	print(("%s quest %s | questnpc %s %s | %s"):format(event, Describe(GetQuestID()),
+	Show(("%s quest %s | questnpc %s %s | %s"):format(event, Describe(GetQuestID()),
 		Describe(UnitName("questnpc")), Describe(UnitGUID("questnpc")), Where()))
 	local recipes = 0
 	for _, kind in ipairs({ "reward", "choice" }) do
 		local count = kind == "reward" and GetNumQuestRewards() or GetNumQuestChoices()
 		for index = 1, count do
-			print(("  %s %d: %s"):format(kind, index, DescribeAll(GetQuestItemInfo(kind, index))))
+			Show(("  %s %d: %s"):format(kind, index, DescribeAll(GetQuestItemInfo(kind, index))))
 			if IsRecipeItem((select(6, GetQuestItemInfo(kind, index)))) then recipes = recipes + 1 end
 		end
 	end
@@ -181,14 +181,14 @@ handlers.QUEST_DETAIL = function() Quest("QUEST_DETAIL") end
 -- A group roll names the item but not what dropped it; the handle is logged in case it matches something later.
 handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
 	local link = GetLootRollItemLink(rollID)
-	print(("ROLL %s | item %s | handle %s | time %s | unit target %s | %s"):format(Describe(rollID), Describe(link),
+	Show(("ROLL %s | item %s | handle %s | time %s | unit target %s | %s"):format(Describe(rollID), Describe(link),
 		Describe(lootHandle), Describe(rollTime), Describe(UnitGUID("target")), Where()))
 	local itemID = link and not issecretvalue(link) and C_Item.GetItemInfoInstant(link)
 	WatchFound(IsRecipeItem(itemID) and 1 or 0)
 end
 -- Vendors and trainers are recorded on window open, so the watch logs the visit: who and how many items or services.
 handlers.MERCHANT_SHOW = function()
-	print(("VENDOR %s %s | faction %s | %d items | %s"):format(Describe(UnitName("npc")), Describe(UnitGUID("npc")),
+	Show(("VENDOR %s %s | faction %s | %d items | %s"):format(Describe(UnitName("npc")), Describe(UnitGUID("npc")),
 		Describe((UnitFactionGroup("npc"))), GetMerchantNumItems(), Where()))
 	-- Each item with its class, since only the Recipe class (9) is recorded; log only.
 	local recipes = 0
@@ -206,17 +206,17 @@ handlers.GOSSIP_SHOW = function()
 	for _, option in ipairs(C_GossipInfo.GetOptions()) do
 		table.insert(options, Describe(option.name))
 	end
-	print(("GOSSIP %s %s | %d available quests | options: %s | %s"):format(Describe(UnitName("npc")),
+	Show(("GOSSIP %s %s | %d available quests | options: %s | %s"):format(Describe(UnitName("npc")),
 		Describe(UnitGUID("npc")), C_GossipInfo.GetNumAvailableQuests(),
 		#options > 0 and table.concat(options, "; ") or "none", Where()))
 end
 -- Services can arrive after the window opens and its filter hides some, so list them later with every filter on, then restore the player's filter.
 local TRAINER_LIST_DELAY = 0.5
 handlers.TRAINER_SHOW = function()
-	print(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
+	Show(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
 		Describe(UnitGUID("npc")), Describe((UnitFactionGroup("npc"))), Describe(IsTradeskillTrainer()), GetNumTrainerServices(), Where()))
 	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function() ns.WithAllTrainerServices(function(shown)
-		print(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
+		Show(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
 			GetNumTrainerServices(), Describe(shown.available), Describe(shown.unavailable), Describe(shown.used)))
 		-- Recipes have a category and ranks none, which is how the recorder tells them apart; skipped ones are named.
 		local recipes, skipped = 0, {}
@@ -238,7 +238,7 @@ handlers.TRAINER_SHOW = function()
 				.. " | step " .. Describe(GetTrainerServiceStepIndex()))
 		end
 		if #skipped > 0 then
-			print("  skipped as ranks (no category): " .. table.concat(skipped, "; "))
+			Show("  skipped as ranks (no category): " .. table.concat(skipped, "; "))
 		end
 		WatchFound(recipes)
 	end) end))
@@ -583,7 +583,7 @@ local MOCK_BOOK_RANKS = { [16072] = { 185, 150 }, [16084] = { 129, 150 } } -- Co
 -- spell 18248 (Wowhead WoW Forever quest and npc pages, read 2026-11-25). Fishing skill line 356, from 225.
 local MOCK_QUEST_RANK = { quest = 6607, npc = 12919, name = "Nat Pagle", map = 1445, x = 0.584, y = 0.600,
 	skillLine = 356, fromCap = 225 }
-table.insert(troubleshooting, { "mockranks", "Add the Expert books and Nat Pagle's quest for this session, to test the rank mark", function()
+table.insert(troubleshooting, { "mockranks", "Add test rank sources for this session", function()
 	local now = GetServerTime()
 	for _, row in ipairs(MOCK_BOOK_VENDORS) do
 		local itemID, npcID, name, faction, mapID, x, y = unpack(row)

@@ -7,8 +7,8 @@ ns.commands = ns.commands or {}
 table.insert(ns.commands, 1, { action = "", description = "Open the options", run = function()
 	Settings.OpenToCategory(ns.module.category:GetID())
 end })
-table.insert(ns.commands, 2, { action = "export", description = "Copy your recorded sources to send to the author",
-	note = "Opens a window with everything you have recorded yourself, as text, ready to copy and send to the author.", run = function()
+table.insert(ns.commands, 2, { action = "export", description = "Copy the recipe sources you found",
+	note = "Opens a window listing every trainer, vendor, quest and drop you found recipes from, ready to copy.", run = function()
 	ns.ExportFinds()
 end })
 
@@ -20,7 +20,8 @@ function ns.InitSettings()
 	toolkit:BuildOptions(module, ns.db, {
 		{ heading = "Recipe Sources", place = "sources", rows = {
 			{ kind = "cards", key = "sourceLevel", label = "Recipe Sources", default = LEVEL.FRIENDS,
-				values = toolkit:SourceCards(ns.levelText),
+				-- The kit words the cards; Recipe Vacuum names what it tracks (the toolkit's docs/standards.md, "Options").
+				values = toolkit:SourceCards({ what = "recipes", friends = true, public = "recipes people link in chat" }),
 				onChange = function()
 					ns.SetSharing(ns.SharingWanted())
 					ns.SourcesChanged()
@@ -32,7 +33,7 @@ function ns.InitSettings()
 				onChange = function() ns.SetSharing(ns.SharingWanted()) end },
 		} },
 		{ heading = "Personal Finds", place = "features", rows = {
-			{ kind = "checkbox", key = "selfFound", label = "Record Personal Finds", default = true,
+			{ kind = "checkbox", key = "selfFound", label = "Track Personal Finds", default = true,
 				tooltip = "Remember recipe sources from the trainers, vendors, quests and loot you see, even on characters without that profession." },
 			{ kind = "checkbox", key = "announceNewFinds", label = "Announce New Finds", default = true, under = "selfFound",
 				tooltip = "Print one message in your chat window after a visit with new recipe sources." },

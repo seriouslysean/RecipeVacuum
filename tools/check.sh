@@ -20,6 +20,9 @@ for file in $(ours); do luajit -bl "$file" > /dev/null; done
 echo "== luacheck"
 luacheck . -q
 
+echo "== toolkit conformance (the kit's shared rules, run on this addon's files)"
+luajit Libs/JigBoltgripToolkit/tests/conformance.lua .
+
 echo "== release build (debug blocks removed) still compiles"
 stripped=$(mktemp -d)
 trap 'rm -rf "$stripped"' EXIT

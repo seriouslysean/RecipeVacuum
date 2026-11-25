@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 25
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 26
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -76,6 +76,8 @@ end
 -- noise is a short present-tense phrase with no end mark ("whirs and rattles"); the library adds the
 -- period. report is one or more robot-speak beats, each ending in "!" ("Intake complete! 2 recipes from X!").
 function lib:Say(module, noise, report)
+	assert(type(noise) == "string" and noise ~= "" and type(report) == "string" and report ~= "",
+		("%s: a voiced line needs a noise and a report (docs/standards.md, \"Voice\")"):format(tostring(module.title)))
 	AddLine(("%s %s %s %s. %s"):format(MARK, PREFIX, DeviceName(module), noise, report))
 end
 
@@ -585,6 +587,17 @@ local function OrderedSections(sections)
 	for index, section in ipairs(sections) do
 		local rank = assert(SECTION_PLACES[section.place], ("section %q needs a place: sources, features or blizzard"):format(
 			tostring(section.heading)))
+		-- A sources section is exactly one row of the kit's cards, plus any rows under it (sharing).
+		if section.place == "sources" then
+			local cards = 0
+			for _, row in ipairs(section.rows) do
+				if row.kind == "cards" then
+					assert(lib.sourceCardSets[row.values], ("section %q: cards must come from SourceCards"):format(section.heading))
+					cards = cards + 1
+				end
+			end
+			assert(cards == 1, ("section %q needs exactly one row of cards"):format(section.heading))
+		end
 		ordered[#ordered + 1] = { section = section, rank = rank, index = index }
 	end
 	table.sort(ordered, function(left, right)
@@ -595,21 +608,37 @@ local function OrderedSections(sections)
 	return ordered
 end
 
--- Sources cards, the same in every module: the levels, names, icons and range openings are the kit's; the
--- module gives the sentence after each opening (what that range tracks for it).
+-- Sources cards, the same in every module (owner, 2026-11-25: "These words don't match how recipe vacuum
+-- works which feels like a miss"): the levels, names, icons, range openings and each card's sentence are
+-- the kit's; the module names only the game thing it tracks.
+--   spec.what      what the module tracks, in game terms ("recipes", "the Fishing skill each zone needs")
+--   spec.seen      optional, how the player sees it for themselves ("your casts, catches and escapes")
+--   spec.friends   true when the module shares with party, guild and friends; otherwise no Friends card
+--   spec.public    what Public adds ("recipes people link in chat"); nil leaves out the Public card
+--   spec.openings  false leaves out the range openings (owner, 2026-11-25, Tackletron: "Game terms, no range opening")
 lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 local SOURCE_CARDS = {
-	{ name = "Self Found", icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = "Short range." },
-	{ name = "Friends", icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range." },
-	{ name = "Public", icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = "Long range." },
+	{ name = "Self Found", icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = "Short range.",
+		text = function(spec)
+			return ("Tracks only %s from what you see for yourself%s."):format(spec.what, spec.seen and (": " .. spec.seen) or "")
+		end },
+	{ name = "Friends", icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range.",
+		text = function(spec) return spec.friends and "Also tracks what your party, guild and friends find." end },
+	{ name = "Public", icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = "Long range.",
+		text = function(spec) return spec.public and ("Also tracks %s."):format(spec.public) end },
 }
 
--- texts = { [level] = "Tracks only what you see for yourself." }; a level without text is left out.
-function lib:SourceCards(texts)
+-- Cards from here are marked, so BuildOptions can refuse cards built by hand (owner, 2026-11-25: rules baked in).
+lib.sourceCardSets = lib.sourceCardSets or setmetatable({}, { __mode = "k" })
+
+function lib:SourceCards(spec)
+	assert(type(spec.what) == "string", "SourceCards needs spec.what, the game thing the module tracks")
 	local cards = {}
+	self.sourceCardSets[cards] = true
 	for level, card in ipairs(SOURCE_CARDS) do
-		if texts[level] then
-			cards[#cards + 1] = { level, card.name, card.icon, card.opening .. " " .. texts[level] }
+		local text = card.text(spec)
+		if text then
+			cards[#cards + 1] = { level, card.name, card.icon, spec.openings == false and text or (card.opening .. " " .. text) }
 		end
 	end
 	return cards
@@ -806,7 +835,7 @@ function lib:RegisterCommands(module, name, entries)
 	end
 	if not hasHelp then
 		table.insert(entries, { action = "help", description = "List these commands",
-			note = "Prints this addon's commands in your chat window, with what each one does.", run = function()
+			note = "Prints these commands in your chat window, with what each one does.", run = function()
 			lib:PrintHelp(name)
 		end })
 	end
