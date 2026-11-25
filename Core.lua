@@ -219,5 +219,5 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	ns.db = db
 	ns.InitFinds()
 	ns.InitSettings()
-	ns.ResumeWatch()
+	if ns.ResumeWatch then ns.ResumeWatch() end -- checkout builds only
 end)

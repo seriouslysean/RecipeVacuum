@@ -14,7 +14,7 @@ To contribute discoveries collected while playing alone, type `/recipevacuum exp
 
 ## Commands
 
-`/recipevacuum help` (or `/boltgrip recipevacuum help`) lists the commands in chat. Player commands also appear in the options page's Commands section. Two troubleshooting commands help when reporting a problem: `watch on` logs where loot, quest rewards, vendor stock and trainer lists come from as you play, and `log` shows that log in a window to copy from. The log keeps its last 2,000 lines in `RecipeVacuumDB.devLog` (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`, written on `/reload` or logout).
+`/recipevacuum help` (or `/boltgrip recipevacuum help`) lists the commands in chat. Player commands also appear in the options page's Commands section.
 
 ## Development
 

@@ -52,9 +52,9 @@ Code between `--@debug@` and `--@end-debug@` exists in a checkout and is strippe
 
 A file must still compile with the marked blocks removed.
 
-## Troubleshooting commands
+## Development commands
 
-`/recipevacuum help` lists the commands. `watch on` logs where loot, quest rewards, vendor stock and trainer lists come from, to the log only, with one chat line when recipes are involved. `log` shows the current run in a window to copy from; `log all` shows the last 2,000 lines; `log clear` empties it. The log is written with the saved variables on `/reload` or logout.
+In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. `watch on` logs where loot, quest rewards, vendor stock and trainer lists come from, to the log only, with one chat line when recipes are involved. `log` shows the current run in a window to copy from; `log all` shows the last 2,000 lines; `log clear` empties it. The log is written with the saved variables on `/reload` or logout.
 
 ## Seeding
 

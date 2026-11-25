@@ -1,13 +1,12 @@
--- Troubleshooting commands: watch and log ship in every build; development commands sit between the debug markers (docs/development.md, "Working build").
+-- Development commands and their log: the whole file exists only in a checkout build and is stripped from releases (docs/development.md, "Working build").
 local _, ns = ...
 
 --@debug@
+
 local UseScan -- defined below
 -- A checkout build shows Lua errors, so a fault while developing is seen, not silent.
 C_CVar.SetCVar("scriptErrors", "1")
---@end-debug@
 
---@debug@
 -- Performance record: each piece keeps its run count, total and slowest run, written to the saved log at session end.
 local perfRecord, perfOrder = {}, {}
 
@@ -35,9 +34,7 @@ local function PerfLines()
 	end
 	return lines
 end
---@end-debug@
 
---@debug@
 -- Times the profession window's opening for the perf command.
 local openStarted, openMs
 local openTimer = CreateFrame("Frame")
@@ -58,7 +55,6 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 		end
 	end)
 end)
---@end-debug@
 
 -- Keeps the last LOG_LINES lines across commands and reloads; the copy window shows the current run, "log all" everything kept.
 local LOG_LINES = 2000
@@ -330,7 +326,6 @@ local function Watch(word)
 end
 
 -- Called by Core once saved data is loaded (an ADDON_LOADED callback here could run before it).
---@debug@
 -- A scan from this game build is used from the session start, ahead of the seed.
 local function UseKeptScan()
 	ns.scannedMade = ns.db.devMade -- from the `made` command
@@ -339,12 +334,9 @@ local function UseKeptScan()
 		UseScan(scan)
 	end
 end
---@end-debug@
 
 function ns.ResumeWatch()
-	--@debug@
 	UseKeptScan()
-	--@end-debug@
 	if ns.db.watch and not watcher then
 		StartWatch()
 		Append("watch resumed after reload")
@@ -352,7 +344,6 @@ function ns.ResumeWatch()
 end
 
 
---@debug@
 -- Seeding scan: every recipe item and the recipe it teaches (docs/development.md, "Seeding").
 local SCAN_FRAME_MS = 4 -- work per frame
 local SCAN_STEP = 500 -- IDs between clock checks
@@ -559,9 +550,7 @@ local function Scan()
 	end
 end
 
---@end-debug@
 
---@debug@
 -- Shared functions timed from here; the record is written out at session end.
 for name, label in pairs({ AddSourceLines = "source tooltip", MergeFinds = "merge shared finds", LinkPending = "link recipe items" }) do
 	local inner = ns[name]
@@ -589,7 +578,6 @@ perfWriter:SetScript("OnEvent", function()
 		end
 	end
 end)
---@end-debug@
 
 -- Each command logs a header (time, client build, character, open profession), runs, then shows the log in the copy window; "log" only shows it.
 local function Logged(run)
@@ -622,7 +610,6 @@ local troubleshooting = {
 	{ "watch", "Start or stop logging where recipes come from as you play", Watch, quiet = true, usage = "on|off" },
 }
 
---@debug@
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
 table.insert(troubleshooting, { "perf", "Show how long the profession window and its list took", function()
 	local function Ms(value)
@@ -758,7 +745,6 @@ table.insert(troubleshooting, { "sharetest", "Test sharing without a second play
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
 table.insert(troubleshooting, { "scan", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
---@end-debug@
 
 ns.commands = ns.commands or {}
 for _, command in ipairs(troubleshooting) do
@@ -781,3 +767,4 @@ table.insert(ns.commands, { action = "log", usage = "[all|clear]", description =
 			ShowLog(word == "all")
 		end
 	end })
+--@end-debug@
