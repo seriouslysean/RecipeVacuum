@@ -19,7 +19,7 @@ local function Learned(itemID)
 	return false
 end
 
--- The first book of the profession this character has not learned, with its pins.
+-- The first book of the profession this character has not learned and has a pin for.
 local function NeededBook()
 	local info = ProfessionsFrame.CraftingPage.professionInfo
 	local profession = info and info.profession
@@ -35,7 +35,9 @@ local function NeededBook()
 					targets[#targets + 1] = target
 				end
 			end
-			return #targets > 0 and { book = book, entries = entries, targets = targets } or nil
+			if #targets > 0 then
+				return { book = book, entries = entries, targets = targets }
+			end
 		end
 	end
 end
