@@ -629,7 +629,10 @@ end })
 -- Made-item scan, for measuring the table before it ships: whenever a profession list is ready (the
 -- player's own or one shown by another player), what each recipe makes is read once per game build.
 local MADE_BATCH = 50 -- recipes read per frame
-local MADE_FORMAT, MADE_SAMPLES = 2, 8 -- a new format number makes every profession be read again
+-- Format 3: format 2 could read the previous profession's list on a tab switch (the list is still the old one
+-- when the new profession reports ready), so its counts came in pairs (Tailoring and Enchanting 471 each,
+-- Engineering 18) and the profession switched to was never read.
+local MADE_FORMAT, MADE_SAMPLES = 3, 8 -- a new format number makes every profession be read again
 local madeScanning
 
 local function ScanMade()
@@ -647,8 +650,9 @@ local function ScanMade()
 		return
 	end
 	local recipeIDs, made, index = C_TradeSkillUI.GetAllRecipeIDs(), ns.db.devMade, 0
-	if #recipeIDs == 0 then
-		return -- the list is not filled yet; read it on a later update rather than record it as empty
+	-- Not filled yet, or still the previous profession's list: read it on a later update.
+	if #recipeIDs == 0 or not C_TradeSkillUI.IsRecipeInSkillLine(recipeIDs[1], professionID) then
+		return
 	end
 	local noSchematic, noOutput, samples = 0, 0, {}
 	madeScanning = true
