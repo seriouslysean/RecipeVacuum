@@ -1,6 +1,12 @@
 local _, ns = ...
 local comm = {}
 LibStub("AceComm-3.0"):Embed(comm)
+local toolkit = LibStub("JigBoltgripToolkit-1.0")
+
+-- Each exchange step, to the working build's log (the toolkit's Trace; nothing in a release).
+local function Trace(text, ...)
+	toolkit:Trace(ns.device, "SHARE " .. text:format(...))
+end
 
 -- Sharing uses hidden addon messages only: probe, request, batched reply (docs/data.md, "Sharing").
 -- The version is in both prefixes; other versions are ignored.
@@ -42,6 +48,7 @@ local function WhisperSent(target)
 end
 
 local function Send(text, channel, target)
+	Trace("sent %s to %s%s", text, channel, target and (" " .. target) or "")
 	if channel == "WHISPER" then
 		if unreachable[target] then return end
 		comm:SendCommMessage(PROBE_PREFIX, text, channel, target, "BULK", WhisperSent, target)
@@ -174,10 +181,12 @@ local function FinishRequest()
 end
 
 local function Ask(peer)
+	Trace("asked %s for finds %d to %d (%d tries left)", peer.sender, peer.after, peer.tip, peer.retries)
 	if peer.timer then peer.timer:Cancel() end
 	SendData(("%s %s %d"):format(KIND.GET, peer.id, peer.after), peer.sender)
 	peer.timer = C_Timer.NewTimer(REQUEST_TIMEOUT, function()
 		if active ~= peer then return end
+		Trace("no answer from %s", peer.sender)
 		if peer.retries > 0 and Ready() and Trusted(peer.sender) then
 			peer.retries = peer.retries - 1
 			Ask(peer)
@@ -249,6 +258,7 @@ local function OnProbe(_, message, channel, sender)
 	elseif not discoveryChannels[channel] then return end
 	local kind, id, revision, rest = ParseHeader(message)
 	if not kind or rest ~= "" or id == ns.db.exchange.id then return end
+	Trace("heard %s from %s on %s: collection %s at %d", kind, sender, channel, id, revision)
 	if kind == KIND.HELLO then
 		if channel == "WHISPER" then
 			-- Friends outside guild and group: answer the prober directly.
@@ -278,6 +288,7 @@ local function OnData(_, message, channel, sender)
 	if kind == KIND.GET then
 		if not ns.db.shareFinds or rest ~= "" or id ~= exchange.id or after >= exchange.revision then return end
 		local reply = Reply(after)
+		Trace("%s asked for finds after %d: %s", sender, after, reply and ("sent " .. #reply .. " bytes") or "nothing to send")
 		if reply then SendData(reply, sender) end
 	elseif kind == KIND.DATA and Receiving() then
 		-- Accept only the reply to our own request.
@@ -288,6 +299,9 @@ local function OnData(_, message, channel, sender)
 		if not through or through <= after or through >= ns.MAX_WIRE_NUMBER then return end
 		local ok, rows = pcall(Decode, encoded)
 		local changed = ok and rows and ns.MergeFinds(rows, MAX_ROWS)
+		Trace("received %d bytes from %s, finds %d to %d: %s", #encoded, sender, after, through,
+			not (ok and rows) and "could not be read" or changed == nil and "rejected, nothing written"
+			or ("%d rows, %s"):format(#rows, changed and "merged" or "nothing new"))
 		if changed == nil or not (ok and rows) then
 			FinishRequest() -- invalid batch: nothing was written
 			return

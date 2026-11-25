@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 27
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 28
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -298,9 +298,19 @@ function lib:StartLog(module, saved, handlers)
 	self:Log(module, ("%s session: client %s (%s) | addon %s | %s, level %d | %s"):format(date("%Y-%m-%d %H:%M:%S"),
 		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
 		UnitLevel("player") or 0, ZoneLine()), true)
-	if saved.watch and not log.watching then
+	-- A working build logs from the start, always (owner, 2026-11-25: "don't I want an always on debug mode
+	-- while testing?"); /boltgrip watch off pauses it and is remembered.
+	if saved.watch ~= false and not log.watching then
 		self:SetWatch(module, true, true)
-		self:Log(module, "watch resumed after reload")
+	end
+end
+
+-- A line for the module's log while it is logging; nothing otherwise, and nothing in a release, where no
+-- log is started. For events worth reading back but not worth a chat line (sharing, timers).
+function lib:Trace(module, line)
+	local log = self.logs[module.addon]
+	if log and log.watching then
+		self:Log(module, line)
 	end
 end
 
@@ -370,7 +380,7 @@ function lib:SetWatch(module, on, quiet)
 		self:Log(module, date("%Y-%m-%d %H:%M:%S") .. " watch on | " .. ZoneLine(), true)
 	end
 	log.watching = on or nil
-	log.saved.watch = on or nil
+	log.saved.watch = on and true or false
 	UpdateWatchEvents()
 	if not quiet then
 		self:Print(("%s: %s"):format(module.title, on and "Watch enabled!" or "Watch disabled!"))
@@ -404,7 +414,7 @@ end
 -- started a log (owner, 2026-11-25: kit commands only). Release builds start no logs, so these do nothing
 -- there and are not listed.
 local WORKING_BUILD_ROWS = {
-	"/boltgrip watch on|off - Start or stop logging what each addon sees as you play",
+	"/boltgrip watch on|off - Pause or resume logging what each addon sees (on by default)",
 	"/boltgrip log [all|clear] - Show every addon's log; \"all\" shows everything kept, \"clear\" empties them",
 }
 
