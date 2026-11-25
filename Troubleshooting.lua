@@ -43,34 +43,10 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	end)
 end)
 
--- Keeps the last LOG_LINES lines across commands and reloads; the copy window shows the current run, "log all" everything kept.
-local LOG_LINES = 2000
-
--- A command's window shows its own lines (viewStart), even during a watch run; "log" goes back to the run.
-local viewStart
-
-local function ShowLog(all)
-	local log = ns.db.devLog or {}
-	local first = all and 1 or math.min(viewStart or ns.db.devLogRun or 1, #log + 1)
-	toolkit:ShowText(ns.title .. ": " .. ns.voice.logTitle, table.concat(log, "\n", first))
-end
-
--- Lines are timestamped so a long watch reads as a timeline; a dated line is kept as it is.
+-- The log, watch and log commands are the toolkit's working-build log (its docs/standards.md, "Working
+-- build helpers"); the lines live in this addon's saved data (devLog, devLogRun, watch).
 local function Append(line, dated)
-	ns.db.devLog = ns.db.devLog or {}
-	table.insert(ns.db.devLog, (dated or line == "") and line or date("%H:%M:%S ") .. line)
-	while #ns.db.devLog > LOG_LINES do
-		table.remove(ns.db.devLog, 1)
-		ns.db.devLogRun = math.max((ns.db.devLogRun or 1) - 1, 1)
-		if viewStart then viewStart = math.max(viewStart - 1, 1) end
-	end
-end
-
--- The next line starts a new run; a running watch keeps its run.
-local function StartRun(force)
-	if force or not ns.db.watch then
-		ns.db.devLogRun = #(ns.db.devLog or {}) + 1
-	end
+	toolkit:Log(ns.device, line, dated)
 end
 
 -- Watch lines go to the log only, so chat stays clear.
@@ -88,9 +64,6 @@ local function print(...)
 	local line = strjoin(" ", tostringall(...))
 	Append(line)
 	if not logOnly then _G.print(line) end
-	if toolkit:IsTextShown() then
-		ShowLog()
-	end
 end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
@@ -111,9 +84,6 @@ local function Say(line, ...)
 	line = select("#", ...) > 0 and line:format(...) or line
 	Append(LOG_TAG .. line)
 	if not logOnly then Chat(line) end
-	if toolkit:IsTextShown() then
-		ShowLog()
-	end
 end
 
 -- The one chat line a watch event may print: it found recipes (voice rules: docs/voice.md; Homing Robot OOX-17/TN is the model).
@@ -136,8 +106,7 @@ local function LogOnly(callback)
 end
 
 
--- Logs loot windows, quest dialogs and spell targets, to learn what Forever reports for loot and quest givers and rewards.
-local watcher
+-- The watch logs loot windows, quest dialogs and spell targets, to learn what Forever reports for loot and quest givers and rewards.
 
 -- tostring that never touches a secret value (Forever can hand addons secret GUIDs and names).
 local function Describe(value)
@@ -276,38 +245,19 @@ handlers.TRAINER_SHOW = function()
 end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
 
--- watch on | off (no word toggles). Saved, so it resumes after /reload.
-local function StartWatch()
-	watcher = CreateFrame("Frame")
-	for event in pairs(handlers) do
-		watcher:RegisterEvent(event)
-	end
-	watcher:SetScript("OnEvent", function(_, event, ...)
-		-- Log errors: script errors may be hidden in the client.
-		logOnly = true
-		local ok, problem = pcall(handlers[event], ...)
-		logOnly = nil
-		if not ok then
-			Malfunction(event, Describe(problem))
+-- The watch runs these handlers through the toolkit; their lines go to the log only, and an error is
+-- reported by the toolkit as a malfunction.
+local function WatchHandlers()
+	local wrapped = {}
+	for event, handler in pairs(handlers) do
+		wrapped[event] = function(...)
+			logOnly = true
+			local ok, problem = pcall(handler, ...)
+			logOnly = nil
+			if not ok then error(Describe(problem), 0) end
 		end
-	end)
-end
-
-local function Watch(word)
-	word = (word or ""):lower()
-	local on = word == "on" or (word == "" and not watcher)
-	if on and not watcher then
-		StartWatch()
-	elseif not on and watcher then
-		watcher:UnregisterAllEvents()
-		watcher = nil
 	end
-	if on and not ns.db.watch then
-		StartRun(true)
-		Append(date("%Y-%m-%d %H:%M:%S") .. " /recipevacuum watch on", true)
-	end
-	ns.db.watch = on or nil
-	Voiced(on and voice.watchOn or voice.watchOff)
+	return wrapped
 end
 
 -- Called by Core once saved data is loaded (an ADDON_LOADED callback here could run before it).
@@ -322,10 +272,7 @@ end
 
 function ns.ResumeWatch()
 	UseKeptScan()
-	if ns.db.watch and not watcher then
-		StartWatch()
-		Append("watch resumed after reload")
-	end
+	toolkit:StartLog(ns.device, ns.db, WatchHandlers())
 end
 
 
@@ -556,48 +503,19 @@ perfWriter:SetScript("OnEvent", function()
 	end
 	-- Retired probes' data.
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
-	local lines = PerfLines()
-	if #lines > 0 then
-		local version, build = GetBuildInfo()
-		Append("")
-		Append(("%s PERF session on %s (%s), %s level %d"):format(date("%Y-%m-%d %H:%M:%S"), version, build,
-			UnitName("player") or UNKNOWN, UnitLevel("player") or 0), true)
-		for _, line in ipairs(lines) do
-			Append(line)
-		end
-	end
 end)
 
--- Each command logs a header (time, client build, character, open profession), runs, then shows the log in the copy window; "log" only shows it.
-local function Logged(run)
-	return function(arguments)
-		local version, build = GetBuildInfo()
-		local _, faction = UnitFactionGroup("player")
-		local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
-		local profession = page and page:IsVisible() and Professions.GetProfessionInfo()
-		Append("")
-		StartRun()
-		viewStart = #ns.db.devLog + 1
-		Append(date("%Y-%m-%d %H:%M:%S") .. " /recipevacuum " .. (arguments.action or ""), true)
-		for _, line in ipairs({
-			("client %s (%s) | addon %s | %s, %s, level %d"):format(version, build,
-				tostring(C_AddOns.GetAddOnMetadata("RecipeVacuum", "Version")),
-				UnitName("player"), tostring(faction), UnitLevel("player")),
-			profession and ("profession %s (id %d) skill %d/%d"):format(profession.professionName or "?",
-				profession.professionID or 0, profession.skillLevel or 0, profession.maxSkillLevel or 0)
-				or "no open crafting page",
-		}) do
-			Append(line)
-		end
-		run(arguments.text)
-		ShowLog()
-	end
+-- Each command logs the toolkit's header plus the open profession, runs, then shows its lines; "log" only shows them.
+local function ProfessionLine()
+	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
+	local profession = page and page:IsVisible() and Professions.GetProfessionInfo()
+	return { profession and ("profession %s (id %d) skill %d/%d"):format(profession.professionName or "?",
+		profession.professionID or 0, profession.skillLevel or 0, profession.maxSkillLevel or 0)
+		or "no open crafting page" }
 end
 
 
-local troubleshooting = {
-	{ "watch", "Start or stop logging where recipes come from as you play", Watch, quiet = true, usage = "on|off" },
-}
+local troubleshooting = {}
 
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
 -- Item probe: saves an item's tooltip lines with every plain field, to learn what the game says about
@@ -822,35 +740,15 @@ end, quiet = true })
 table.insert(troubleshooting, { "scan", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 
 ns.commands = ns.commands or {}
+for _, entry in ipairs(toolkit:WorkingBuildCommands(ns.device)) do
+	table.insert(ns.commands, entry)
+end
 for _, command in ipairs(troubleshooting) do
 	local action, description, run = command[1], command[2], command[3]
 	-- Quiet commands print to chat only, so the profession window stays in view.
-	local logged = not command.quiet and Logged(run)
 	table.insert(ns.commands, { action = action, usage = command.usage, description = description, troubleshooting = true,
-		run = function(text)
-			if logged then logged({ action = action, text = text }) else run(text) end
-		end })
+		run = command.quiet and run or toolkit:LoggedCommand(ns.device, action, run, ProfessionLine) })
 end
-table.insert(ns.commands, { action = "log", usage = "[all|clear]", description = "Show the watch log; \"all\" shows everything kept, \"clear\" empties it", troubleshooting = true,
-	run = function(word)
-		word = (word or ""):lower()
-		if word == "clear" then
-			ns.db.devLog, ns.db.devLogRun = {}, nil
-			Chat(voice.logPurged)
-		else
-			viewStart = nil
-			ShowLog(word == "all")
-		end
-	end })
-
--- Blocked actions go to the saved log too, with the call stack, so they can be read after a reload.
-local blocked = CreateFrame("Frame")
-blocked:RegisterEvent("ADDON_ACTION_BLOCKED")
-blocked:RegisterEvent("ADDON_ACTION_FORBIDDEN")
-blocked:SetScript("OnEvent", function(_, event, addon, action)
-	Append(("%s %s, %s"):format(event, tostring(addon), tostring(action)))
-	Append(debugstack(2, 12, 0))
-end)
 
 -- Saved variables load time: the client reads them after the addon's last file (this one) and before
 -- ADDON_LOADED, so the gap between the two is that read (plus any other addon's files in between).

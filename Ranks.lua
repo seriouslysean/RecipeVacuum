@@ -129,10 +129,13 @@ local function NextRank()
 			targets[#targets + 1] = ns.SourceTarget(observation)
 		end
 	end
-	if #targets == 0 then
-		return nil
-	end
-	-- Titled with the game's own name for what is learned: a book, the trainer's rank, or the quest (owner, 2026-11-25).
+	return #targets > 0 and { sources = sources, profession = info.professionName, entries = entries, targets = targets } or nil
+end
+
+-- Titled with the game's own name for what is learned: a book, the trainer's rank, or the quest (owner,
+-- 2026-11-25). Read at hover, since item and quest names can arrive after the window opens.
+local function RankName(rank)
+	local sources = rank.sources
 	local name = sources.spell and C_Spell.GetSpellName(sources.spell)
 	for itemID in pairs(sources.items) do
 		name = C_Item.GetItemNameByID(itemID) or name
@@ -140,14 +143,14 @@ local function NextRank()
 	for questID in pairs(sources.quests) do
 		name = name or C_QuestLog.GetTitleForQuestID(questID)
 	end
-	return { name = name or info.professionName, entries = entries, targets = targets }
+	return name or rank.profession or UNKNOWN
 end
 
 local mark
 
 local function OnEnter(button)
 	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-	GameTooltip_SetTitle(GameTooltip, button.rank.name or UNKNOWN)
+	GameTooltip_SetTitle(GameTooltip, RankName(button.rank))
 	ns.AddEntryLines(GameTooltip, button.rank.entries)
 	GameTooltip:Show()
 end

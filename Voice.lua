@@ -6,16 +6,12 @@ ns.voice = {
 	-- puts "Boltgrip's Recipe Vacuum" in front and the period after the noise.
 	-- Report arguments: count, "recipe" or "recipes", who or where.
 	intake = { noise = "whirs and rattles", report = "Intake complete! %d %s from %s!" },
-	-- Development lines (watch and log, checkout builds only): plain, not voiced.
-	watchOn = "Watch enabled! Logging recipe sources!",
-	watchOff = "Watch disabled!",
+	-- Development lines (checkout builds only): plain, not voiced. The watch and log lines are the toolkit's.
 	-- Arguments: count, "recipe" or "recipes".
 	detected = "%d %s detected!",
 	-- Argument: where. The error itself follows on its own line.
 	malfunction = "Malfunction in %s!",
-	logPurged = "Log purged!",
 	-- Window titles.
-	logTitle = "Log ready! Select all, then copy!",
 	exportTitle = "Export ready! Copy it and send it to the maintainer as a .json file!",
 }
 

@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 19
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 20
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -173,8 +173,172 @@ function lib:EnableWorkingBuild()
 	self.blockedListener:RegisterEvent("ADDON_ACTION_BLOCKED")
 	self.blockedListener:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 	self.blockedListener:SetScript("OnEvent", function(_, event, addon, action)
-		lib:Print(("%s: %s, %s"):format(event, tostring(addon), tostring(action)))
+		local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
+		lib:Print(line)
+		-- The blocked addon's own log keeps it with the call stack, to read after a reload.
+		local log = lib.logs[addon]
+		if log then
+			lib:Log(log.module, line)
+			lib:Log(log.module, debugstack(2, 12, 0))
+		end
 	end)
+end
+
+-- Working-build log: per module, kept in the module's own saved table (the library has none) as
+-- saved.devLog (lines), saved.devLogRun (where the current run starts) and saved.watch (watch left on).
+-- Lines are timestamped so a long watch reads as a timeline; the last LOG_LINES are kept.
+local LOG_LINES = 2000
+lib.logs = lib.logs or {}
+
+-- At logout each log gets the session's timings, as one dated block.
+local function WriteTimings()
+	for _, log in pairs(lib.logs) do
+		local lines = lib:TimingLines(log.module)
+		if #lines > 0 then
+			local version, build = GetBuildInfo()
+			lib:Log(log.module, "")
+			lib:Log(log.module, ("%s PERF session on %s (%s), %s level %d"):format(date("%Y-%m-%d %H:%M:%S"), version,
+				build, UnitName("player") or UNKNOWN, UnitLevel("player") or 0), true)
+			for _, line in ipairs(lines) do
+				lib:Log(log.module, line)
+			end
+		end
+	end
+end
+
+-- Starts the module's log once its saved table is loaded; resumes a watch left on.
+function lib:StartLog(module, saved, handlers)
+	local log = self.logs[module.addon] or {}
+	self.logs[module.addon] = log
+	log.module, log.saved, log.handlers = module, saved, handlers or {}
+	saved.devLog = saved.devLog or {}
+	if not self.logWriter then
+		self.logWriter = CreateFrame("Frame")
+		self.logWriter:RegisterEvent("PLAYER_LOGOUT")
+		self.logWriter:SetScript("OnEvent", WriteTimings)
+	end
+	if saved.watch and not log.watcher then
+		self:SetWatch(module, true, true)
+		self:Log(module, "watch resumed after reload")
+	end
+end
+
+-- Appends one line; a dated line (or an empty one) is kept as it is.
+function lib:Log(module, line, dated)
+	local log = self.logs[module.addon]
+	if not log then return end
+	local lines = log.saved.devLog
+	lines[#lines + 1] = (dated or line == "") and line or date("%H:%M:%S ") .. line
+	local over = #lines - LOG_LINES
+	if over > 0 then
+		-- Trimmed in one pass, not by removing the first line again and again.
+		local total = #lines
+		for index = 1, total - over do lines[index] = lines[index + over] end
+		for index = total - over + 1, total do lines[index] = nil end
+		log.saved.devLogRun = math.max((log.saved.devLogRun or 1) - over, 1)
+		if log.viewStart then log.viewStart = math.max(log.viewStart - over, 1) end
+	end
+	if self:IsTextShown() and self.textFrame.log == log then
+		self:ShowLog(module)
+	end
+end
+
+-- The copy window: the current run, a command's own lines, or with all, everything kept.
+function lib:ShowLog(module, all)
+	local log = self.logs[module.addon]
+	if not log then return end
+	local lines = log.saved.devLog
+	local first = all and 1 or math.min(log.viewStart or log.saved.devLogRun or 1, #lines + 1)
+	self:ShowText(module.title .. ": Log", table.concat(lines, "\n", first))
+	self.textFrame.log = log
+end
+
+-- The next line starts a new run; a running watch keeps its run unless forced.
+function lib:StartRun(module, force)
+	local log = self.logs[module.addon]
+	if log and (force or not log.saved.watch) then
+		log.saved.devLogRun = #log.saved.devLog + 1
+	end
+end
+
+-- Watch: the module's handlers ({ [event] = function(...) }) run on their events and log what they see;
+-- an error is logged and shown, not lost. Saved, so it resumes after a reload.
+function lib:SetWatch(module, on, quiet)
+	local log = self.logs[module.addon]
+	if not log then return end
+	if on and not log.watcher then
+		log.watcher = CreateFrame("Frame")
+		for event in pairs(log.handlers) do
+			log.watcher:RegisterEvent(event)
+		end
+		log.watcher:SetScript("OnEvent", function(_, event, ...)
+			local ok, problem = pcall(log.handlers[event], ...)
+			if not ok then
+				local line = ("Malfunction in %s! %s"):format(event, tostring(problem))
+				lib:Log(module, line)
+				lib:Print(line)
+			end
+		end)
+	elseif not on and log.watcher then
+		log.watcher:UnregisterAllEvents()
+		log.watcher = nil
+	end
+	if on and not log.saved.watch then
+		self:StartRun(module, true)
+		self:Log(module, date("%Y-%m-%d %H:%M:%S") .. " watch on", true)
+	end
+	log.saved.watch = on or nil
+	if not quiet then
+		self:Print(on and "Watch enabled!" or "Watch disabled!")
+	end
+end
+
+-- Wraps a working-build command: logs a header (time, command, client, addon version, character, then
+-- the module's own lines from details()), runs it, and shows its lines in the copy window.
+function lib:LoggedCommand(module, action, run, details)
+	return function(text)
+		local log = self.logs[module.addon]
+		if not log then return run(text) end
+		local version, build = GetBuildInfo()
+		local _, faction = UnitFactionGroup("player")
+		self:Log(module, "")
+		self:StartRun(module)
+		log.viewStart = #log.saved.devLog + 1
+		self:Log(module, ("%s /%s %s"):format(date("%Y-%m-%d %H:%M:%S"), module.command or module.addon:lower(), action), true)
+		self:Log(module, ("client %s (%s) | addon %s | %s, %s, level %d"):format(version, build,
+			tostring(C_AddOns.GetAddOnMetadata(module.addon, "Version")), UnitName("player"), tostring(faction),
+			UnitLevel("player")))
+		for _, line in ipairs(details and details() or {}) do
+			self:Log(module, line)
+		end
+		run(text)
+		self:ShowLog(module)
+	end
+end
+
+-- The watch and log commands, for a module's working-build command table.
+function lib:WorkingBuildCommands(module)
+	return {
+		{ action = "watch", usage = "on|off", troubleshooting = true,
+			description = "Start or stop logging what " .. module.title .. " sees as you play", run = function(word)
+			word = (word or ""):lower()
+			local log = self.logs[module.addon]
+			self:SetWatch(module, word == "on" or (word == "" and not (log and log.watcher)))
+		end },
+		{ action = "log", usage = "[all|clear]", troubleshooting = true,
+			description = "Show the log; \"all\" shows everything kept, \"clear\" empties it", run = function(word)
+			word = (word or ""):lower()
+			local log = self.logs[module.addon]
+			if not log then return end
+			if word == "clear" then
+				log.saved.devLog, log.saved.devLogRun = {}, nil
+				self:Print("Log purged!")
+			else
+				log.viewStart = nil
+				self:ShowLog(module, word == "all")
+			end
+		end },
+	}
 end
 
 -- Timing: each name keeps its run count, total and slowest run, per module, for the session.
