@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 28
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 29
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -195,8 +195,11 @@ end
 
 -- Working-build log: per module, kept in the module's own saved table (the library has none) as
 -- saved.devLog (lines), saved.devLogRun (where the current run starts) and saved.watch (watch left on).
--- Lines are timestamped so a long watch reads as a timeline; the last LOG_LINES are kept.
-local LOG_LINES = 2000
+-- Lines are timestamped so a long watch reads as a timeline; the last LOG_LINES are kept (owner,
+-- 2026-11-25, for an always-on log: 20,000 lines, about 1.1 MB and 17 ms per load, working builds only).
+-- The oldest are dropped LOG_TRIM at a time, so a full log is not shifted on every new line.
+local LOG_LINES, LOG_TRIM = 20000, 1000
+lib.LOG_LINES, lib.LOG_TRIM = LOG_LINES, LOG_TRIM
 lib.logs = lib.logs or {}
 lib.logOrder = lib.logOrder or {} -- addon names in the order their logs started, for /boltgrip log
 
@@ -320,8 +323,8 @@ function lib:Log(module, line, dated)
 	if not log then return end
 	local lines = log.saved.devLog
 	lines[#lines + 1] = (dated or line == "") and line or date("%H:%M:%S ") .. line
-	local over = #lines - LOG_LINES
-	if over > 0 then
+	if #lines > LOG_LINES + LOG_TRIM then
+		local over = #lines - LOG_LINES
 		-- Trimmed in one pass, not by removing the first line again and again.
 		local total = #lines
 		for index = 1, total - over do lines[index] = lines[index + over] end
