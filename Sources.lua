@@ -269,6 +269,14 @@ function ns.LinkPending()
 				awaitedItems[itemID] = true
 				loaded = false
 			elseif recipeID then
+				--@debug@
+				-- What the game says about the taught spell, to tell a profession rank from a recipe.
+				local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
+				db.devTaught = db.devTaught or {}
+				db.devTaught[itemID] = ("spell %d | line %s | recipeInfo %s category %s learned %s | known %s"):format(recipeID,
+					strjoin(",", tostringall(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))), tostring(info ~= nil),
+					tostring(info and info.categoryID), tostring(info and info.learned), tostring(C_SpellBook.IsSpellKnown(recipeID)))
+				--@end-debug@
 				db.itemRecipe[itemID] = recipeID
 				db.recipeItems[recipeID] = db.recipeItems[recipeID] or {}
 				if not tContains(db.recipeItems[recipeID], itemID) then

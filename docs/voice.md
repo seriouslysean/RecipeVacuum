@@ -30,6 +30,6 @@ Read real in-game gnome text before writing a line, and model on it without copy
 
 ## Delivery
 
-`ns.Say(action)` prints a voiced line and `ns.Log(text)` a plain one, both through the toolkit library, which owns the mark, the prefix and the colors. The Vacuum's device color is brown (`ns.device.color`, `Core.lua`).
+`ns.Say(action)` prints a voiced line and `ns.Log(text)` a plain one, both through the toolkit library, which owns the mark, the prefix and the colors. The Vacuum's name takes the Druid class color (`ns.device.class`, `Core.lua`).
 
 When standing out and matching the game pull in different directions, match the game.

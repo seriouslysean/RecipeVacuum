@@ -24,7 +24,7 @@ end })
 -- Called once saved variables load. Sections follow Blizzard's pages; labels are capitalized as Blizzard's are.
 function ns.InitSettings()
 	local toolkit = LibStub("JigBoltgripToolkit-1.0")
-	local module = toolkit:RegisterModule(addonName, ns.device.color)
+	local module = toolkit:RegisterModule(addonName, ns.device.class)
 	ns.module = module
 	local category, layout = module.category, module.layout
 

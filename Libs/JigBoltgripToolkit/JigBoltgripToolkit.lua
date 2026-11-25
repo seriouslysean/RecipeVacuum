@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 10
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 11
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -41,27 +41,27 @@ local function ModuleLinks(addonName)
 end
 
 -- Chat. Everything a toolkit addon prints goes through lib:Say, lib:Print or lib:PrintBlock, so the
--- family reads as one (docs/standards.md, "Voice"). The line color is the one the game gives an NPC's speech.
+-- family reads as one (docs/standards.md, "Voice").
 local MARK = "|TInterface\\WorldMap\\GEAR_64GREY:0|t" -- the world map's gear, at the line's height
 local PREFIX = "Boltgrip's"
-local DEVICE_COLOR_MIX = 0.6 -- share of a module's own color in its name; the rest is the line color
+-- The family's own line color: a teal that matches none of the game's chat colors.
+local LINE_COLOR = { r = 0x5B / 255, g = 0xD9 / 255, b = 0xDE / 255 }
+local NAME_LINE_MIX = 0.25 -- share of the line color in a device's name, so the names sit together
 local BLOCK_INDENT = "    "
 
--- The color is read at print time (chat colors are not set until chat settings load) and passed with
--- its id, as Blizzard does, so printed lines follow the player's change to that chat color.
 local function AddLine(text)
-	local color = ChatTypeInfo.MONSTER_SAY
-	DEFAULT_CHAT_FRAME:AddMessage(text, color.r, color.g, color.b, color.id)
+	DEFAULT_CHAT_FRAME:AddMessage(text, LINE_COLOR.r, LINE_COLOR.g, LINE_COLOR.b)
 end
 
--- A module's title in its device color, mixed into the line color so the family stays one tone.
+-- A module's title in its class color (RAID_CLASS_COLORS, read when printing), mixed a little toward
+-- the line color.
 local function DeviceName(module)
-	local device, line = module.color, ChatTypeInfo.MONSTER_SAY
-	if not device then
+	local class = module.class and RAID_CLASS_COLORS[module.class]
+	if not class then
 		return module.title
 	end
 	local function Mix(channel)
-		return math.floor((line[channel] * (1 - DEVICE_COLOR_MIX) + device[channel] * DEVICE_COLOR_MIX) * 255 + 0.5)
+		return math.floor((class[channel] * (1 - NAME_LINE_MIX) + LINE_COLOR[channel] * NAME_LINE_MIX) * 255 + 0.5)
 	end
 	return ("|cff%02x%02x%02x%s|r"):format(Mix("r"), Mix("g"), Mix("b"), module.title)
 end
@@ -86,12 +86,13 @@ function lib:PrintBlock(header, rows)
 end
 
 -- Registers a module by addon folder name; returns its settings category and layout. Call
--- lib:FinishModule(module) after adding the module's rows. color is the device's own color for its
--- name in chat (r, g, b from 0 to 1, as CreateColor gives); without one the name is the line color.
-function lib:RegisterModule(addonName, color)
+-- lib:FinishModule(module) after adding the module's rows. class is the class whose color the
+-- device's name takes in chat, a key of RAID_CLASS_COLORS such as "DRUID"; without one the name is
+-- the line color.
+function lib:RegisterModule(addonName, class)
 	for _, existing in ipairs(self.modules) do
 		if existing.addon == addonName then
-			existing.color = color or existing.color
+			existing.class = class or existing.class
 			return existing
 		end
 	end
@@ -99,7 +100,7 @@ function lib:RegisterModule(addonName, color)
 	local notes = C_AddOns.GetAddOnMetadata(addonName, "Notes")
 	local parent, parentLayout = self:GetCategory()
 	local category, layout = Settings.RegisterVerticalLayoutSubcategory(parent, title)
-	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout, color = color }
+	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout, class = class }
 	table.insert(self.modules, module)
 	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, OPEN or "Open", function()
 		Settings.OpenToCategory(category:GetID())

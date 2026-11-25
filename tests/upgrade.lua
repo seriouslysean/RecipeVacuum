@@ -13,6 +13,7 @@ ChatTypeInfo = { MONSTER_SAY = { r = 1, g = 1, b = 0.62 } }
 -- The real toolkit library, through the real LibStub, prints the addon's chat lines.
 SlashCmdList = {}
 function CreateColor(r, g, b) return { r = r, g = g, b = b } end
+RAID_CLASS_COLORS = { DRUID = { r = 1, g = 0.49, b = 0.04 } }
 dofile(repo .. "/Libs/LibStub/LibStub.lua")
 dofile(repo .. "/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua")
 dofile(saved)

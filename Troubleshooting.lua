@@ -577,7 +577,7 @@ local perfWriter = CreateFrame("Frame")
 perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
 	-- Retired probes' data, so it does not stay in the saved file.
-	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines = nil, nil, nil
+	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
 	local lines = PerfLines()
 	if #lines > 0 then
 		local version, build = GetBuildInfo()
@@ -701,44 +701,6 @@ end
 local madeFrame = CreateFrame("Frame")
 madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 madeFrame:SetScript("OnEvent", ScanMade)
--- Name color sample; remove once the family's colors are chosen. The line is the chosen teal; each
--- device's name is a class color, shown pure and mixed part of the way toward the line color.
-local LINE_COLOR = CreateColor(0x5B / 255, 0xD9 / 255, 0xDE / 255)
-local NAME_MIXES = { 0, 0.25, 0.5 } -- share of the line color in the name
-local DEVICE_SAMPLES = {
-	{ "Recipe Vacuum", "WARRIOR" }, { "Recipe Vacuum", "DRUID" }, { "Tackletron", "SHAMAN" }, { "Tackletron", "MAGE" },
-	{ "Sparkle tool", "PALADIN" }, { "Buff tool", "WARLOCK" },
-}
-local SAVED_CHAT_TYPES = { "SYSTEM", "SAY", "YELL", "EMOTE", "WHISPER", "BN_WHISPER", "PARTY", "RAID", "GUILD", "OFFICER",
-	"CHANNEL", "MONSTER_SAY", "MONSTER_EMOTE", "SKILL", "LOOT", "MONEY", "COMBAT_XP_GAIN", "COMBAT_FACTION_CHANGE" }
-table.insert(troubleshooting, { "colors", "Show device names in class colors on the chosen line color", function()
-	local function Name(title, class, mix)
-		local color = RAID_CLASS_COLORS[class]
-		local function Channel(key)
-			return (color[key] * (1 - mix) + LINE_COLOR[key] * mix) * 255
-		end
-		return ("|cff%02x%02x%02x%s|r"):format(Channel("r"), Channel("g"), Channel("b"), title)
-	end
-	local function Line(text)
-		DEFAULT_CHAT_FRAME:AddMessage("|TInterface\\WorldMap\\GEAR_64GREY:0|t " .. text, LINE_COLOR:GetRGB())
-	end
-	for _, mix in ipairs(NAME_MIXES) do
-		Line(("Boltgrip's %s sucks up 8 recipes from Stephen Ryback! (name %d%% toward the line color)")
-			:format(Name("Recipe Vacuum", "WARRIOR", mix), mix * 100))
-		local names = {}
-		for _, sample in ipairs(DEVICE_SAMPLES) do
-			names[#names + 1] = Name(("%s (%s)"):format(sample[1], sample[2]:lower()), sample[2], mix)
-		end
-		Line(table.concat(names, "  "))
-	end
-	ns.db.devChatColors = {}
-	for _, chatType in ipairs(SAVED_CHAT_TYPES) do
-		local info = ChatTypeInfo[chatType]
-		if info then
-			ns.db.devChatColors[chatType] = ("%.3f %.3f %.3f"):format(info.r, info.g, info.b)
-		end
-	end
-end, quiet = true })
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode and whisper every reply to yourself", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }

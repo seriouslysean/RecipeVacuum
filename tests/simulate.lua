@@ -25,7 +25,10 @@ Enum = { ItemClass = { Recipe = 9 }, LootSlotType = { Item = 1 }, Profession = {
   ItemRecipeSubclass = { Tailoring = TAILORING_PATTERN },
   TooltipDataLineType = {}, TooltipDataUsageRequirementType = {} }
 local nonRecipes = { [5] = true, [7] = true, [777] = true, [10456] = true } -- every other item is a recipe item
-C_TradeSkillUI = { GetTradeSkillLineForRecipe = function() return 1 end }
+C_TradeSkillUI = { GetTradeSkillLineForRecipe = function() return 1 end, GetRecipeInfo = function() return nil end }
+C_SpellBook = { IsSpellKnown = function() return false end }
+function tostringall(...) local out = {} for i = 1, select("#", ...) do out[i] = tostring((select(i, ...))) end return unpack(out) end
+function strjoin(sep, ...) return table.concat({ ... }, sep) end
 local itemNames = { [10456] = "A Bulging Coin Purse" } -- names the client has loaded
 C_Item = { GetItemInfoInstant = function(x) local id = tonumber(x) or tonumber(tostring(x):match("item:(%d+)"))
     return id, nil, nil, nil, nil, nonRecipes[id] and 7 or 9, TAILORING_PATTERN end,
@@ -44,6 +47,7 @@ DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) messages[#messages + 1] = 
 -- The real toolkit library, through the real LibStub, prints the addon's chat lines.
 SlashCmdList = {}
 function CreateColor(r, g, b) return { r = r, g = g, b = b } end
+RAID_CLASS_COLORS = { DRUID = { r = 1, g = 0.49, b = 0.04 } }
 dofile(repo .. "/Libs/LibStub/LibStub.lua")
 dofile(repo .. "/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua")
 C_Timer = { NewTimer = function() return { Cancel = function() end } end, After = function(_, fn) fn() end }
@@ -193,7 +197,7 @@ do
     [4] = { { "Requires Engineering (260)", red }, { "Requires Goblin Engineer", red } },
   }
   C_TradeSkillUI = { GetRecipeSchematic = function(id) return { outputItemID = id ~= 5 and MADE + id or nil } end,
-    GetTradeSkillLineForRecipe = function() return 202 end }
+    GetTradeSkillLineForRecipe = function() return 202 end, GetRecipeInfo = function() return nil end }
   local itemLoaded, itemReads, loadCallbacks = {}, 0, {}
   C_Item.IsItemDataCachedByID = function(id) return itemLoaded[id] == true end
   Item = { CreateFromItemID = function(_, id) return { ContinueOnItemLoad = function(_, fn) loadCallbacks[id] = fn end } end }

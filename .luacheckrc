@@ -8,7 +8,7 @@ ignore = { "21./self", "212" }
 read_globals = {
 	"ADDONS", "Ambiguate", "BATTLE_PET_SOURCE_1", "BATTLE_PET_SOURCE_2", "BATTLE_PET_SOURCE_3", "BNET_CLIENT_WOW",
 	"BNGetNumFriends", "C_AddOns", "C_BattleNet", "C_CVar", "C_ChatInfo", "C_EncodingUtil", "C_FriendList", "C_GossipInfo",
-	"C_GuildInfo", "C_Item", "C_Map", "C_MerchantFrame", "C_QuestLog", "C_Spell", "C_SuperTrack", "C_Texture",
+	"C_GuildInfo", "C_Item", "C_Map", "C_MerchantFrame", "C_QuestLog", "C_Spell", "C_SpellBook", "C_SuperTrack", "C_Texture",
 	"C_Timer", "C_TooltipInfo", "C_TradeSkillUI", "ChatTypeInfo", "CHECK_ALL", "CopyTable", "COSTS_LABEL",
 	"CreateAtlasMarkup", "CreateColor", "CreateFrame", "CreateSettingsButtonInitializer",
 	"CreateSettingsListSectionHeaderInitializer", "date", "debugprofilestop", "DISABLED_FONT_COLOR", "DEFAULT_CHAT_FRAME", "Enum",
