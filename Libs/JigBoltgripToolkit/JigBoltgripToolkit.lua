@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 11
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 12
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -47,7 +47,6 @@ local PREFIX = "Boltgrip's"
 -- The family's own line color: a teal that matches none of the game's chat colors.
 local LINE_COLOR = { r = 0x5B / 255, g = 0xD9 / 255, b = 0xDE / 255 }
 local NAME_LINE_MIX = 0.25 -- share of the line color in a device's name, so the names sit together
-local BLOCK_INDENT = "    "
 
 local function AddLine(text)
 	DEFAULT_CHAT_FRAME:AddMessage(text, LINE_COLOR.r, LINE_COLOR.g, LINE_COLOR.b)
@@ -77,11 +76,12 @@ function lib:Print(text)
 	AddLine(MARK .. " " .. text)
 end
 
--- Several lines that belong together: the header carries the mark, the rows sit under it without one.
+-- Several lines that belong together: the header carries the mark, the rows follow it without one.
+-- No indent, as Blizzard's own chat help (CHAT_HELP_TEXT_LINE*): a wrapped row starts at the margin anyway.
 function lib:PrintBlock(header, rows)
 	self:Print(header)
 	for _, row in ipairs(rows) do
-		AddLine(BLOCK_INDENT .. row)
+		AddLine(row)
 	end
 end
 
@@ -181,23 +181,26 @@ function lib:IsTextShown()
 end
 
 -- Each module registers a table of entries that drives the chat help and the Commands rows. An entry:
--- { action = "" | word, description, run = function(arguments), troubleshooting = true for diagnostics }.
+-- { action = "" | word, usage = arguments shown in help ("on|off"), description, run = function(arguments),
+-- troubleshooting = true for diagnostics }.
 -- Troubleshooting entries ship in every build and show in the chat help under their own heading, not on
 -- the settings page (as other addons). Each module answers to /boltgrip <module>
 -- and /<module>; full names, not aliases, since slash clashes resolve unpredictably (ChatFrameUtil.lua
 -- imports SlashCmdList).
 lib.commands = lib.commands or {}
 
+-- Rows in Blizzard's own help shape: "/command <arguments> - What it does". help itself is not listed.
 local function AddEntries(rows, command, troubleshooting)
 	local any = false
 	for _, entry in ipairs(command.entries) do
-		if (entry.troubleshooting or false) == troubleshooting then
+		if (entry.troubleshooting or false) == troubleshooting and entry.action ~= "help" then
 			if troubleshooting and not any then
 				table.insert(rows, "Troubleshooting:")
 			end
 			any = true
 			local slash = "/" .. command.name .. (entry.action ~= "" and " " .. entry.action or "")
-			table.insert(rows, ("%s%s - %s"):format(troubleshooting and "  " or "", slash, entry.description))
+				.. (entry.usage and " " .. entry.usage or "")
+			table.insert(rows, ("%s - %s"):format(slash, entry.description))
 		end
 	end
 end
@@ -207,7 +210,7 @@ function lib:PrintHelp(name)
 	local rows = {}
 	AddEntries(rows, command, false)
 	AddEntries(rows, command, true)
-	self:PrintBlock(("%s commands (/%s or /boltgrip %s):"):format(command.title, command.name, command.name), rows)
+	self:PrintBlock(("%s commands:"):format(command.title), rows)
 end
 
 -- A method, so slash handlers made by an older copy of this file run the newest code.

@@ -14,10 +14,10 @@ end
 
 -- Player commands; Troubleshooting.lua adds diagnostics. One table drives the chat help and the Commands rows.
 ns.commands = ns.commands or {}
-table.insert(ns.commands, 1, { action = "", description = "Open Recipe Vacuum's options", run = function()
+table.insert(ns.commands, 1, { action = "", description = "Open the options", run = function()
 	Settings.OpenToCategory(ns.module.category:GetID())
 end })
-table.insert(ns.commands, 2, { action = "export", description = "Copy your finds as JSON to send to the maintainer", run = function()
+table.insert(ns.commands, 2, { action = "export", description = "Copy your finds to send in", run = function()
 	ns.ExportFinds()
 end })
 

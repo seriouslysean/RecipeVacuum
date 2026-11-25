@@ -619,12 +619,12 @@ end
 
 
 local troubleshooting = {
-	{ "watch", "Log loot, quest, vendor and trainer sources as you play: watch on, watch off", Watch, quiet = true },
+	{ "watch", "Log where recipes come from as you play", Watch, quiet = true, usage = "on|off" },
 }
 
 --@debug@
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
-table.insert(troubleshooting, { "perf", "Show how long the profession window took to open", function()
+table.insert(troubleshooting, { "perf", "Show timings", function()
 	local function Ms(value)
 		return value and ("%.1f ms"):format(value) or voice.noSample
 	end
@@ -702,7 +702,7 @@ local madeFrame = CreateFrame("Frame")
 madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 madeFrame:SetScript("OnEvent", ScanMade)
 -- Sharing self-test for one account (Sharing.lua).
-table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode and whisper every reply to yourself", function()
+table.insert(troubleshooting, { "sharetest", "Test sharing on your own", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
 	ns.ShareSelfTest(function(line)
 		table.insert(ns.db.devShareTest, line)
@@ -710,7 +710,7 @@ table.insert(troubleshooting, { "sharetest", "Check sharing alone: build, decode
 	end)
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
-table.insert(troubleshooting, { "scan", "Seeding test: find every recipe item in the game and match them to the open profession's recipes", Scan, quiet = true })
+table.insert(troubleshooting, { "scan", "Match recipe items to the open profession", Scan, quiet = true })
 --@end-debug@
 
 ns.commands = ns.commands or {}
@@ -718,12 +718,12 @@ for _, command in ipairs(troubleshooting) do
 	local action, description, run = command[1], command[2], command[3]
 	-- Quiet commands print to chat only, so the profession window stays in view.
 	local logged = not command.quiet and Logged(run)
-	table.insert(ns.commands, { action = action, description = description, troubleshooting = true,
+	table.insert(ns.commands, { action = action, usage = command.usage, description = description, troubleshooting = true,
 		run = function(text)
 			if logged then logged({ action = action, text = text }) else run(text) end
 		end })
 end
-table.insert(ns.commands, { action = "log", description = "Show the last command's or watch's output; log all shows everything kept, log clear empties it", troubleshooting = true,
+table.insert(ns.commands, { action = "log", usage = "[all|clear]", description = "Show the log", troubleshooting = true,
 	run = function(word)
 		word = (word or ""):lower()
 		if word == "clear" then
