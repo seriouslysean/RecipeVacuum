@@ -12,6 +12,10 @@ The addon's chat lines say what the Vacuum just did: "Boltgrip's Recipe Vacuum s
 
 Settings labels and tooltips are not in this voice: they follow Blizzard's wording.
 
+## Plain text
+
+The help tip and the level cards speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the cards give the scanner's range), never a second in the same text. The verb for what the addon does with a recipe is "tracks". The wording lives in `Core.lua` (`ns.levelText`, `ns.levelHeard`) and the tip in `Heard.lua`.
+
 ## Where the voice comes from
 
 Read real in-game gnome text before writing a line, and model on it without copying it.
