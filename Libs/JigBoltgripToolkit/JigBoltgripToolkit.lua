@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 14
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 15
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -231,12 +231,13 @@ local function AddEntries(rows, command, troubleshooting)
 	for _, entry in ipairs(command.entries) do
 		if (entry.troubleshooting or false) == troubleshooting and entry.action ~= "help" then
 			if troubleshooting and not any then
-				table.insert(rows, "Troubleshooting:")
+				-- A section heading in the game's heading gold, as a tooltip's headings are; its rows sit one step in.
+				table.insert(rows, NORMAL_FONT_COLOR:WrapTextInColorCode("Troubleshooting"))
 			end
 			any = true
 			local slash = "/" .. command.name .. (entry.action ~= "" and " " .. entry.action or "")
 				.. (entry.usage and " " .. entry.usage or "")
-			table.insert(rows, ("%s - %s"):format(InDeviceColor(command.module, slash), entry.description))
+			table.insert(rows, ("%s%s - %s"):format(troubleshooting and ALIGN or "", InDeviceColor(command.module, slash), entry.description))
 		end
 	end
 end
