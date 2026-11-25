@@ -647,6 +647,7 @@ end })
 -- Made-item scan, for measuring the table before it ships: whenever a profession list is ready (the
 -- player's own or one shown by another player), what each recipe makes is read once per game build.
 local MADE_BATCH = 50 -- recipes read per frame
+local MADE_FORMAT, MADE_SAMPLES = 2, 8 -- a new format number makes every profession be read again
 local madeScanning
 
 local function ScanMade()
@@ -656,14 +657,15 @@ local function ScanMade()
 	local profession = C_TradeSkillUI.GetBaseProfessionInfo()
 	local professionID = profession and profession.professionID
 	local done = ns.db.devMadeDone
-	if not done or done.build ~= ns.BUILD then
-		done = { build = ns.BUILD }
+	if not done or done.build ~= ns.BUILD or done.format ~= MADE_FORMAT then
+		done = { build = ns.BUILD, format = MADE_FORMAT, missing = {} }
 		ns.db.devMadeDone, ns.db.devMade = done, {}
 	end
 	if not professionID or done[professionID] then
 		return
 	end
 	local recipeIDs, made, index = C_TradeSkillUI.GetAllRecipeIDs(), ns.db.devMade, 0
+	local noSchematic, noOutput, samples = 0, 0, {}
 	madeScanning = true
 	local function Batch()
 		for _ = 1, MADE_BATCH do
@@ -671,12 +673,22 @@ local function ScanMade()
 			local recipeID = recipeIDs[index]
 			if not recipeID then
 				madeScanning, done[professionID], ns.scannedMade = nil, #recipeIDs, made
+				done.missing[professionID] = ("%d recipes: %d without a schematic, %d without an output item; e.g. %s"):format(
+					#recipeIDs, noSchematic, noOutput, table.concat(samples, "; "))
 				return
 			end
 			local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
 			local itemID = schematic and schematic.outputItemID
 			if itemID then
 				made[itemID] = math.min(made[itemID] or recipeID, recipeID) -- the lowest ID, to be stable
+			else
+				-- Why a recipe gave no made item, with a few examples, to explain a low count.
+				noSchematic, noOutput = noSchematic + (schematic and 0 or 1), noOutput + (schematic and 1 or 0)
+				if #samples < MADE_SAMPLES then
+					local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
+					samples[#samples + 1] = ("%d %s learned=%s skillLine=%s"):format(recipeID, info and info.name or "?",
+						tostring(info and info.learned), tostring(C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID)))
+				end
 			end
 		end
 		C_Timer.After(0, Batch)
