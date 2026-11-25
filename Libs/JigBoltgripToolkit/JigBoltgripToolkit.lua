@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 21
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 22
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -175,12 +175,19 @@ function lib:EnableWorkingBuild()
 	self.blockedListener:SetScript("OnEvent", function(_, event, addon, action)
 		local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
 		lib:Print(line)
-		-- The blocked addon's own log keeps it with the call stack, to read after a reload.
-		local log = lib.logs[addon]
-		if log then
-			lib:Log(log.module, line)
-			lib:Log(log.module, debugstack(2, 12, 0))
-		end
+		-- Shared context: every log keeps it, with the call stack, to read after a reload.
+		lib:LogAll(line)
+		lib:LogAll(debugstack(2, 12, 0))
+	end)
+	-- Lua errors, as Blizzard's error window receives them (Blizzard_ScriptErrorsFrame.lua, DisplayMessageInternal);
+	-- the client's own error handler list takes secure code only (AddLuaErrorHandler asserts issecure()).
+	EventUtil.ContinueOnAddOnLoaded("Blizzard_ScriptErrorsFrame", function()
+		hooksecurefunc(ScriptErrorsFrame, "DisplayMessageInternal", function(_, message, _, stack)
+			if not issecretvalue(message) then
+				lib:LogAll("Lua error: " .. tostring(message))
+				if stack and not issecretvalue(stack) then lib:LogAll(stack) end
+			end
+		end)
 	end)
 end
 
@@ -190,6 +197,62 @@ end
 local LOG_LINES = 2000
 lib.logs = lib.logs or {}
 lib.logOrder = lib.logOrder or {} -- addon names in the order their logs started, for /boltgrip log
+
+-- Shared context for every started log (blocked actions, Lua errors, zone changes while watching).
+function lib:LogAll(line)
+	for _, addon in ipairs(self.logOrder) do
+		self:Log(self.logs[addon].module, line)
+	end
+end
+
+-- One listener for every module's watch: each event is registered once and passed to every watching
+-- module that asked for it, after the kit's own zone context.
+local function ZoneLine()
+	local mapID = C_Map.GetBestMapForUnit("player")
+	local info = mapID and C_Map.GetMapInfo(mapID)
+	return ("zone %s %s | %s"):format(tostring(mapID), info and info.name or "?", GetSubZoneText() or "")
+end
+local CONTEXT_EVENTS = { ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ZONE_CHANGED_INDOORS = true }
+
+local function UpdateWatchEvents()
+	local frame = lib.watchFrame
+	if not frame then
+		frame = CreateFrame("Frame")
+		lib.watchFrame = frame
+		frame:SetScript("OnEvent", function(_, event, ...)
+			if CONTEXT_EVENTS[event] then
+				for _, addon in ipairs(lib.logOrder) do
+					local log = lib.logs[addon]
+					if log.watching then lib:Log(log.module, ZoneLine()) end
+				end
+			end
+			for _, addon in ipairs(lib.logOrder) do
+				local log = lib.logs[addon]
+				local handler = log.watching and log.handlers[event]
+				if handler then
+					local ok, problem = pcall(handler, ...)
+					if not ok then
+						local line = ("Malfunction in %s! %s"):format(event, tostring(problem))
+						lib:Log(log.module, line)
+						lib:Print(("%s: %s"):format(log.module.title, line))
+					end
+				end
+			end
+		end)
+	end
+	frame:UnregisterAllEvents()
+	local any = false
+	for _, addon in ipairs(lib.logOrder) do
+		local log = lib.logs[addon]
+		if log.watching then
+			any = true
+			for event in pairs(log.handlers) do frame:RegisterEvent(event) end
+		end
+	end
+	if any then
+		for event in pairs(CONTEXT_EVENTS) do frame:RegisterEvent(event) end
+	end
+end
 
 -- At logout each log gets the session's timings, as one dated block.
 local function WriteTimings()
@@ -222,7 +285,13 @@ function lib:StartLog(module, saved, handlers)
 		self.logWriter:RegisterEvent("PLAYER_LOGOUT")
 		self.logWriter:SetScript("OnEvent", WriteTimings)
 	end
-	if saved.watch and not log.watcher then
+	-- Session header: one line per load, so each log reads on its own.
+	local version, build = GetBuildInfo()
+	self:Log(module, "")
+	self:Log(module, ("%s session: client %s (%s) | addon %s | %s, level %d | %s"):format(date("%Y-%m-%d %H:%M:%S"),
+		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
+		UnitLevel("player") or 0, ZoneLine()), true)
+	if saved.watch and not log.watching then
 		self:SetWatch(module, true, true)
 		self:Log(module, "watch resumed after reload")
 	end
@@ -289,28 +358,13 @@ end
 function lib:SetWatch(module, on, quiet)
 	local log = self.logs[module.addon]
 	if not log then return end
-	if on and not log.watcher then
-		log.watcher = CreateFrame("Frame")
-		for event in pairs(log.handlers) do
-			log.watcher:RegisterEvent(event)
-		end
-		log.watcher:SetScript("OnEvent", function(_, event, ...)
-			local ok, problem = pcall(log.handlers[event], ...)
-			if not ok then
-				local line = ("Malfunction in %s! %s"):format(event, tostring(problem))
-				lib:Log(module, line)
-				lib:Print(line)
-			end
-		end)
-	elseif not on and log.watcher then
-		log.watcher:UnregisterAllEvents()
-		log.watcher = nil
-	end
 	if on and not log.saved.watch then
 		self:StartRun(module, true)
-		self:Log(module, date("%Y-%m-%d %H:%M:%S") .. " watch on", true)
+		self:Log(module, date("%Y-%m-%d %H:%M:%S") .. " watch on | " .. ZoneLine(), true)
 	end
+	log.watching = on or nil
 	log.saved.watch = on or nil
+	UpdateWatchEvents()
 	if not quiet then
 		self:Print(("%s: %s"):format(module.title, on and "Watch enabled!" or "Watch disabled!"))
 	end
@@ -329,7 +383,7 @@ function lib:LoggedCommand(module, action, run, details)
 		log.viewStart = #log.saved.devLog + 1
 		self:Log(module, ("%s /%s %s"):format(date("%Y-%m-%d %H:%M:%S"), module.command or module.addon:lower(), action), true)
 		self:Log(module, ("client %s (%s) | addon %s | %s, %s, level %d"):format(version, build,
-			tostring(C_AddOns.GetAddOnMetadata(module.addon, "Version")), UnitName("player"), tostring(faction),
+			C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player"), tostring(faction),
 			UnitLevel("player")))
 		for _, line in ipairs(details and details() or {}) do
 			self:Log(module, line)
@@ -353,14 +407,17 @@ local function KitCommand(name, word)
 	end
 	word = (word or ""):lower()
 	if name == "watch" then
-		local anyOn = false
+		local anyOn, titles = false, {}
 		for _, addon in ipairs(lib.logOrder) do
-			anyOn = anyOn or lib.logs[addon].watcher ~= nil
+			anyOn = anyOn or lib.logs[addon].watching ~= nil
 		end
 		local on = word == "on" or (word == "" and not anyOn)
 		for _, addon in ipairs(lib.logOrder) do
-			lib:SetWatch(lib.logs[addon].module, on)
+			local module = lib.logs[addon].module
+			lib:SetWatch(module, on, true)
+			titles[#titles + 1] = module.title
 		end
+		lib:Print(("Watch %s: %s."):format(on and "enabled" or "disabled", table.concat(titles, ", ")))
 	elseif word == "clear" then
 		for _, addon in ipairs(lib.logOrder) do
 			local saved = lib.logs[addon].saved
