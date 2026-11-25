@@ -60,10 +60,11 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 
 `Data/Seed.lua` comes from the game, not from us. For each new game build, before a release:
 
-1. In game on a checkout build, open any profession, run `/recipevacuum scan`, then `/reload`.
-2. `luajit tools/seed.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua> Data/Seed.lua`
-3. The script adds new pairs by itself. If the scan would remove a pair or change what an item teaches, it writes nothing and lists the differences; check them in game, then run it again with `--accept`.
-4. Commit the file with the release.
+1. In game on a checkout build, open any profession, run `/recipevacuum scan`, then `/reload`. This reads which recipe each recipe item teaches (`taught`).
+2. Open every profession on characters that have them; the checkout build reads what each recipe makes (`made`) once per game build, then `/reload`. The made table grows across runs, since a character reads only its own professions; the seed's header lists the skill lines read so far.
+3. `luajit tools/seed.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua> Data/Seed.lua`
+4. The script adds new pairs by itself. If a read would remove a pair or change one, it writes nothing and lists the differences; check them in game, then run it again with `--accept`.
+5. Commit the file with the release.
 
 A scan cut short loses pairs: one scan answered for 630 of 2,974 items (2026-11-23).
 

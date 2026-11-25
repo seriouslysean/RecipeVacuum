@@ -1,60 +1,104 @@
--- Builds Data/Seed.lua from a scan saved by the working build (docs/development.md, "Seeding").
--- The scan reads each recipe item's recipe ID from its own tooltip data (Sources.lua, ns.GetTaughtRecipe), so the table is the game's data.
--- The seed only grows unasked: if a scan would remove a pair or change what an item teaches, nothing is written and the differences are listed.
--- A scan cut short loses pairs; pass --accept as a third argument once the differences are checked against the game (docs/development.md, "Seeding").
+-- Builds Data/Seed.lua from what the working build read in game (docs/development.md, "Seeding"):
+--   taught[recipe itemID] = recipeID, from the item scan (each recipe item's tooltip names its recipe ID; Sources.lua, ns.GetTaughtRecipe);
+--   made[made itemID] = recipeID, from the made-item read (each recipe's schematic names the item it makes; Troubleshooting.lua, ScanMade).
+-- Both are the game's data. A table only grows unasked: if a read would remove a pair or change one, nothing is
+-- written and the differences are listed. A read cut short loses pairs; pass --accept as a third argument once
+-- the differences are checked against the game.
 local savedPath, outPath, accept = arg[1], arg[2], arg[3] == "--accept"
 assert(savedPath and outPath, "usage: luajit tools/seed.lua <saved variables file> <output file> [--accept]")
 dofile(savedPath)
-local scan = assert(RecipeVacuumDB and RecipeVacuumDB.devScan, "no scan in this file: run /recipevacuum scan, then /reload")
-assert(scan.items and scan.teaches, "this scan predates the recipe ID link: run /recipevacuum scan again")
+local db = assert(RecipeVacuumDB, "no RecipeVacuumDB in this file")
 
-local pairsList, nothing, unanswered = {}, 0, 0
-for _, itemID in ipairs(scan.items) do
-	local recipeID = scan.teaches[itemID]
-	if type(recipeID) == "number" and recipeID > 0 then
-		pairsList[#pairsList + 1] = { itemID, recipeID }
-	elseif recipeID == false then
-		nothing = nothing + 1
-	else
-		unanswered = unanswered + 1
-	end
-end
-table.sort(pairsList, function(a, b) return a[1] < b[1] end)
-assert(#pairsList > 0, "the scan holds no item that teaches a recipe")
-
--- Compare with the seed on disk.
 local current = {}
 local existing = loadfile(outPath)
 if existing then
 	local holder = {}
 	existing("RecipeVacuum", holder)
-	current = holder.seed and holder.seed.taught or {}
+	current = holder.seed or {}
 end
-local fresh, added, removed, changed = {}, 0, {}, {}
-for _, pair in ipairs(pairsList) do
-	fresh[pair[1]] = pair[2]
-	if current[pair[1]] == nil then
-		added = added + 1
-	elseif current[pair[1]] ~= pair[2] then
-		changed[#changed + 1] = ("  item %d: recipe %d -> %d"):format(pair[1], current[pair[1]], pair[2])
+
+-- The item scan: pairs plus the counts for the header. Without a scan, the current table is kept as it is.
+local taught, taughtNote
+local scan = db.devScan
+if scan and scan.items and scan.teaches then
+	local nothing, unanswered, count = 0, 0, 0
+	taught = {}
+	for _, itemID in ipairs(scan.items) do
+		local recipeID = scan.teaches[itemID]
+		if type(recipeID) == "number" and recipeID > 0 then
+			taught[itemID], count = recipeID, count + 1
+		elseif recipeID == false then
+			nothing = nothing + 1
+		else
+			unanswered = unanswered + 1
+		end
 	end
+	taughtNote = ("Game build %s: %d recipe items, %d teach a recipe, %d teach nothing, %d gave no answer."):format(
+		tostring(scan.build), #scan.items, count, nothing, unanswered)
+else
+	taught = current.taught or {}
+	taughtNote = current.taughtNote or "Kept from the previous seed."
 end
-for itemID, recipeID in pairs(current) do
-	if fresh[itemID] == nil then
-		removed[#removed + 1] = ("  item %d (recipe %d) is no longer in the scan"):format(itemID, recipeID)
+
+-- The made-item read: grows across runs, since each character reads only the professions it has.
+local made = {}
+for itemID, recipeID in pairs(current.made or {}) do made[itemID] = recipeID end
+local readProfessions = {}
+for itemID, recipeID in pairs(db.devMade or {}) do
+	if made[itemID] == nil then made[itemID] = recipeID end
+end
+for professionID in pairs(db.devMadeDone and db.devMadeDone.missing or {}) do
+	readProfessions[#readProfessions + 1] = professionID
+end
+table.sort(readProfessions)
+
+-- Compare each table with the seed on disk.
+local function Differences(name, fresh, old)
+	local added, problems = 0, {}
+	for key, value in pairs(fresh) do
+		if old[key] == nil then
+			added = added + 1
+		elseif old[key] ~= value then
+			problems[#problems + 1] = ("  %s %d: %d -> %d"):format(name, key, old[key], value)
+		end
 	end
+	for key, value in pairs(old) do
+		if fresh[key] == nil then
+			problems[#problems + 1] = ("  %s %d (%d) is no longer read"):format(name, key, value)
+		end
+	end
+	table.sort(problems)
+	return added, problems
 end
-table.sort(removed)
-table.sort(changed)
-print(("scan of build %s: %d pairs | against the current seed: %d added, %d removed, %d changed"):format(
-	tostring(scan.build), #pairsList, added, #removed, #changed))
-if (#removed > 0 or #changed > 0) and not accept then
-	for _, line in ipairs(removed) do print(line) end
-	for _, line in ipairs(changed) do print(line) end
+
+local function Count(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
+local taughtAdded, taughtProblems = Differences("taught item", taught, current.taught or {})
+local madeAdded, madeProblems = Differences("made item", made, current.made or {})
+print(("taught: %d pairs, %d added, %d removed or changed | made: %d pairs, %d added, %d removed or changed"):format(
+	Count(taught), taughtAdded, #taughtProblems, Count(made), madeAdded, #madeProblems))
+if (#taughtProblems > 0 or #madeProblems > 0) and not accept then
+	for _, line in ipairs(taughtProblems) do print(line) end
+	for _, line in ipairs(madeProblems) do print(line) end
 	print("nothing written: check these against the game, then run again with --accept")
 	os.exit(1)
 end
 
+-- Eight pairs to a line keeps the file small without one unreadable line.
+local function Rows(lines, t)
+	local keys = {}
+	for key in pairs(t) do keys[#keys + 1] = key end
+	table.sort(keys)
+	local row = {}
+	for index, key in ipairs(keys) do
+		row[#row + 1] = ("[%d]=%d,"):format(key, t[key])
+		if #row == 8 or index == #keys then
+			lines[#lines + 1] = "\t\t" .. table.concat(row, " ")
+			row = {}
+		end
+	end
+end
+
+local build = scan and tonumber(scan.build) or current.build or 0
 local lines = {
 	"local _, ns = ...",
 	"",
@@ -62,22 +106,21 @@ local lines = {
 	"-- Nothing here comes from players, and nothing here is ever copied into saved variables.",
 	"-- Do not edit by hand.",
 	"--   taught[recipe itemID] = recipeID: which recipe each recipe item teaches.",
-	("-- Game build %s: %d recipe items, %d teach a recipe, %d teach nothing, %d gave no answer."):format(
-		tostring(scan.build), #scan.items, #pairsList, nothing, unanswered),
-	("ns.seed = { build = %s, taught = {"):format(tostring(tonumber(scan.build) or 0)),
+	"--   made[made itemID] = recipeID: which recipe makes each item.",
+	"-- taught: " .. taughtNote,
+	("-- made: %d items from the professions read so far (skill lines %s)."):format(Count(made),
+		#readProfessions > 0 and table.concat(readProfessions, ", ") or "kept from the previous seed"),
+	("ns.seed = { build = %d, taughtNote = %q,"):format(build, taughtNote),
+	"\ttaught = {",
 }
--- Eight pairs to a line keeps the file small without one unreadable line.
-local row = {}
-for index, pair in ipairs(pairsList) do
-	row[#row + 1] = ("[%d]=%d,"):format(pair[1], pair[2])
-	if #row == 8 or index == #pairsList then
-		lines[#lines + 1] = "\t" .. table.concat(row, " ")
-		row = {}
-	end
-end
-lines[#lines + 1] = "} }"
+Rows(lines, taught)
+lines[#lines + 1] = "\t},"
+lines[#lines + 1] = "\tmade = {"
+Rows(lines, made)
+lines[#lines + 1] = "\t},"
+lines[#lines + 1] = "}"
 lines[#lines + 1] = ""
 local out = assert(io.open(outPath, "w"))
 out:write(table.concat(lines, "\n"))
 out:close()
-print(("wrote %s: %d pairs (build %s; %d teach nothing, %d unanswered)"):format(outPath, #pairsList, tostring(scan.build), nothing, unanswered))
+print(("wrote %s"):format(outPath))
