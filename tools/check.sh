@@ -23,6 +23,7 @@ luacheck . -q
 echo "== release build (debug blocks removed) still compiles"
 stripped=$(mktemp -d)
 trap 'rm -rf "$stripped"' EXIT
+cp -R Libs "$stripped/" # third-party libraries as they are; the tests load them
 for file in $(ours); do
 	mkdir -p "$stripped/$(dirname "$file")"
 	awk '/--@debug@/{skip=1} !skip{print} /--@end-debug@/{skip=0}' "$file" > "$stripped/$file"

@@ -40,11 +40,17 @@ local defaults = {
 -- recipeFacts: per-build facts from recipe tooltips (Sources.lua), rebuilt on a new game build.
 }
 
--- Chat lines use the NPC speech color (ChatTypeInfo.MONSTER_SAY), with no "says:" and no brackets, which Forever uses for player names.
+-- Chat goes through the toolkit library, which owns the line's shape and colors (docs/voice.md).
+-- ns.Say is a voiced line: "Boltgrip's Recipe Vacuum <action>". ns.Log is a plain one.
+local toolkit = LibStub("JigBoltgripToolkit-1.0")
+ns.device = { title = ns.title, color = CreateColor(0.55, 0.35, 0.17) } -- the Vacuum's brown
+
+function ns.Say(action)
+	toolkit:Say(ns.device, action)
+end
+
 function ns.Log(text)
-	local color = ChatTypeInfo.MONSTER_SAY
-	DEFAULT_CHAT_FRAME:AddMessage(("%s: %s"):format(ns.title, text),
-		color.r, color.g, color.b)
+	toolkit:Print(text)
 end
 
 function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)

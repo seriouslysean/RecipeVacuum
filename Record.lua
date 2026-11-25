@@ -91,7 +91,7 @@ end
 
 local function Announce(count, name)
 	if count > 0 and ns.db.announceNewFinds then
-		ns.Log(ns.voice.intake:format(count, count == 1 and "source" or "sources", name or UNKNOWN))
+		ns.Say(ns.voice.intake:format(count, count == 1 and "recipe" or "recipes", name or UNKNOWN))
 	end
 end
 

@@ -9,6 +9,12 @@ GetBuildInfo = function() return "1.60.1", "71037" end
 GetServerTime = function() return 1795470000 end
 C_Map = { GetMapInfo = function(id) return { name = "Map" .. id } end }
 wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
+ChatTypeInfo = { MONSTER_SAY = { r = 1, g = 1, b = 0.62 } }
+-- The real toolkit library, through the real LibStub, prints the addon's chat lines.
+SlashCmdList = {}
+function CreateColor(r, g, b) return { r = r, g = g, b = b } end
+dofile(repo .. "/Libs/LibStub/LibStub.lua")
+dofile(repo .. "/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua")
 dofile(saved)
 
 -- What the old save holds, read before the migration changes it.

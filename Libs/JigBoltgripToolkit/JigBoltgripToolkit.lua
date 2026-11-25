@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 8
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 9
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -40,17 +40,64 @@ local function ModuleLinks(addonName)
 	return links
 end
 
+-- Chat. Everything a toolkit addon prints goes through lib:Say, lib:Print or lib:PrintBlock, so the
+-- family reads as one (docs/standards.md, "Voice"). The line color is the one the game gives an NPC's speech.
+local MARK = "|TInterface\\WorldMap\\GEAR_64GREY:0|t" -- the world map's gear, at the line's height
+local PREFIX = "Boltgrip's"
+local DEVICE_COLOR_MIX = 0.6 -- share of a module's own color in its name; the rest is the line color
+local BLOCK_INDENT = "    "
+
+local function AddLine(text)
+	local color = ChatTypeInfo.MONSTER_SAY
+	DEFAULT_CHAT_FRAME:AddMessage(text, color.r, color.g, color.b)
+end
+
+-- A module's title in its device color, mixed into the line color so the family stays one tone.
+local function DeviceName(module)
+	local device, line = module.color, ChatTypeInfo.MONSTER_SAY
+	if not device then
+		return module.title
+	end
+	local function Mix(channel)
+		return math.floor((line[channel] * (1 - DEVICE_COLOR_MIX) + device[channel] * DEVICE_COLOR_MIX) * 255 + 0.5)
+	end
+	return ("|cff%02x%02x%02x%s|r"):format(Mix("r"), Mix("g"), Mix("b"), module.title)
+end
+
+-- A voiced line: the mark, "Boltgrip's", the device's name, then what it just did. action is the
+-- rest of the sentence, e.g. "deploys a bobber!".
+function lib:Say(module, action)
+	AddLine(("%s %s %s %s"):format(MARK, PREFIX, DeviceName(module), action))
+end
+
+-- A plain line with the mark: an error's text, a development command's answer.
+function lib:Print(text)
+	AddLine(MARK .. " " .. text)
+end
+
+-- Several lines that belong together: the header carries the mark, the rows sit under it without one.
+function lib:PrintBlock(header, rows)
+	self:Print(header)
+	for _, row in ipairs(rows) do
+		AddLine(BLOCK_INDENT .. row)
+	end
+end
+
 -- Registers a module by addon folder name; returns its settings category and layout. Call
--- lib:FinishModule(module) after adding the module's rows.
-function lib:RegisterModule(addonName)
+-- lib:FinishModule(module) after adding the module's rows. color is the device's own color for its
+-- name in chat (r, g, b from 0 to 1, as CreateColor gives); without one the name is the line color.
+function lib:RegisterModule(addonName, color)
 	for _, existing in ipairs(self.modules) do
-		if existing.addon == addonName then return existing end
+		if existing.addon == addonName then
+			existing.color = color or existing.color
+			return existing
+		end
 	end
 	local title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 	local notes = C_AddOns.GetAddOnMetadata(addonName, "Notes")
 	local parent, parentLayout = self:GetCategory()
 	local category, layout = Settings.RegisterVerticalLayoutSubcategory(parent, title)
-	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout }
+	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout, color = color }
 	table.insert(self.modules, module)
 	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, OPEN or "Open", function()
 		Settings.OpenToCategory(category:GetID())
@@ -138,32 +185,26 @@ end
 -- imports SlashCmdList).
 lib.commands = lib.commands or {}
 
--- Help prints in the system message color, as /help does (ChatFrameUtil.DisplayHelpText).
-local function Say(text)
-	local info = ChatTypeInfo.SYSTEM
-	DEFAULT_CHAT_FRAME:AddMessage(text, info.r, info.g, info.b, info.id)
-end
-
-local function PrintEntries(command, troubleshooting)
+local function AddEntries(rows, command, troubleshooting)
+	local any = false
 	for _, entry in ipairs(command.entries) do
 		if (entry.troubleshooting or false) == troubleshooting then
+			if troubleshooting and not any then
+				table.insert(rows, "Troubleshooting:")
+			end
+			any = true
 			local slash = "/" .. command.name .. (entry.action ~= "" and " " .. entry.action or "")
-			Say(("  %s - %s"):format(slash, entry.description))
+			table.insert(rows, ("%s%s - %s"):format(troubleshooting and "  " or "", slash, entry.description))
 		end
 	end
 end
 
 function lib:PrintHelp(name)
 	local command = self.commands[name]
-	Say(("%s commands (/%s or /boltgrip %s):"):format(command.title, command.name, command.name))
-	PrintEntries(command, false)
-	for _, entry in ipairs(command.entries) do
-		if entry.troubleshooting then
-			Say("Troubleshooting:")
-			PrintEntries(command, true)
-			break
-		end
-	end
+	local rows = {}
+	AddEntries(rows, command, false)
+	AddEntries(rows, command, true)
+	self:PrintBlock(("%s commands (/%s or /boltgrip %s):"):format(command.title, command.name, command.name), rows)
 end
 
 -- A method, so slash handlers made by an older copy of this file run the newest code.
@@ -217,10 +258,11 @@ SlashCmdList.BOLTGRIP = function(message)
 		lib:Dispatch(name:lower(), rest)
 		return
 	end
-	Say(lib.title .. ": /boltgrip <module> <command>")
+	local rows = {}
 	for _, module in ipairs(lib.modules) do
 		if module.command then
-			Say(("  /%s - %s"):format(module.command, module.title))
+			table.insert(rows, ("/%s - %s"):format(module.command, module.title))
 		end
 	end
+	lib:PrintBlock(lib.title .. ": /boltgrip <module> <command>", rows)
 end

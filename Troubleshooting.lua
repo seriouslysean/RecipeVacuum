@@ -94,6 +94,7 @@ local logOnly
 
 -- A line from Voice.lua goes to chat through ns.Log and to the saved log with the same tag.
 local LOG_TAG = ns.title .. ": "
+local VOICED_TAG = "Boltgrip's " .. ns.title .. " "
 local voice = ns.voice
 
 local function Chat(line)
@@ -110,6 +111,19 @@ local function print(...)
 end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
+-- A voiced line, logged as chat shows it.
+local function Voiced(action)
+	Append(VOICED_TAG .. action)
+	ns.Say(action)
+end
+
+-- A failure: the voiced line, then the error itself on a plain line so it stays exact.
+local function Malfunction(where, problem)
+	Voiced(voice.malfunction:format(where))
+	Append(problem)
+	Chat(problem)
+end
+
 local function Say(line, ...)
 	line = select("#", ...) > 0 and line:format(...) or line
 	Append(LOG_TAG .. line)
@@ -122,9 +136,7 @@ end
 -- The one chat line a watch event may print: it found recipes (voice rules: docs/voice.md; Homing Robot OOX-17/TN is the model).
 local function WatchFound(count)
 	if count > 0 then
-		local line = voice.detected:format(count, count == 1 and "recipe" or "recipes")
-		Append(LOG_TAG .. line)
-		Chat(line)
+		Voiced(voice.detected:format(count, count == 1 and "recipe" or "recipes"))
 	end
 end
 
@@ -136,7 +148,7 @@ local function LogOnly(callback)
 		logOnly = true
 		local ok, problem = pcall(callback, ...)
 		logOnly = nil
-		if not ok then Say(voice.malfunction, "the watch", tostring(problem)) end
+		if not ok then Malfunction("the watch", tostring(problem)) end
 	end
 end
 
@@ -293,7 +305,7 @@ local function StartWatch()
 		local ok, problem = pcall(handlers[event], ...)
 		logOnly = nil
 		if not ok then
-			Say(voice.malfunction, event, Describe(problem))
+			Malfunction(event, Describe(problem))
 		end
 	end)
 end
@@ -312,7 +324,7 @@ local function Watch(word)
 		Append(date("%Y-%m-%d %H:%M:%S") .. " /recipevacuum watch on", true)
 	end
 	ns.db.watch = on or nil
-	Say(on and voice.watchOn or voice.watchOff)
+	Voiced(on and voice.watchOn or voice.watchOff)
 end
 
 -- Called by Core once saved data is loaded (an ADDON_LOADED callback here could run before it).
@@ -702,7 +714,7 @@ table.insert(ns.commands, { action = "log", description = "Show the last command
 		word = (word or ""):lower()
 		if word == "clear" then
 			ns.db.devLog, ns.db.devLogRun = {}, nil
-			Chat(voice.logPurged)
+			ns.Say(voice.logPurged)
 		else
 			viewStart = nil
 			ShowLog(word == "all")

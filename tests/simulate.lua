@@ -41,6 +41,11 @@ UnitName = function(unit) return target[unit .. "name"] end
 ChatTypeInfo = { SYSTEM = { r = 1, g = 1, b = 0 }, MONSTER_SAY = { r = 1, g = 1, b = 0.62 } }
 local messages = {}
 DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) messages[#messages + 1] = text end }
+-- The real toolkit library, through the real LibStub, prints the addon's chat lines.
+SlashCmdList = {}
+function CreateColor(r, g, b) return { r = r, g = g, b = b } end
+dofile(repo .. "/Libs/LibStub/LibStub.lua")
+dofile(repo .. "/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua")
 C_Timer = { NewTimer = function() return { Cancel = function() end } end, After = function(_, fn) fn() end }
 local clock = 1000
 GetTime = function() return clock end
@@ -133,7 +138,10 @@ fire("LOOT_READY"); fire("LOOT_CLOSED"); fishing = false
 local f4 = db.found.items[1000][4]
 check("fishing kept by zone, not bobber", f4 and f4.fishing == 1429 and f4.object == nil and f4.x == 0.5)
 check("pending link noted", db.pendingItems[1000] ~= nil)
-check("announce names the source", messages[1] and messages[1]:find("Murloc Lurker", 1, true) ~= nil)
+-- Fails if the line loses the family's shape, the count, or who it came from.
+check("the announcement says what was taken in and from whom", messages[1] ~= nil
+  and messages[1]:find("Boltgrip's", 1, true) ~= nil and messages[1]:find("Recipe Vacuum", 1, true) ~= nil
+  and messages[1]:find("sucks up 1 recipe from Murloc Lurker!", 1, true) ~= nil)
 
 -- 3. Quests: giver at detail, finisher at complete, choice flag kept
 target.questnpc, target.questnpcname = "Creature-0-1-1-1-4784-DDDD", "Argent Guard Manados"
