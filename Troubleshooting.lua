@@ -597,6 +597,37 @@ local troubleshooting = {
 }
 
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
+-- Item probe: saves an item's tooltip lines with every plain field, to learn what the game says about
+-- items the addon cannot place yet (profession rank books first). Remove once answered.
+table.insert(troubleshooting, { "item", "Save an item's tooltip data to the log", function(text)
+	local itemID = tonumber(text)
+	if not itemID then
+		return ns.Log("Give an item ID: /recipevacuum item 16083")
+	end
+	if not C_Item.IsItemDataCachedByID(itemID) then
+		C_Item.RequestLoadItemDataByID(itemID)
+		return ns.Log("Item data requested. Run the command again in a moment.")
+	end
+	local tooltip = C_TooltipInfo.GetItemByID(itemID)
+	ns.db.devItems = ns.db.devItems or {}
+	local lines = {}
+	for index, line in ipairs(tooltip and tooltip.lines or {}) do
+		local fields = {}
+		for key, value in pairs(line) do
+			if type(value) ~= "table" and type(value) ~= "function" then
+				fields[#fields + 1] = key .. "=" .. tostring(value)
+			end
+		end
+		table.sort(fields)
+		lines[index] = table.concat(fields, " | ")
+	end
+	local _, _, _, _, _, classID, subclassID = C_Item.GetItemInfoInstant(itemID)
+	local spellName, spellID = C_Item.GetItemSpell(itemID)
+	lines[#lines + 1] = ("class %s subclass %s | item spell %s %s"):format(tostring(classID), tostring(subclassID),
+		tostring(spellID), tostring(spellName))
+	ns.db.devItems[itemID] = lines
+	ns.Log(("Saved %d tooltip lines for item %d. Reload to write them."):format(#lines - 1, itemID))
+end, quiet = true })
 -- Facts cache test: drops the cache, so the next profession window builds its list cold without it.
 -- Compare that build's "list build, cold" with one after a plain reload (cache kept).
 table.insert(troubleshooting, { "nofacts", "Drop the recipe facts cache for a timing test", function()
