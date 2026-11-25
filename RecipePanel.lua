@@ -148,8 +148,15 @@ local function MapTargets(recipeInfo)
 	local targets = {}
 	local entries = ns.GetSources(recipeInfo) or {}
 	local scope = ns.DropScope(entries)
-	if scope and scope.scope == "zone" and scope.place and scope.place.kind == "map" then
-		table.insert(targets, { label = ns.DropPlaceName("map", scope.place.id), mapID = scope.place.id, zoneOnly = true })
+	if scope and scope.scope == "zone" and scope.place then
+		-- A dungeon zone drop opens the map recorded inside that dungeon, when a sighting has one (Astra review).
+		local mapID = scope.place.kind == "map" and scope.place.id or nil
+		for _, observation in ipairs(entries) do
+			if not mapID and observation.instance == scope.place.id then mapID = observation.map end
+		end
+		if mapID then
+			table.insert(targets, { label = ns.DropPlaceName(scope.place.kind, scope.place.id), mapID = mapID, zoneOnly = true })
+		end
 	end
 	for _, observation in ipairs(entries) do
 		local pinned = observation.kind ~= "drop" or observation.fishing or (scope and scope.scope == "single")

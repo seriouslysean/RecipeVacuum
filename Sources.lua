@@ -541,10 +541,13 @@ local function AddDropLines(tooltip, entries, detailed, withHeader)
 		GameTooltip_AddNormalLine(tooltip, MarkText("drop", header))
 	end
 	if scope.scope == "world" then
-		local seen, names = {}, {}
+		-- The creature zones are summarized; fishing and containers keep their own lines (Astra review).
+		local seen, names, own = {}, {}, {}
 		for _, observation in ipairs(entries) do
 			local kind, place = DropZone(observation)
-			if observation.kind == "drop" and place and not seen[kind .. place] then
+			if observation.kind == "drop" and (observation.fishing or observation.container) then
+				own[#own + 1] = observation
+			elseif observation.kind == "drop" and place and not seen[kind .. place] then
 				seen[kind .. place] = true
 				names[#names + 1] = ns.DropPlaceName(kind, place)
 			end
@@ -556,6 +559,7 @@ local function AddDropLines(tooltip, entries, detailed, withHeader)
 		if #names > DROP_LINES then
 			GameTooltip_AddColoredLine(tooltip, ("and %d more"):format(#names - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
 		end
+		AddKindLines(tooltip, own, "drop", detailed, false, true)
 	else
 		AddKindLines(tooltip, entries, "drop", detailed, false, true)
 	end
