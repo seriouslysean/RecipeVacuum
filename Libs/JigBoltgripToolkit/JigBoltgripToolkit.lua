@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 12
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 13
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -52,17 +52,21 @@ local function AddLine(text)
 	DEFAULT_CHAT_FRAME:AddMessage(text, LINE_COLOR.r, LINE_COLOR.g, LINE_COLOR.b)
 end
 
--- A module's title in its class color (RAID_CLASS_COLORS, read when printing), mixed a little toward
--- the line color.
-local function DeviceName(module)
-	local class = module.class and RAID_CLASS_COLORS[module.class]
+-- Text in the module's class color (RAID_CLASS_COLORS, read when printing), mixed a little toward the
+-- line color: the device's name, and its commands in help.
+local function InDeviceColor(module, text)
+	local class = module and module.class and RAID_CLASS_COLORS[module.class]
 	if not class then
-		return module.title
+		return text
 	end
 	local function Mix(channel)
 		return math.floor((class[channel] * (1 - NAME_LINE_MIX) + LINE_COLOR[channel] * NAME_LINE_MIX) * 255 + 0.5)
 	end
-	return ("|cff%02x%02x%02x%s|r"):format(Mix("r"), Mix("g"), Mix("b"), module.title)
+	return ("|cff%02x%02x%02x%s|r"):format(Mix("r"), Mix("g"), Mix("b"), text)
+end
+
+local function DeviceName(module)
+	return InDeviceColor(module, module.title)
 end
 
 -- A voiced line: the mark, "Boltgrip's", the device's name, then what it just did. action is the
@@ -189,7 +193,11 @@ end
 -- imports SlashCmdList).
 lib.commands = lib.commands or {}
 
--- Rows in Blizzard's own help shape: "/command <arguments> - What it does". help itself is not listed.
+-- Rows in Blizzard's own help shape, "/command <arguments> - What it does", with the command in the
+-- device's color and indented under its section. help itself is not listed. The chat frame indents
+-- a wrapped line on its own.
+local HELP_INDENT = "  "
+
 local function AddEntries(rows, command, troubleshooting)
 	local any = false
 	for _, entry in ipairs(command.entries) do
@@ -200,7 +208,7 @@ local function AddEntries(rows, command, troubleshooting)
 			any = true
 			local slash = "/" .. command.name .. (entry.action ~= "" and " " .. entry.action or "")
 				.. (entry.usage and " " .. entry.usage or "")
-			table.insert(rows, ("%s - %s"):format(slash, entry.description))
+			table.insert(rows, ("%s%s - %s"):format(HELP_INDENT, InDeviceColor(command.module, slash), entry.description))
 		end
 	end
 end
@@ -248,7 +256,7 @@ function lib:RegisterCommands(module, name, entries)
 			lib:PrintHelp(name)
 		end })
 	end
-	self.commands[name] = { name = name, title = module.title, entries = entries }
+	self.commands[name] = { name = name, title = module.title, entries = entries, module = module }
 	SetSlashHandler(name)
 end
 
