@@ -8,7 +8,7 @@ table.insert(ns.commands, 1, { action = "", description = "Open the options", ru
 	Settings.OpenToCategory(ns.module.category:GetID())
 end })
 table.insert(ns.commands, 2, { action = "export", description = "Copy the recipe sources you found",
-	note = "Opens a window listing every trainer, vendor, quest and drop you found recipes from, ready to copy.", run = function()
+	note = "Opens a window of every recipe source you found, ready to copy.", run = function()
 	ns.ExportFinds()
 end })
 
@@ -28,13 +28,12 @@ function ns.InitSettings()
 				end },
 			{ kind = "checkbox", key = "shareFinds", label = "Share My Finds", default = true,
 				tooltip = "Send what you find to party, guild and friends who use Recipe Vacuum.",
-				note = "Sends the trainers, vendors, quests and drops you find to your party, guild and friends who "
-					.. "also use Recipe Vacuum. Nothing else is sent. Which of their finds you see is set by the cards above.",
+				note = "Sends your trainers, vendors, quests and drops to friends who use Recipe Vacuum. Nothing else is sent.",
 				onChange = function() ns.SetSharing(ns.SharingWanted()) end },
 		} },
 		{ heading = "Personal Finds", place = "features", rows = {
 			{ kind = "checkbox", key = "selfFound", label = "Track Personal Finds", default = true,
-				tooltip = "Remember recipe sources from the trainers, vendors, quests and loot you see, even on characters without that profession." },
+				tooltip = "Remembers the trainers, vendors, quests and loot you see, on every character." },
 			{ kind = "checkbox", key = "announceNewFinds", label = "Announce New Finds", default = true, under = "selfFound",
 				tooltip = "Print one message in your chat window after a visit with new recipe sources." },
 		} },

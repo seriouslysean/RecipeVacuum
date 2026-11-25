@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 26
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 27
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -612,7 +612,6 @@ end
 -- works which feels like a miss"): the levels, names, icons, range openings and each card's sentence are
 -- the kit's; the module names only the game thing it tracks.
 --   spec.what      what the module tracks, in game terms ("recipes", "the Fishing skill each zone needs")
---   spec.seen      optional, how the player sees it for themselves ("your casts, catches and escapes")
 --   spec.friends   true when the module shares with party, guild and friends; otherwise no Friends card
 --   spec.public    what Public adds ("recipes people link in chat"); nil leaves out the Public card
 --   spec.openings  false leaves out the range openings (owner, 2026-11-25, Tackletron: "Game terms, no range opening")
@@ -620,7 +619,7 @@ lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 local SOURCE_CARDS = {
 	{ name = "Self Found", icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = "Short range.",
 		text = function(spec)
-			return ("Tracks only %s from what you see for yourself%s."):format(spec.what, spec.seen and (": " .. spec.seen) or "")
+			return ("Tracks only %s you see for yourself."):format(spec.what)
 		end },
 	{ name = "Friends", icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range.",
 		text = function(spec) return spec.friends and "Also tracks what your party, guild and friends find." end },

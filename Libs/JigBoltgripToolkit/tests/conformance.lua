@@ -102,14 +102,15 @@ for _, file in ipairs(libraries) do
 	if file:find("%.lua$") then dofile(addonDir .. "/" .. file) end
 end
 local kit = LibStub("JigBoltgripToolkit-1.0")
+-- One page and one command table per module: a second call replaces the first, so nothing is checked twice.
 local pages, commandTables = {}, {}
 local buildOptions, registerCommands = kit.BuildOptions, kit.RegisterCommands
 function kit:BuildOptions(module, db, sections)
-	pages[#pages + 1] = sections
+	pages[module.addon] = sections
 	return buildOptions(self, module, db, sections)
 end
 function kit:RegisterCommands(module, name, entries)
-	commandTables[#commandTables + 1] = entries
+	commandTables[module.addon] = entries
 	return registerCommands(self, module, name, entries)
 end
 local ns = {}
@@ -123,64 +124,99 @@ local loaded, problem = pcall(function()
 end)
 check("the addon loads on the kit's stand-ins", loaded, tostring(problem))
 
--- Style rules, as standards.md words them.
+-- Style rules, as standards.md words them ("Plain text", "Options"). Owner, 2026-11-25: "wow style plain
+-- language, simple sentences", no colons in settings text, and "Your subnotes are also insanely long".
 local SMALL_WORDS = { a = true, an = true, ["and"] = true, as = true, at = true, by = true, ["for"] = true,
 	["in"] = true, of = true, on = true, ["or"] = true, the = true, to = true }
-local function TitleCase(text)
-	local first = true
-	for word in text:gmatch("[%a']+") do
-		if not (word:find("^%u") or (not first and SMALL_WORDS[word])) then return false end
-		first = false
-	end
-	return true
-end
-local function OneSentence(text)
-	return not text:find("[%.!?]%s+%u")
-end
 local NOT_GAME_WORDS = { "addon", "addons", "data", "database", "community", "server", "upload", "sync",
 	"author", "export", "record", "recorded", "records" }
--- Player text speaks in game terms: the exact game thing, never the addon's machinery (owner, 2026-11-25:
--- "please be specific, and stick to game terms, just like our bot/device language").
-local function GameTerms(what, text)
-	if not text then return end
-	local lower, word = text:lower(), nil
-	for _, candidate in ipairs(NOT_GAME_WORDS) do
-		if lower:find("%f[%a]" .. candidate .. "%f[%A]") then word = candidate end
-	end
-	check(what .. " speaks in game terms", word == nil, word and ("says \"" .. word .. "\""))
-end
 local DESCRIPTION_LIMIT = 60 -- a help row fits one chat line beside its command
+local NOTE_LIMIT = 120 -- a note is a line or two under its row
+local SENTENCE_WORDS = 16 -- a simple sentence
 
-for _, sections in ipairs(pages) do
+local RULES = {}
+function RULES.titleCase(text)
+	local first = true
+	for word in text:gmatch("[%a']+") do
+		if not (word:find("^%u") or (not first and SMALL_WORDS[word])) then return "is not in Title Case" end
+		first = false
+	end
+end
+function RULES.oneSentence(text)
+	if text:find("[%.!?]%s+%u") then return "is more than one sentence" end
+end
+function RULES.gameTerms(text)
+	local lower = text:lower()
+	for _, word in ipairs(NOT_GAME_WORDS) do
+		if lower:find("%f[%a]" .. word .. "%f[%A]") then return ("says %q, not a game term"):format(word) end
+	end
+end
+function RULES.plain(text)
+	if text:find("[:;]") then return "uses a colon or semicolon" end
+	for sentence in text:gmatch("[^%.!?]+") do
+		local words = select(2, sentence:gsub("%S+", ""))
+		if words > SENTENCE_WORDS then return ("has a sentence of %d words"):format(words) end
+	end
+end
+function RULES.note(text)
+	if #text > NOTE_LIMIT then return ("is %d characters, over %d"):format(#text, NOTE_LIMIT) end
+end
+function RULES.description(text)
+	if #text > DESCRIPTION_LIMIT then return ("is %d characters, over %d"):format(#text, DESCRIPTION_LIMIT) end
+	if text:find("[<%[]") then return "puts arguments in the description, not in usage" end
+end
+
+-- Text checked against the named rules. A Blizzard global string (an all-caps name the stand-ins do not
+-- define) is Blizzard's own words and passes; anything else that is not a string fails, so no check can
+-- loop on a stand-in.
+local function Text(what, text, rules)
+	if text == nil then return end
+	if type(text) == "table" and type(text.stubName) == "string" and text.stubName:find("^[%u_]+$") then
+		check(what .. " is Blizzard's own words (" .. text.stubName .. ")", true)
+		return
+	end
+	if type(text) ~= "string" then
+		check(what .. " is text", false, "got " .. type(text))
+		return
+	end
+	local problems = {}
+	for _, rule in ipairs(rules) do
+		local found = RULES[rule](text)
+		if found then problems[#problems + 1] = found end
+	end
+	check(("%s %q"):format(what, text), #problems == 0, table.concat(problems, "; "))
+end
+
+local pageCount, commandCount = 0, 0
+for _, sections in pairs(pages) do
+	pageCount = pageCount + 1
 	for _, section in ipairs(sections) do
-		check(("heading %q is in Title Case"):format(section.heading), TitleCase(section.heading))
+		Text("heading", section.heading, { "titleCase", "gameTerms" })
 		for _, row in ipairs(section.rows) do
 			for _, card in ipairs(row.kind == "cards" and row.values or {}) do
-				GameTerms("card " .. tostring(card[2]), card[4])
+				Text("card " .. tostring(card[2]), card[4], { "gameTerms", "plain" })
 			end
-			GameTerms("label " .. tostring(row.label), row.label)
-			GameTerms("tooltip of " .. tostring(row.label), row.tooltip)
-			GameTerms("note under " .. tostring(row.label), row.note)
-			if row.label then check(("label %q is in Title Case"):format(row.label), TitleCase(row.label)) end
-			if row.tooltip then check(("tooltip of %q is one sentence"):format(row.label or "?"), OneSentence(row.tooltip)) end
+			Text("label", row.label, { "titleCase", "gameTerms", "plain" })
+			Text("tooltip", row.tooltip, { "oneSentence", "gameTerms", "plain" })
+			Text("note", row.note, { "gameTerms", "plain", "note" })
 		end
 	end
 end
-for _, entries in ipairs(commandTables) do
+for _, entries in pairs(commandTables) do
+	commandCount = commandCount + 1
 	for _, entry in ipairs(entries) do
-		local description = entry.description or ""
-		if not entry.troubleshooting then
-			GameTerms(("command %q"):format(entry.action), description)
-			GameTerms(("note under command %q"):format(entry.action), entry.note)
+		if entry.troubleshooting then
+			Text("troubleshooting command " .. tostring(entry.action), entry.description, { "description" })
+		else
+			Text("command " .. tostring(entry.action), entry.description, { "description", "gameTerms", "plain" })
+			Text("note under command " .. tostring(entry.action), entry.note, { "gameTerms", "plain", "note" })
 		end
-		check(("command %q: description is short, arguments in usage"):format(entry.action),
-			#description <= DESCRIPTION_LIMIT and not description:find("[<%[]"))
 	end
 end
 
 -- Nothing to check is a failure, not a pass: the page and commands must have been reached.
-check("the addon's options page was built", #pages > 0, "BuildOptions never ran on the stand-ins")
-check("the addon's commands were registered", #commandTables > 0, "RegisterCommands never ran on the stand-ins")
+check("the addon's options page was built", pageCount > 0, "BuildOptions never ran on the stand-ins")
+check("the addon's commands were registered", commandCount > 0, "RegisterCommands never ran on the stand-ins")
 
 -- Voiced lines: every { noise = , report = } table the addon keeps.
 local function VoicedLines(t, seen, found)
@@ -200,7 +236,7 @@ end
 check("the addon's voiced lines were found", not speaks or #voiced > 0,
 	"it calls Say, but keeps no { noise = , report = } table in its namespace")
 for _, line in ipairs(voiced) do
-	GameTerms(("voiced %q"):format(line.noise), line.noise .. " " .. line.report)
+	Text("voiced line", line.noise .. ". " .. line.report, { "gameTerms" })
 	check(("voiced %q: noise without an end mark, report in beats ending \"!\""):format(line.noise),
 		not line.noise:find("[%.!?]$") and line.report:find("!$") ~= nil)
 end
