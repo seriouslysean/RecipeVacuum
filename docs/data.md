@@ -103,7 +103,7 @@ A recipe's drop label comes from all its drop sightings, own and shared (`ns.Dro
 
 | Sightings | Label | Show Map |
 |---|---|---|
-| One creature | Drop | Pinned where it was killed |
+| One creature | Drop | Pinned where it was killed; the Show Map list names the creature and its subzone |
 | 2 or more creatures, one zone or dungeon | Zone Drop: <place> | Opens the zone, no pin |
 | 3 or more zones or dungeons | World Drop | Nothing to show; the tooltip lists the zones |
 | Anything else | Drop | Pins only fishing spots |

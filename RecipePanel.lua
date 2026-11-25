@@ -145,7 +145,7 @@ local function MapTargets(recipeInfo)
 			local name = ns.SourceInfo(observation)
 			local mapInfo = C_Map.GetMapInfo(mapID)
 			table.insert(targets, {
-				label = ("%s (%s)"):format(name or UNKNOWN, mapInfo and mapInfo.name or ""),
+				label = ("%s (%s)"):format(name or UNKNOWN, ns.PlaceName(observation, mapInfo)), -- a drop names its subzone
 				mapID = mapID, x = x, y = y,
 			})
 		end

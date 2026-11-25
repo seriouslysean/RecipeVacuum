@@ -484,7 +484,7 @@ end
 
 -- One source type's lines: an optional gold header, one "who | where" line per source (as the Wardrobe sources tooltip, CollectionsUtil.lua), and indented lines under it.
 -- A drop's place as precisely as it was recorded: the dungeon, or "subzone, zone"; else the zone.
-local function PlaceName(observation, mapInfo)
+function ns.PlaceName(observation, mapInfo)
 	if observation.instance then
 		return GetRealZoneText(observation.instance)
 	end
@@ -564,7 +564,7 @@ function AddKindLines(tooltip, entries, kind, detailed, withHeader, plain)
 			local name = ns.SourceInfo(observation)
 			local mapID, x, y = ns.SourcePosition(observation)
 			local mapInfo = mapID and C_Map.GetMapInfo(mapID)
-			local where = PlaceName(observation, mapInfo)
+			local where = ns.PlaceName(observation, mapInfo)
 			if detailed and mapInfo and x then
 				where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
 			end
