@@ -52,7 +52,7 @@ end
 
 -- Details compared on every sighting; a missing field keeps its saved value. npc is a detail for quests (the giver), the identity otherwise.
 local DETAIL_FIELDS = { "faction", "skill", "cost", "price", "limited", "spellID", "choice", "npc",
-	"finisher", "giverItem", "map", "x", "y" }
+	"finisher", "giverItem", "map", "x", "y", "area", "instance" }
 
 -- Adds or updates one self-found observation; returns isNew and whether anything besides the seen time changed (which bumps the revision).
 local function Save(bucket, id, kind, npc, details)
@@ -63,7 +63,8 @@ local function Save(bucket, id, kind, npc, details)
 	end
 	local observation
 	for _, existing in ipairs(observations) do
-		if existing.kind == kind and existing[npc.field] == npc.value then
+		-- A drop is one creature in one place: the same creature elsewhere is a separate sighting.
+		if existing.kind == kind and existing[npc.field] == npc.value and (kind ~= "drop" or ns.SamePlace(existing, details)) then
 			observation = existing
 			break
 		end
@@ -75,6 +76,10 @@ local function Save(bucket, id, kind, npc, details)
 	end
 	details.faction = npc.faction
 	local changed = isNew
+	if kind == "drop" then
+		observation.count = (observation.count or 0) + 1 -- each loot window is one more time seen
+		changed = true
+	end
 	for _, field in ipairs(DETAIL_FIELDS) do
 		if details[field] ~= nil and observation[field] ~= details[field] then
 			observation[field] = details[field]
@@ -285,6 +290,17 @@ end)
 local castTarget, lootRead
 local loot = CreateFrame("Frame")
 
+-- Where a drop happened, by ID: the dungeon or raid when inside one, else the subzone at the spot
+-- (docs/data.md, "Drops").
+local function DropPlace(mapID, x, y)
+	local inInstance, instanceType = IsInInstance()
+	if inInstance and (instanceType == "party" or instanceType == "raid") then
+		return nil, select(8, GetInstanceInfo())
+	end
+	local areas = mapID and x and C_MapExplorationInfo.GetExploredAreaIDsAtPosition(mapID, CreateVector2D(x, y))
+	return areas and areas[1], nil
+end
+
 local function LootSource(guid)
 	if not guid or issecretvalue(guid) then
 		return nil
@@ -302,10 +318,12 @@ local function LootSource(guid)
 		local name = not issecretvalue(targetGUID) and targetGUID == guid and UnitName("target") or nil
 		if issecretvalue(name) then name = nil end
 		ns.NoteNPC(ns.db.npcs, id, name, mapID, x, y, GetServerTime())
-		return Source("npc", id), { map = mapID }, (ns.GetNPC(id) or {}).name
+		local area, instance = DropPlace(mapID, x, y)
+		return Source("npc", id), { map = mapID, x = x, y = y, area = area, instance = instance }, (ns.GetNPC(id) or {}).name
 	elseif unitType == "GameObject" and id then
 		ns.NoteNPC(ns.db.objects, id, castTarget, mapID, x, y, GetServerTime())
-		return Source("object", id), { map = mapID }, castTarget
+		local area, instance = DropPlace(mapID, x, y)
+		return Source("object", id), { map = mapID, x = x, y = y, area = area, instance = instance }, castTarget
 	elseif unitType == "Item" then
 		local itemID = C_Item.GetItemIDByGUID(guid)
 		return itemID and Source("container", itemID), {}, itemID and C_Item.GetItemNameByID(itemID)

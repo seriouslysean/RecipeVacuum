@@ -60,7 +60,7 @@ Hidden addon messages only, through AceComm and ChatThrottleLib.
 2. A peer that is behind whispers a request for everything after its revision.
 3. The owner replies with one batch, capped near 4 kB encoded; the receiver asks again until it reaches the tip.
 
-Rows carry IDs; each client reads item, recipe and quest names in its own language. NPC and object names are sent, since the client has no lookup by ID. Keys: `k` kind, `r` recipe, `i` item; source `n` npc, `o` object, `ci` container, `fi` fishing zone, `z` roll zone, `q` quest; `nm`, `on` names, `nf` NPC faction; `m`, `x`, `y` place; `f` faction, `s` seen, `b` build; details `sk`, `c`, `p`, `l`, `sp`, `ch`, `fn`, `gi`. Every received row is validated before it is saved, and received data is never executed.
+Rows carry IDs; each client reads item, recipe and quest names in its own language. NPC and object names are sent, since the client has no lookup by ID. Keys: `k` kind, `r` recipe, `i` item; source `n` npc, `o` object, `ci` container, `fi` fishing zone, `z` roll zone, `q` quest; `nm`, `on` names, `nf` NPC faction; `m`, `x`, `y` place; on drops only `a` subzone area ID, `di` dungeon or raid instance ID, `cn` times seen; `f` faction, `s` seen, `b` build; details `sk`, `c`, `p`, `l`, `sp`, `ch`, `fn`, `gi`. Every received row is validated before it is saved, and received data is never executed.
 
 Who gets a whisper is decided before sending: a friend who is online, and for a Battle.net friend a character in this game, on this realm and of this faction. Nothing is hidden from chat. If a whisper still fails (a friend logging off at that moment), the game prints "No player named '%s' is currently playing."; the addon reads that line so the name is not whispered again until it has been offline.
 
@@ -94,6 +94,23 @@ A recipe with no known source is listed, with the unknown mark, once it has been
 The made-item table (`ns.GetMadeRecipe`: `ns.seed.made`, with a checkout scan over it) is not shipped yet: the working build reads what each recipe makes into `RecipeVacuumDB.devMade` whenever a profession list opens, to measure its size before the generator writes it into the seed. Hovering an item is not a sighting yet; its cost per tooltip is unmeasured.
 
 A shared observation keeps the time each of its fields was learned (`at`, by field name), so reports about different fields merge to the same result in whatever order they arrive; when two values for one field carry the same time, the one that sorts higher is kept. `at` is saved with the shared layer and is not sent.
+
+## Drops
+
+Each drop is one creature (or object) in one place: the item, the creature, the zone, and either the subzone at the kill (`area`, from `C_MapExplorationInfo.GetExploredAreaIDsAtPosition`, named by `C_Map.GetAreaInfo`) or the dungeon or raid (`instance`, from `GetInstanceInfo`), with the spot where it was last killed there (`x`, `y`) and how many times it was seen (`count`). The same creature in another subzone is another sighting.
+
+A recipe's drop label comes from all its drop sightings, own and shared (`ns.DropScope`, `Sources.lua`):
+
+| Sightings | Label | Show Map |
+|---|---|---|
+| One creature | Drop | Pinned where it was killed |
+| 2 or more creatures, one zone or dungeon | Zone Drop: <place> | Opens the zone, no pin |
+| 3 or more zones or dungeons | World Drop | Nothing to show; the tooltip lists the zones |
+| Anything else | Drop | Pins only fishing spots |
+
+The tooltip ends with the evidence: "Seen N times from N creatures in N zones". Fishing and container drops keep their own lines and do not count toward the label.
+
+The thresholds are the owner's choice (2026-11-25): no source publishes one. Wowhead's observed behaviour labels a zone drop at 2 creatures; "World Drop" is the wording of another addon, another addon and the Warcraft wiki (research: the session folder's drop-scope-research.md and drop-locations-research.md). "World Drop" and "Drop" are Blizzard's strings (`TRANSMOG_SOURCE_4`, `BATTLE_PET_SOURCE_1`); "Zone Drop" and the evidence line are English only. The times seen add one per loot window on the player's own client; across layers the first layer's count is used, so friends' counts do not add up yet.
 
 A source can be known in part. The tooltip shows "Unknown" in the place column for a source whose location is not known (a roll in a zone, a peer's report without a position), and Show Map lists only places with a position.
 

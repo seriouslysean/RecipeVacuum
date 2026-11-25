@@ -63,6 +63,9 @@ local function WireRow(row)
 	local mapID, position = ns.NewestPosition(named.positions)
 	if observation.fishing then
 		mapID, position = observation.fishing, { x = observation.x, y = observation.y }
+	elseif observation.kind == "drop" and observation.x then
+		-- A drop carries its own spot, not the creature's latest one.
+		mapID, position = observation.map, { x = observation.x, y = observation.y }
 	end
 	return {
 		k = observation.kind, r = row.ref == "recipe" and row.id or nil, i = row.ref == "item" and row.id or nil,
@@ -74,6 +77,7 @@ local function WireRow(row)
 		f = observation.faction, s = observation.seen, b = observation.build,
 		sk = observation.skill, c = observation.cost, p = observation.price, l = observation.limited,
 		sp = observation.spellID, ch = observation.choice, fn = observation.finisher, gi = observation.giverItem,
+		a = observation.area, di = observation.instance, cn = observation.count,
 	}
 end
 
@@ -141,7 +145,8 @@ local function ValidRow(row)
 	if row.r and not C_TradeSkillUI.GetTradeSkillLineForRecipe(row.r) then return false end
 	-- Each kind carries only its own identity: a quest ID on quests, a drop's origin on drops.
 	if row.k ~= "quest" and row.q then return false end
-	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z) then return false end
+	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z or row.a or row.di or row.cn) then return false end
+	if not (OptionalID(row.a) and OptionalID(row.di) and OptionalID(row.cn)) then return false end
 	if (row.x == nil) ~= (row.y == nil) then return false end
 	if not (ValidName(row.nm) and ValidName(row.on)) then return false end
 	if not (OptionalID(row.n) and OptionalID(row.fn) and OptionalID(row.gi)) then return false end
@@ -170,7 +175,7 @@ local IDENTITY = { n = "npc", o = "object", ci = "container", fi = "fishing", z 
 local MERGED_FIELDS = {
 	npc = "n", object = "o", container = "ci", fishing = "fi", zone = "z", quest = "q", faction = "f",
 	skill = "sk", cost = "c", price = "p", limited = "l", spellID = "sp", choice = "ch", finisher = "fn",
-	giverItem = "gi", map = "m", x = "x", y = "y",
+	giverItem = "gi", map = "m", x = "x", y = "y", area = "a", instance = "di", count = "cn",
 }
 
 function ns.MergeFinds(rows, maxRows)
@@ -195,13 +200,14 @@ function ns.MergeFinds(rows, maxRows)
 		bucket[id] = bucket[id] or {}
 		local observation
 		for _, existing in ipairs(bucket[id]) do
-			if existing.kind == row.k and existing[field] == value then
+			if existing.kind == row.k and existing[field] == value
+				and (row.k ~= "drop" or ns.SamePlace(existing, { map = row.m, area = row.a, instance = row.di })) then
 				observation = existing
 				break
 			end
 		end
 		if not observation then
-			observation = { kind = row.k, [field] = value }
+			observation = { kind = row.k, [field] = value, map = row.k == "drop" and row.m or nil }
 			table.insert(bucket[id], observation)
 			changed = true
 		end
@@ -218,8 +224,8 @@ function ns.MergeFinds(rows, maxRows)
 		local seen = row.s or 0
 		for name, key in pairs(MERGED_FIELDS) do
 			local incoming = row[key]
-			-- Positions other than a fishing spot live on the NPC or object.
-			if incoming ~= nil and ((name ~= "x" and name ~= "y") or row.fi) then
+			-- A fishing spot and a creature or object drop keep their own position; other sources use the NPC's.
+			if incoming ~= nil and ((name ~= "x" and name ~= "y") or row.fi or (row.k == "drop" and (row.n or row.o))) then
 				local current, learned = observation[name], at[name]
 				-- Equal times: the higher value wins, so every player settles on the same one.
 				local tie = seen == learned and incoming ~= current and tostring(incoming) > tostring(current)

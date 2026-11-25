@@ -27,6 +27,16 @@ Enum = { ItemClass = { Recipe = 9 }, LootSlotType = { Item = 1 }, Profession = {
 local nonRecipes = { [5] = true, [7] = true, [777] = true, [10456] = true } -- every other item is a recipe item
 C_TradeSkillUI = { GetTradeSkillLineForRecipe = function() return 1 end, GetRecipeInfo = function() return nil end }
 C_SpellBook = { IsSpellKnown = function() return false end }
+-- Places: outdoors unless a test sets an instance; the subzone at any spot is area 40 unless set.
+local place = { instance = nil, area = 40 }
+IsInInstance = function() return place.instance ~= nil, place.instance and "party" or "none" end
+GetInstanceInfo = function() return "Dungeon", "party", 1, "", 5, 0, false, place.instance end
+C_MapExplorationInfo = { GetExploredAreaIDsAtPosition = function() return place.area and { place.area } or nil end }
+CreateVector2D = function(x, y) return { x = x, y = y } end
+GetRealZoneText = function(id) return "Instance" .. id end
+C_Map.GetAreaInfo = function(id) return "Area" .. id end
+BATTLE_PET_SOURCE_1, TRANSMOG_SOURCE_4 = "Drop", "World Drop"
+strcmputf8i = strcmputf8i or function(a, b) return a < b and -1 or (a > b and 1 or 0) end
 function tostringall(...) local out = {} for i = 1, select("#", ...) do out[i] = tostring((select(i, ...))) end return unpack(out) end
 function strjoin(sep, ...) return table.concat({ ... }, sep) end
 local itemNames = { [10456] = "A Bulging Coin Purse" } -- names the client has loaded
@@ -257,6 +267,44 @@ check("re-merge changes nothing", b.MergeFinds(rows, #rows) == false)
 -- Fails if the quest giver's own faction is not saved, not shared, or a bad value is accepted.
 check("NPC faction saved and shared", db.npcs[4784].faction == "Alliance" and b.db.npcs[4784].faction == "Alliance")
 local badFaction = CopyTable(rows[1]); badFaction.nf = "Pirates"
+-- 2b. Drop places and scope. Fails if a drop loses its subzone, dungeon, own spot or count; if the same
+-- creature in another subzone merges into one sighting; or if the scope labels or Show Map rules
+-- stop following the thresholds (one creature; 2 creatures in one zone; 3 zones).
+do
+  local d = boot(nil)
+  d.db.selfFound = true -- the option's default, which the stubbed settings page does not set
+  local lf
+  for _, f in ipairs(frames) do if f.events.LOOT_READY then lf = f end end
+  local function kill(guid, area, instance)
+    place.area, place.instance = area, instance
+    target.target = guid
+    loot = { { type = 1, link = "item:2000", sources = { guid, 1 } } }
+    lf.script(lf, "LOOT_READY"); lf.script(lf, "LOOT_CLOSED")
+  end
+  kill("Creature-0-1-0-1-900-A", 41)
+  kill("Creature-0-1-0-1-900-A", 41)
+  local seen = d.db.found.items[2000]
+  check("a drop keeps its subzone, its own spot and a count", seen and #seen == 1 and seen[1].area == 41 and seen[1].map == 1429
+    and seen[1].x == 0.5 and seen[1].count == 2)
+  kill("Creature-0-1-0-1-900-A", 42)
+  check("the same creature in another subzone is a separate sighting", #d.db.found.items[2000] == 2)
+  local single = d.DropScope(d.db.found.items[2000])
+  check("one creature is a single-creature drop", single.scope == "single" and single.times == 3 and single.creatures == 1 and single.places == 1)
+  kill("Creature-0-1-0-1-901-B", 41)
+  local zone = d.DropScope(d.db.found.items[2000])
+  check("two creatures in one zone is a zone drop", zone.scope == "zone" and zone.place.kind == "map" and zone.place.id == 1429)
+  kill("Creature-0-1-0-1-902-C", nil, 36)
+  check("a dungeon drop keeps the dungeon, not the subzone", d.db.found.items[2000][4].instance == 36 and d.db.found.items[2000][4].area == nil)
+  local world = d.DropScope({ { kind = "drop", npc = 1, map = 1 }, { kind = "drop", npc = 2, map = 2 }, { kind = "drop", npc = 3, map = 3 } })
+  check("three zones is a world drop", world.scope == "world" and world.places == 3)
+  local rows = d.FindsSince(0, math.huge)
+  local wired
+  for _, row in ipairs(rows) do if row.i == 2000 and row.n == 900 and row.a == 41 then wired = row end end
+  check("a shared drop carries its subzone, its own spot and its count", wired and wired.cn == 2 and wired.x == 0.5 and wired.m == 1429)
+  place.area, place.instance = 40, nil
+end
+check("reject a subzone on a vendor row", boot(nil).MergeFinds({ { k = "vendor", i = 1000, n = 1, a = 5 } }, 1) == nil)
+
 -- 5b. Merging never loses detail. Fails if a newer row without a cost clears it, an older row cannot fill a gap, a newer value does not correct an older one, or a repeat counts as a change.
 do
   local m = boot(nil)
@@ -295,9 +343,12 @@ do
     and cost2 == 200 and skill2 == 75 and seen2 == 300)
 end
 check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction }, 1) == nil)
--- A source both received and seen firsthand is listed once
+-- A source both received and seen firsthand is listed once: the same creature in the same place.
 b.db.sourceLevel, b.db.recipeItems[99] = 2, { 1000 }
-b.db.found.items[1000] = { { kind = "drop", npc = 732, seen = now } }
+local sharedCreature
+for _, o in ipairs(s) do if o.npc == 732 then sharedCreature = o end end
+b.db.found.items[1000] = { { kind = "drop", npc = 732, seen = now, map = sharedCreature.map, area = sharedCreature.area,
+  instance = sharedCreature.instance } }
 check("own and shared find of one source listed once", #b.GetSources({ recipeID = 99 }) == #s)
 -- A received recipe item links to the recipe its tooltip data names once loaded. Fails if a link is made early, from anything but that ID, or for an item that teaches nothing.
 local RED_LINEN_BAG = 501

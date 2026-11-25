@@ -129,11 +129,19 @@ local function IsOtherFactionNPC(observation)
 end
 
 -- Mappable sources, each { label, mapID, x, y }.
+-- Drops follow their scope (docs/data.md, "Drops"): one creature is pinned where it was killed, a zone
+-- drop opens its zone, a world drop has no place to show.
 local function MapTargets(recipeInfo)
 	local targets = {}
-	for _, observation in ipairs(ns.GetSources(recipeInfo) or {}) do
+	local entries = ns.GetSources(recipeInfo) or {}
+	local scope = ns.DropScope(entries)
+	if scope and scope.scope == "zone" and scope.place and scope.place.kind == "map" then
+		table.insert(targets, { label = ns.DropPlaceName("map", scope.place.id), mapID = scope.place.id, zoneOnly = true })
+	end
+	for _, observation in ipairs(entries) do
 		local mapID, x, y = ns.SourcePosition(observation)
-		if mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not IsOtherFactionNPC(observation) then
+		local pinned = observation.kind ~= "drop" or observation.fishing or (scope and scope.scope == "single")
+		if pinned and mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not IsOtherFactionNPC(observation) then
 			local name = ns.SourceInfo(observation)
 			local mapInfo = C_Map.GetMapInfo(mapID)
 			table.insert(targets, {
@@ -154,6 +162,12 @@ local function MapTargets(recipeInfo)
 end
 
 local function ShowOnMap(target)
+	if target.zoneOnly then
+		if not InCombatLockdown() then
+			OpenWorldMap(target.mapID)
+		end
+		return
+	end
 	-- As Blizzard's own pin links do (ItemRefHandlers.lua): nothing follows a pin that was not set.
 	if not C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(target.mapID, target.x, target.y)) then
 		return

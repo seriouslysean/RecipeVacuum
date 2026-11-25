@@ -41,6 +41,13 @@ end
 
 -- Name and positions ({ [mapID] = { x, y, seen } }) of an observation, plus a map ID when it has no position (instance drops).
 -- Names come from the client where it can say them (items, quests, the Fishing spell), else the saved NPC and object tables.
+-- A drop's own spot, where that creature was killed for this recipe; other sources use the NPC's.
+local function OwnPosition(observation)
+	if observation.kind == "drop" and observation.x and observation.map then
+		return { [observation.map] = { x = observation.x, y = observation.y, seen = observation.seen } }
+	end
+end
+
 function ns.SourceInfo(observation)
 	if observation.quest then
 		local giver = ns.GetNPC(observation.npc) or ns.GetNPC(observation.finisher)
@@ -48,7 +55,7 @@ function ns.SourceInfo(observation)
 			giver and giver.positions, observation.map
 	elseif observation.object then
 		local object = GetObject(observation.object)
-		return object and object.name, object and object.positions, observation.map
+		return object and object.name, OwnPosition(observation) or object and object.positions, observation.map
 	elseif observation.container then
 		return C_Item.GetItemNameByID(observation.container), nil, nil
 	elseif observation.fishing then
@@ -59,7 +66,68 @@ function ns.SourceInfo(observation)
 		return UNKNOWN, nil, observation.zone
 	end
 	local npc = ns.GetNPC(observation.npc)
-	return npc and npc.name, npc and npc.positions, observation.map
+	return npc and npc.name, OwnPosition(observation) or npc and npc.positions, observation.map
+end
+
+-- Drop scope from sightings (docs/data.md, "Drops"). Thresholds are the owner's choice, set
+-- 2026-11-25 after Wowhead's observed labels; no source publishes one.
+local ZONE_DROP_CREATURES = 2 -- creature types in one zone or dungeon for a zone drop
+local WORLD_DROP_ZONES = 3    -- zones or dungeons for a world drop
+local DROP_SCOPE_LABELS = {
+	single = BATTLE_PET_SOURCE_1 or "Drop",
+	zone = "Zone Drop",               -- no Blizzard string; English
+	world = TRANSMOG_SOURCE_4 or "World Drop",
+	mixed = BATTLE_PET_SOURCE_1 or "Drop",
+}
+
+-- The place a drop counts in: its dungeon, else its zone (a group roll knows only the zone).
+local function DropZone(observation)
+	if observation.instance then
+		return "instance", observation.instance
+	end
+	local zone = observation.map or observation.zone
+	return zone and "map", zone
+end
+
+-- Scope of a recipe's drops: single, zone, world or mixed, with the evidence behind it. Fishing and
+-- container drops keep their own lines and do not count toward scope.
+function ns.DropScope(entries)
+	local creatures, places, times, placeCount, creatureCount = {}, {}, 0, 0, 0
+	local onlyPlace
+	for _, observation in ipairs(entries or {}) do
+		if observation.kind == "drop" and not observation.fishing and not observation.container then
+			local creature = observation.npc and ("npc" .. observation.npc) or observation.object and ("object" .. observation.object)
+			if creature and not creatures[creature] then
+				creatures[creature], creatureCount = true, creatureCount + 1
+			end
+			local kind, place = DropZone(observation)
+			if place and not places[kind .. place] then
+				places[kind .. place], placeCount = { kind = kind, id = place }, placeCount + 1
+				onlyPlace = places[kind .. place]
+			end
+			times = times + (observation.count or 1)
+		end
+	end
+	if times == 0 then
+		return nil
+	end
+	local scope = "mixed"
+	if placeCount >= WORLD_DROP_ZONES then
+		scope = "world"
+	elseif creatureCount >= ZONE_DROP_CREATURES and placeCount == 1 then
+		scope = "zone"
+	elseif creatureCount == 1 then
+		scope = "single"
+	end
+	return { scope = scope, times = times, creatures = creatureCount, places = placeCount, place = placeCount == 1 and onlyPlace or nil }
+end
+
+function ns.DropPlaceName(kind, id)
+	if kind == "instance" then
+		return GetRealZoneText(id)
+	end
+	local mapInfo = C_Map.GetMapInfo(id)
+	return mapInfo and mapInfo.name or UNKNOWN
 end
 
 function ns.NewestPosition(positions)
@@ -73,11 +141,16 @@ function ns.NewestPosition(positions)
 end
 
 -- The fields that identify a source (Core.lua); for a quest the NPC is a detail.
+-- Two drops are in the same place when map, subzone and dungeon all match.
+function ns.SamePlace(a, b)
+	return a.map == b.map and a.area == b.area and a.instance == b.instance
+end
+
 local function SameSource(a, b)
 	if a.kind ~= b.kind then return false end
 	if a.quest or b.quest then return a.quest == b.quest end
 	return a.npc == b.npc and a.object == b.object and a.container == b.container and a.fishing == b.fishing
-		and a.zone == b.zone
+		and a.zone == b.zone and (a.kind ~= "drop" or ns.SamePlace(a, b))
 end
 
 -- A source found by the player and a peer is in two layers; the first layer read wins.
@@ -410,17 +483,88 @@ local function AddDetailLines(tooltip, observation)
 end
 
 -- One source type's lines: an optional gold header, one "who | where" line per source (as the Wardrobe sources tooltip, CollectionsUtil.lua), and indented lines under it.
-local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
+-- A drop's place as precisely as it was recorded: the dungeon, or "subzone, zone"; else the zone.
+local function PlaceName(observation, mapInfo)
+	if observation.instance then
+		return GetRealZoneText(observation.instance)
+	end
+	local zone = mapInfo and mapInfo.name
+	local subzone = observation.area and C_Map.GetAreaInfo(observation.area)
+	if subzone and subzone ~= "" and subzone ~= zone then
+		return zone and ("%s, %s"):format(subzone, zone) or subzone
+	end
+	return zone or UNKNOWN
+end
+
+local function Plural(count, one, many)
+	return ("%d %s"):format(count, count == 1 and one or many)
+end
+
+-- "Seen 3 times from 2 creatures in 1 zone": how much a drop label rests on.
+local function DropEvidence(scope)
+	return ("Seen %s from %s in %s"):format(Plural(scope.times, "time", "times"),
+		Plural(scope.creatures, "creature", "creatures"), Plural(scope.places, "zone", "zones"))
+end
+
+local DROP_LINES = 6 -- sightings listed under a drop header before "and N more"
+
+local AddKindLines
+
+-- Drops: the header names the scope ("Drop", "Zone Drop: Duskwood", "World Drop"), then the
+-- sightings (a world drop lists its zones instead), then the evidence line.
+local function AddDropLines(tooltip, entries, detailed, withHeader)
+	local scope = ns.DropScope(entries)
+	if not scope then
+		return AddKindLines(tooltip, entries, "drop", detailed, withHeader, true)
+	end
+	local header = DROP_SCOPE_LABELS[scope.scope]
+	if scope.scope == "zone" and scope.place then
+		header = ("%s: %s"):format(header, ns.DropPlaceName(scope.place.kind, scope.place.id))
+	end
+	if withHeader then
+		GameTooltip_AddNormalLine(tooltip, MarkText("drop", header))
+	end
+	if scope.scope == "world" then
+		local seen, names = {}, {}
+		for _, observation in ipairs(entries) do
+			local kind, place = DropZone(observation)
+			if observation.kind == "drop" and place and not seen[kind .. place] then
+				seen[kind .. place] = true
+				names[#names + 1] = ns.DropPlaceName(kind, place)
+			end
+		end
+		table.sort(names, function(a, b) return strcmputf8i(a, b) < 0 end)
+		for index = 1, math.min(#names, DROP_LINES) do
+			GameTooltip_AddColoredLine(tooltip, names[index], HIGHLIGHT_FONT_COLOR, false, MARK_TEXT_INDENT)
+		end
+		if #names > DROP_LINES then
+			GameTooltip_AddColoredLine(tooltip, ("and %d more"):format(#names - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
+		end
+	else
+		AddKindLines(tooltip, entries, "drop", detailed, false, true)
+	end
+	GameTooltip_AddColoredLine(tooltip, DropEvidence(scope), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
+end
+
+function AddKindLines(tooltip, entries, kind, detailed, withHeader, plain)
+	if kind == "drop" and not plain then
+		return AddDropLines(tooltip, entries, detailed, withHeader)
+	end
+	local listed = 0
 	for _, observation in ipairs(entries) do
 		if observation.kind == kind then
 			if withHeader then
 				GameTooltip_AddNormalLine(tooltip, MarkText(kind, ns.sourceTypes[kind].label))
 				withHeader = false
 			end
+			listed = listed + 1
+			if kind == "drop" and listed > DROP_LINES then
+				break
+			end
 			local name = ns.SourceInfo(observation)
 			local mapID, x, y = ns.SourcePosition(observation)
 			local mapInfo = mapID and C_Map.GetMapInfo(mapID)
-			local where = mapInfo and mapInfo.name or UNKNOWN
+			local where = PlaceName(observation, mapInfo)
 			if detailed and mapInfo and x then
 				where = ("%s %.1f, %.1f"):format(where, x * COORDINATE_SCALE, y * COORDINATE_SCALE)
 			end
@@ -434,6 +578,13 @@ local function AddKindLines(tooltip, entries, kind, detailed, withHeader)
 				AddDetailLines(tooltip, observation)
 			end
 		end
+	end
+	if kind == "drop" and listed > DROP_LINES then
+		local total = 0
+		for _, observation in ipairs(entries) do
+			if observation.kind == "drop" then total = total + 1 end
+		end
+		GameTooltip_AddColoredLine(tooltip, ("and %d more"):format(total - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
 	end
 end
 
