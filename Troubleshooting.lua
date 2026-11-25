@@ -550,7 +550,9 @@ local perfWriter = CreateFrame("Frame")
 perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
 	-- Retired probes' data, so it does not stay in the saved file.
+	-- Retired probes' data, and the old item scan (its pairs ship in Data/Seed.lua; owner, 2026-11-25).
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
+	ns.db.devScan = nil
 	local lines = PerfLines()
 	if #lines > 0 then
 		local version, build = GetBuildInfo()
@@ -595,6 +597,14 @@ local troubleshooting = {
 }
 
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
+-- Facts cache test: drops the cache, so the next profession window builds its list cold without it.
+-- Compare that build's "list build, cold" with one after a plain reload (cache kept).
+table.insert(troubleshooting, { "nofacts", "Drop the recipe facts cache for a timing test", function()
+	ns.db.recipeFacts = nil
+	ns.ClearRecipeLocks()
+	ns.SourcesChanged()
+	ns.Log("Recipe facts cache dropped. Open a profession window, then reload.")
+end, quiet = true })
 table.insert(troubleshooting, { "perf", "Show how long the profession window and its list took", function()
 	local function Ms(value)
 		return value and ("%.1f ms"):format(value) or voice.noSample
@@ -751,4 +761,11 @@ table.insert(ns.commands, { action = "log", usage = "[all|clear]", description =
 			ShowLog(word == "all")
 		end
 	end })
+
+-- Saved variables load time: the client reads them after the addon's last file (this one) and before
+-- ADDON_LOADED, so the gap between the two is that read (plus any other addon's files in between).
+local filesDone = debugprofilestop()
+EventUtil.ContinueOnAddOnLoaded("RecipeVacuum", function()
+	ns.PerfMs("saved variables load", debugprofilestop() - filesDone)
+end)
 --@end-debug@
