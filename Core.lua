@@ -35,7 +35,8 @@ local defaults = {
 	npcs = {},
 	objects = {},
 	-- Profession rank sources seen by this account (Ranks.lua): [skill line][cap it raises from] =
-	-- { npcs = { [trainer npcID] = seen }, items = { [book itemID] = seen }, quests = { [questID] = giver npcID } }
+	-- { npcs = { [trainer npcID] = seen }, items = { [book itemID] = seen }, quests = { [questID] = giver npcID },
+	--   spell = the trainer's rank spell }
 	ranks = {},
 	-- Links made in play, only for recipe items the seed (Data/Seed.lua) does not have:
 	itemRecipe = {},       -- [recipe itemID] = recipeID

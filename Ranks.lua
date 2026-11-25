@@ -47,7 +47,9 @@ function ns.NoteTrainerRank(npcID)
 	if not skillLine then
 		return false
 	end
-	RankSources(skillLine, Caps()[skillLine] or 0).npcs[npcID] = GetServerTime()
+	local sources = RankSources(skillLine, Caps()[skillLine] or 0)
+	sources.npcs[npcID] = GetServerTime()
+	sources.spell = spellID -- the trainer's rank spell, for its name in the tooltip
 	return true
 end
 
@@ -127,7 +129,18 @@ local function NextRank()
 			targets[#targets + 1] = ns.SourceTarget(observation)
 		end
 	end
-	return #targets > 0 and { name = info.professionName, entries = entries, targets = targets } or nil
+	if #targets == 0 then
+		return nil
+	end
+	-- Titled with the game's own name for what is learned: a book, the trainer's rank, or the quest (owner, 2026-11-25).
+	local name = sources.spell and C_Spell.GetSpellName(sources.spell)
+	for itemID in pairs(sources.items) do
+		name = C_Item.GetItemNameByID(itemID) or name
+	end
+	for questID in pairs(sources.quests) do
+		name = name or C_QuestLog.GetTitleForQuestID(questID)
+	end
+	return { name = name or info.professionName, entries = entries, targets = targets }
 end
 
 local mark

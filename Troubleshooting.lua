@@ -552,7 +552,7 @@ perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
 	-- Retired probes' data, so it does not stay in the saved file.
 	for _, mocked in ipairs(mockedRanks) do
-		mocked[1].items[mocked[2]] = nil
+		mocked[1][mocked[2]][mocked[3]] = nil
 	end
 	-- Retired probes' data.
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
@@ -642,7 +642,11 @@ local MOCK_BOOK_VENDORS = {
 }
 -- The rank each book raises, as a witnessed use would record it: skill line, cap it raises from.
 local MOCK_BOOK_RANKS = { [16072] = { 185, 150 }, [16084] = { 129, 150 } } -- Cooking, First Aid
-table.insert(troubleshooting, { "mockbooks", "Add the Expert book vendors for this session, to test the rank mark", function()
+-- Artisan Fishing: quest 6607 "Nat Pagle, Angler Extreme" from Nat Pagle (npc 12919, both factions), rewards
+-- spell 18248 (Wowhead WoW Forever quest and npc pages, read 2026-11-25). Fishing skill line 356, from 225.
+local MOCK_QUEST_RANK = { quest = 6607, npc = 12919, name = "Nat Pagle", map = 1445, x = 0.584, y = 0.600,
+	skillLine = 356, fromCap = 225 }
+table.insert(troubleshooting, { "mockranks", "Add the Expert books and Nat Pagle's quest for this session, to test the rank mark", function()
 	local now = GetServerTime()
 	for _, row in ipairs(MOCK_BOOK_VENDORS) do
 		local itemID, npcID, name, faction, mapID, x, y = unpack(row)
@@ -658,11 +662,20 @@ table.insert(troubleshooting, { "mockbooks", "Add the Expert book vendors for th
 		ns.db.ranks[skillLine][fromCap] = sources
 		if not sources.items[itemID] then
 			sources.items[itemID] = now
-			mockedRanks[#mockedRanks + 1] = { sources, itemID }
+			mockedRanks[#mockedRanks + 1] = { sources, "items", itemID }
 		end
 	end
+	local quest = MOCK_QUEST_RANK
+	ns.included.npcs[quest.npc] = { name = quest.name, positions = { [quest.map] = { x = quest.x, y = quest.y, seen = now } } }
+	ns.db.ranks[quest.skillLine] = ns.db.ranks[quest.skillLine] or {}
+	local questSources = ns.db.ranks[quest.skillLine][quest.fromCap] or { npcs = {}, items = {}, quests = {} }
+	ns.db.ranks[quest.skillLine][quest.fromCap] = questSources
+	if not questSources.quests[quest.quest] then
+		questSources.quests[quest.quest] = quest.npc
+		mockedRanks[#mockedRanks + 1] = { questSources, "quests", quest.quest }
+	end
 	ns.SourcesChanged()
-	ns.Log("Expert book vendors added for this session. Reopen the profession window.")
+	ns.Log("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
 end, quiet = true })
 
 -- Facts cache test: drops the cache, so the next profession window builds its list cold without it.
