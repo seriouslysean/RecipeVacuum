@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 29
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 30
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -197,17 +197,26 @@ end
 -- saved.devLog (lines), saved.devLogRun (where the current run starts) and saved.watch (watch left on).
 -- Lines are timestamped so a long watch reads as a timeline; the last LOG_LINES are kept (owner,
 -- 2026-11-25, for an always-on log: 20,000 lines, about 1.1 MB and 17 ms per load, working builds only).
--- The oldest are dropped LOG_TRIM at a time, so a full log is not shifted on every new line.
+-- Past the cap the oldest LOG_TRIM go at once, so a full log is not shifted on every new line and never
+-- holds more than LOG_LINES.
 local LOG_LINES, LOG_TRIM = 20000, 1000
 lib.LOG_LINES, lib.LOG_TRIM = LOG_LINES, LOG_TRIM
 lib.logs = lib.logs or {}
 lib.logOrder = lib.logOrder or {} -- addon names in the order their logs started, for /boltgrip log
 
--- Shared context for every started log (blocked actions, Lua errors, zone changes while watching).
+-- Shared context for every log that is logging (blocked actions, Lua errors, zone changes); a paused
+-- log takes none (Astra review).
 function lib:LogAll(line)
 	for _, addon in ipairs(self.logOrder) do
-		self:Log(self.logs[addon].module, line)
+		local log = self.logs[addon]
+		if log.watching then self:Log(log.module, line) end
 	end
+end
+
+-- Whether the module's log is taking lines, so a caller can skip building one.
+function lib:IsLogging(module)
+	local log = self.logs[module.addon]
+	return log ~= nil and log.watching == true
 end
 
 -- One listener for every module's watch: each event is registered once and passed to every watching
@@ -323,8 +332,8 @@ function lib:Log(module, line, dated)
 	if not log then return end
 	local lines = log.saved.devLog
 	lines[#lines + 1] = (dated or line == "") and line or date("%H:%M:%S ") .. line
-	if #lines > LOG_LINES + LOG_TRIM then
-		local over = #lines - LOG_LINES
+	if #lines > LOG_LINES then
+		local over = #lines - (LOG_LINES - LOG_TRIM)
 		-- Trimmed in one pass, not by removing the first line again and again.
 		local total = #lines
 		for index = 1, total - over do lines[index] = lines[index + over] end
@@ -332,28 +341,34 @@ function lib:Log(module, line, dated)
 		log.saved.devLogRun = math.max((log.saved.devLogRun or 1) - over, 1)
 		if log.viewStart then log.viewStart = math.max(log.viewStart - over, 1) end
 	end
-	if self:IsTextShown() then
-		if self.textFrame.log == log then
-			self:ShowLog(module)
-		elseif self.textFrame.log == "all" then
-			self:ShowAllLogs(self.textFrame.allLines)
-		end
+	-- An open log window follows, once per frame however many lines arrive, keeping the reader's place.
+	if self:IsTextShown() and (self.textFrame.log == log or self.textFrame.log == "all") and not self.refreshQueued then
+		self.refreshQueued = true
+		C_Timer.After(0, function()
+			lib.refreshQueued = nil
+			local shown = lib:IsTextShown() and lib.textFrame.log
+			if shown == "all" then
+				lib:ShowAllLogs(lib.textFrame.allLines, true)
+			elseif shown then
+				lib:ShowLog(shown.module, nil, true)
+			end
+		end)
 	end
 end
 
 -- The copy window: the current run, a command's own lines, or with all, everything kept.
-function lib:ShowLog(module, all)
+function lib:ShowLog(module, all, refresh)
 	local log = self.logs[module.addon]
 	if not log then return end
 	local lines = log.saved.devLog
 	local first = all and 1 or math.min(log.viewStart or log.saved.devLogRun or 1, #lines + 1)
-	self:ShowText(module.title .. ": Log", table.concat(lines, "\n", first))
+	self:ShowText(module.title .. ": Log", table.concat(lines, "\n", first), refresh)
 	self.textFrame.log = log
 end
 
 -- /boltgrip log: every module's log in one copy window, a section per module under its title. Not merged
 -- by time: lines carry only the time of day, so a merge across days or reloads would interleave wrongly.
-function lib:ShowAllLogs(all)
+function lib:ShowAllLogs(all, refresh)
 	local sections = {}
 	for _, addon in ipairs(self.logOrder) do
 		local log = self.logs[addon]
@@ -361,7 +376,7 @@ function lib:ShowAllLogs(all)
 		local first = all and 1 or math.min(log.viewStart or log.saved.devLogRun or 1, #lines + 1)
 		sections[#sections + 1] = log.module.title .. "\n" .. table.concat(lines, "\n", first)
 	end
-	self:ShowText(self.title .. ": Log", table.concat(sections, "\n\n"))
+	self:ShowText(self.title .. ": Log", table.concat(sections, "\n\n"), refresh)
 	self.textFrame.log, self.textFrame.allLines = "all", all
 end
 
@@ -595,6 +610,13 @@ local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
 -- Sound) in Blizzard's order; the kit's Commands and Links follow (FinishModule). Each section says its place.
 local SECTION_PLACES = { sources = 1, features = 2, blizzard = 3 }
 
+-- Blizzard's own sections in the order its Settings pages show them; one not listed comes after these.
+local function BlizzardOrder()
+	local order = {}
+	for index, heading in ipairs({ KEY_BINDING, COMBAT, SOUND }) do order[heading] = index end
+	return setmetatable(order, { __index = function() return 99 end })
+end
+
 local function OrderedSections(sections)
 	local ordered = {}
 	for index, section in ipairs(sections) do
@@ -602,6 +624,8 @@ local function OrderedSections(sections)
 			tostring(section.heading)))
 		-- A sources section is exactly one row of the kit's cards, plus any rows under it (sharing).
 		if section.place == "sources" then
+			assert(section.rows[1] and section.rows[1].kind == "cards",
+				("section %q: the cards come first"):format(section.heading))
 			local cards = 0
 			for _, row in ipairs(section.rows) do
 				if row.kind == "cards" then
@@ -611,10 +635,12 @@ local function OrderedSections(sections)
 			end
 			assert(cards == 1, ("section %q needs exactly one row of cards"):format(section.heading))
 		end
-		ordered[#ordered + 1] = { section = section, rank = rank, index = index }
+		ordered[#ordered + 1] = { section = section, rank = rank, index = index,
+			blizzard = section.place == "blizzard" and BlizzardOrder()[section.heading] or 0 }
 	end
 	table.sort(ordered, function(left, right)
 		if left.rank ~= right.rank then return left.rank < right.rank end
+		if left.blizzard ~= right.blizzard then return left.blizzard < right.blizzard end
 		return left.index < right.index
 	end)
 	for index, entry in ipairs(ordered) do ordered[index] = entry.section end
@@ -739,7 +765,8 @@ end
 
 -- Movable window with selectable text for copying out of the game. Blizzard parts only; Escape closes
 -- it through UISpecialFrames.
-function lib:ShowText(title, text)
+-- refresh: replace the text of a window already open, without taking focus or reselecting.
+function lib:ShowText(title, text, refresh)
 	local frame = self.textFrame
 	if not frame then
 		frame = CreateFrame("Frame", "JigBoltgripToolkitTextFrame", UIParent, "BasicFrameTemplateWithInset")
@@ -767,9 +794,11 @@ function lib:ShowText(title, text)
 		end)
 		self.textFrame = frame
 	end
+	frame.log = nil -- set again by the log views; any other text is not a log (Astra review)
 	frame.Title:SetText(title)
 	frame.ScrollingEditBox:SetText(text)
 	frame:Show()
+	if refresh then return end
 	local editBox = frame.ScrollingEditBox:GetEditBox()
 	editBox:SetFocus()
 	editBox:HighlightText()

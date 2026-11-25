@@ -91,7 +91,7 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 
 A recipe with no known source is listed, with the unknown mark, once it has been come across within the chosen level. Recipes never come across stay hidden unless Unknown is ticked in the Sources filter.
 
-The made-item table (`ns.GetMadeRecipe`: `ns.seed.made`, with a checkout scan over it) is not shipped yet: the working build reads what each recipe makes into `RecipeVacuumDB.devMade` whenever a profession list opens, to measure its size before the generator writes it into the seed. Hovering an item is not a sighting yet; its cost per tooltip is unmeasured.
+The made-item table (`ns.GetMadeRecipe`: `ns.seed.made`, with a checkout read over it) ships in `Data/Seed.lua`: 1,187 items from Tailoring, Engineering, Enchanting, Alchemy, Cooking, First Aid, Herbalism and Fishing as read on build 71091. The working build reads what each recipe makes into `RecipeVacuumDB.devMade` whenever a profession list is ready, and `tools/seed.lua` regenerates the table from it (docs/development.md, "Seeding"). Known gaps: Blacksmithing and Leatherworking are not read yet.
 
 A shared observation keeps the time each of its fields was learned (`at`, by field name), so reports about different fields merge to the same result in whatever order they arrive; when two values for one field carry the same time, the one that sorts higher is kept. `at` is saved with the shared layer and is not sent.
 

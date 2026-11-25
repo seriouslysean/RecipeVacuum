@@ -82,15 +82,17 @@ function CreateFrame()
 	return frame
 end
 
--- Fires an event at every frame registered for it. A handler that fails on the stand-ins is counted, not
--- raised: the stand-ins cannot answer everything a real handler reads.
+-- Fires an event at every frame registered for it. Each handler error is kept with the event's name
+-- (client.errors), so a test can fail on it rather than pass with the error hidden (Astra review).
+client.errors = {}
 function client.Fire(event, ...)
-	local failed = 0
 	for _, frame in ipairs(client.frames) do
 		local handler = frame.events[event] and frame.scripts.OnEvent
-		if handler and not pcall(handler, frame, event, ...) then failed = failed + 1 end
+		if handler then
+			local ok, problem = pcall(handler, frame, event, ...)
+			if not ok then client.errors[#client.errors + 1] = event .. ": " .. tostring(problem) end
+		end
 	end
-	return failed
 end
 
 -- Settings: every row the kit adds is recorded in order.

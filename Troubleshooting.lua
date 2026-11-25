@@ -4,7 +4,6 @@ local _, ns = ...
 --@debug@
 
 local UseScan -- defined below
-local mockedRanks = {} -- rank links the mockbooks command added, removed at logout
 -- Lua errors shown and blocked actions reported, and timing, from the toolkit's working-build helpers.
 local toolkit = LibStub("JigBoltgripToolkit-1.0")
 toolkit:EnableWorkingBuild()
@@ -498,29 +497,7 @@ local perfWriter = CreateFrame("Frame")
 perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
 	-- Retired probes' data, so it does not stay in the saved file.
-	for _, mocked in ipairs(mockedRanks) do
-		mocked[1][mocked[2]][mocked[3]] = nil
-	end
-	-- Rank sources left empty (by the test data above) are dropped.
-	for skillLine, byCap in pairs(ns.db.ranks) do
-		for cap, sources in pairs(byCap) do
-			if not (next(sources.npcs) or next(sources.items) or next(sources.quests)) then byCap[cap] = nil end
-		end
-		if not next(byCap) then ns.db.ranks[skillLine] = nil end
-	end
-	-- One-off, 2026-11-25: a draft that was never committed saved two Alchemy trainer ranks (Apprentice
-	-- 2259, Journeyman 3101) as trainer recipes in the owner's file; they would be shared as recipes.
-	-- Only trainer observations are removed. Remove this block once the owner's file is clean.
-	for _, spellID in ipairs({ 2259, 3101 }) do
-		local observations = ns.db.found.recipes[spellID]
-		local onlyTrainers = observations ~= nil
-		for _, observation in ipairs(observations or {}) do
-			onlyTrainers = onlyTrainers and observation.kind == "trainer"
-		end
-		if onlyTrainers then ns.db.found.recipes[spellID] = nil end
-	end
 	if ns.db.devScan then ns.db.devScan.ranks = nil end -- the scan no longer reads rank books
-	-- Retired probes' data.
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
 end)
 
@@ -591,26 +568,20 @@ table.insert(troubleshooting, { "mockranks", "Add test rank sources for this ses
 		ns.included.items[itemID] = ns.included.items[itemID] or {}
 		table.insert(ns.included.items[itemID], { kind = "vendor", npc = npcID, faction = faction, seen = now })
 	end
-	-- Rank links go in the saved table for the session and are taken out at logout (below).
+	-- Rank links go in a session-only overlay, so a real rank learned meanwhile is never touched (Astra review).
+	ns.rankOverlay = {}
+	local function Add(skillLine, fromCap)
+		ns.rankOverlay[skillLine] = ns.rankOverlay[skillLine] or {}
+		local sources = ns.rankOverlay[skillLine][fromCap] or { npcs = {}, items = {}, quests = {} }
+		ns.rankOverlay[skillLine][fromCap] = sources
+		return sources
+	end
 	for itemID, rank in pairs(MOCK_BOOK_RANKS) do
-		local skillLine, fromCap = unpack(rank)
-		ns.db.ranks[skillLine] = ns.db.ranks[skillLine] or {}
-		local sources = ns.db.ranks[skillLine][fromCap] or { npcs = {}, items = {}, quests = {} }
-		ns.db.ranks[skillLine][fromCap] = sources
-		if not sources.items[itemID] then
-			sources.items[itemID] = now
-			mockedRanks[#mockedRanks + 1] = { sources, "items", itemID }
-		end
+		Add(rank[1], rank[2]).items[itemID] = now
 	end
 	local quest = MOCK_QUEST_RANK
 	ns.included.npcs[quest.npc] = { name = quest.name, positions = { [quest.map] = { x = quest.x, y = quest.y, seen = now } } }
-	ns.db.ranks[quest.skillLine] = ns.db.ranks[quest.skillLine] or {}
-	local questSources = ns.db.ranks[quest.skillLine][quest.fromCap] or { npcs = {}, items = {}, quests = {} }
-	ns.db.ranks[quest.skillLine][quest.fromCap] = questSources
-	if not questSources.quests[quest.quest] then
-		questSources.quests[quest.quest] = quest.npc
-		mockedRanks[#mockedRanks + 1] = { questSources, "quests", quest.quest }
-	end
+	Add(quest.skillLine, quest.fromCap).quests[quest.quest] = quest.npc
 	ns.SourcesChanged()
 	ns.Log("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
 end, quiet = true })

@@ -148,7 +148,8 @@ end)
 local function NextRank()
 	local info = ProfessionsFrame.CraftingPage.professionInfo
 	local skillLine = info and ProfessionLine(info.professionID, nil, info.parentProfessionID)
-	local byLine = skillLine and ns.db.ranks[skillLine]
+	-- ns.rankOverlay: the working build's session-only test sources, never saved (Troubleshooting.lua).
+	local byLine = skillLine and (ns.rankOverlay and ns.rankOverlay[skillLine] or ns.db.ranks[skillLine])
 	local sources = byLine and byLine[Caps()[skillLine] or 0]
 	if not sources then
 		return nil

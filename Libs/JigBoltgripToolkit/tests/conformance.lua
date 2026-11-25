@@ -123,6 +123,8 @@ local loaded, problem = pcall(function()
 	client.Loaded(addonName)
 end)
 check("the addon loads on the kit's stand-ins", loaded, tostring(problem))
+check("the addon's start-up events run without errors on the stand-ins", #client.errors == 0,
+	table.concat(client.errors, "; "))
 
 -- Style rules, as standards.md words them ("Plain text", "Options"). Owner, 2026-11-25: "wow style plain
 -- language, simple sentences", no colons in settings text, and "Your subnotes are also insanely long".
@@ -157,6 +159,16 @@ function RULES.plain(text)
 		local words = select(2, sentence:gsub("%S+", ""))
 		if words > SENTENCE_WORDS then return ("has a sentence of %d words"):format(words) end
 	end
+end
+-- A card's text as SourceCards writes it, so a caller cannot change it after (Astra review).
+local CARD_SHAPES = { "^Tracks only .+ you see for yourself%.$", "^Also tracks what your party, guild and friends find%.$",
+	"^Also tracks .+%.$" }
+function RULES.card(text)
+	local body = text:gsub("^%a+ range%. ", "", 1)
+	for _, shape in ipairs(CARD_SHAPES) do
+		if body:find(shape) then return end
+	end
+	return "is not a sentence SourceCards writes"
 end
 function RULES.note(text)
 	if #text > NOTE_LIMIT then return ("is %d characters, over %d"):format(#text, NOTE_LIMIT) end
@@ -194,7 +206,7 @@ for _, sections in pairs(pages) do
 		Text("heading", section.heading, { "titleCase", "gameTerms" })
 		for _, row in ipairs(section.rows) do
 			for _, card in ipairs(row.kind == "cards" and row.values or {}) do
-				Text("card " .. tostring(card[2]), card[4], { "gameTerms", "plain" })
+				Text("card " .. tostring(card[2]), card[4], { "gameTerms", "plain", "card" })
 			end
 			Text("label", row.label, { "titleCase", "gameTerms", "plain" })
 			Text("tooltip", row.tooltip, { "oneSentence", "gameTerms", "plain" })

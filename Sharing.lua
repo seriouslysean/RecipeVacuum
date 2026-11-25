@@ -5,7 +5,9 @@ local toolkit = LibStub("JigBoltgripToolkit-1.0")
 
 -- Each exchange step, to the working build's log (the toolkit's Trace; nothing in a release).
 local function Trace(text, ...)
-	toolkit:Trace(ns.device, "SHARE " .. text:format(...))
+	if toolkit:IsLogging(ns.device) then
+		toolkit:Trace(ns.device, "SHARE " .. text:format(...))
+	end
 end
 
 -- Sharing uses hidden addon messages only: probe, request, batched reply (docs/data.md, "Sharing").

@@ -36,7 +36,7 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | CallbackHandler-1.0 | MINOR 8 | Ace3 |
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
 | AceComm-3.0 | MINOR 14 | Ace3 |
-| JigBoltgripToolkit-1.0 | MINOR 8 | the toolkit repository; change it there, raise MINOR, copy the file |
+| JigBoltgripToolkit-1.0 | MINOR 30 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
 
@@ -69,6 +69,19 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 A scan cut short loses pairs: one scan answered for 630 of 2,974 items (2026-11-23).
 
 The file holds IDs only. Names are left out on purpose: they differ by language and change between builds.
+
+## Known gaps
+
+Recorded from the Astra review of 2026-11-25 (RecipeVacuum a763a62..434c27a); none is fixed until what would make it real happens.
+
+| Gap | Who can reach it today | What would make it worth fixing |
+|---|---|---|
+| AceComm buffers a multipart message before Recipe Vacuum checks the sender or its size; the 64 KiB expanded limit is checked after decompression | Any player who can send addon messages to our prefixes | A measured memory or frame cost from it, or a report |
+| Every repeat drop adds a revision row until reload, and each reply scans from the start | A long farming session | The working build's "merge shared finds" or reply timing showing a cost |
+| Options card rows on Blizzard's pooled settings list may leave hidden buttons when switching between toolkit pages | Switching between two toolkit addons' pages many times | A measured growth in game |
+| Kit calls from versions between MINOR 19 and 29 are not kept | No one: those versions were never released | Not applicable; from the first release the kit keeps every call under `-1.0` (toolkit standards) |
+| The "blocked from an action" popup when learning a recipe from the bags (`cairn:h57tf`) | Seen once | It happening again: the log then names the function |
+| Ranks are not shared with friends | Everyone | A decision to share them (a new wire row kind needs the change below first) |
 
 ## Release
 
