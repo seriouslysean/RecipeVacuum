@@ -501,6 +501,25 @@ perfWriter:SetScript("OnEvent", function()
 	for _, mocked in ipairs(mockedRanks) do
 		mocked[1][mocked[2]][mocked[3]] = nil
 	end
+	-- Rank sources left empty (by the test data above) are dropped.
+	for skillLine, byCap in pairs(ns.db.ranks) do
+		for cap, sources in pairs(byCap) do
+			if not (next(sources.npcs) or next(sources.items) or next(sources.quests)) then byCap[cap] = nil end
+		end
+		if not next(byCap) then ns.db.ranks[skillLine] = nil end
+	end
+	-- One-off, 2026-11-25: a draft that was never committed saved two Alchemy trainer ranks (Apprentice
+	-- 2259, Journeyman 3101) as trainer recipes in the owner's file; they would be shared as recipes.
+	-- Only trainer observations are removed. Remove this block once the owner's file is clean.
+	for _, spellID in ipairs({ 2259, 3101 }) do
+		local observations = ns.db.found.recipes[spellID]
+		local onlyTrainers = observations ~= nil
+		for _, observation in ipairs(observations or {}) do
+			onlyTrainers = onlyTrainers and observation.kind == "trainer"
+		end
+		if onlyTrainers then ns.db.found.recipes[spellID] = nil end
+	end
+	if ns.db.devScan then ns.db.devScan.ranks = nil end -- the scan no longer reads rank books
 	-- Retired probes' data.
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
 end)
