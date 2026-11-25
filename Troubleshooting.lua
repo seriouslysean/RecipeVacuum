@@ -4,35 +4,21 @@ local _, ns = ...
 --@debug@
 
 local UseScan -- defined below
--- A checkout build shows Lua errors, so a fault while developing is seen, not silent.
-C_CVar.SetCVar("scriptErrors", "1")
+-- Lua errors shown and blocked actions reported, and timing, from the toolkit's working-build helpers.
+local toolkit = LibStub("JigBoltgripToolkit-1.0")
+toolkit:EnableWorkingBuild()
 
--- Performance record: each piece keeps its run count, total and slowest run, written to the saved log at session end.
-local perfRecord, perfOrder = {}, {}
-
+-- Timing is kept by the library per module; ns.device stands in for the module until settings load.
 function ns.PerfMs(name, ms)
-	local entry = perfRecord[name]
-	if not entry then
-		entry = { count = 0, total = 0, max = 0 }
-		perfRecord[name] = entry
-		perfOrder[#perfOrder + 1] = name
-	end
-	entry.count, entry.total = entry.count + 1, entry.total + ms
-	if ms > entry.max then entry.max = ms end
+	toolkit:TimeMs(ns.device, name, ms)
 end
 
 function ns.Perf(name, started)
-	ns.PerfMs(name, debugprofilestop() - started)
+	toolkit:Time(ns.device, name, started)
 end
 
 local function PerfLines()
-	local lines = {}
-	for _, name in ipairs(perfOrder) do
-		local entry = perfRecord[name]
-		lines[#lines + 1] = ("PERF %-24s runs %5d | average %7.2f ms | slowest %7.2f ms | total %8.1f ms"):format(
-			name, entry.count, entry.total / entry.count, entry.max, entry.total)
-	end
-	return lines
+	return toolkit:TimingLines(ns.device)
 end
 
 -- Times the profession window's opening for the perf command.
@@ -58,7 +44,6 @@ end)
 
 -- Keeps the last LOG_LINES lines across commands and reloads; the copy window shows the current run, "log all" everything kept.
 local LOG_LINES = 2000
-local toolkit = LibStub("JigBoltgripToolkit-1.0")
 
 -- A command's window shows its own lines (viewStart), even during a watch run; "log" goes back to the run.
 local viewStart

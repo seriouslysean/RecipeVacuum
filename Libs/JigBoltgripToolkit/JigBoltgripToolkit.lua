@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 18
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 19
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -158,6 +158,58 @@ function lib:AddNote(layout, text)
 	end
 	layout:AddInitializer(initializer)
 	return initializer
+end
+
+-- Working builds. A module calls these from its own --@debug@ block, so a release never does; the library
+-- file itself is the same in every build. One listener and one record serve every module.
+
+-- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
+function lib:EnableWorkingBuild()
+	C_CVar.SetCVar("scriptErrors", "1")
+	if self.blockedListener then
+		return
+	end
+	self.blockedListener = CreateFrame("Frame")
+	self.blockedListener:RegisterEvent("ADDON_ACTION_BLOCKED")
+	self.blockedListener:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+	self.blockedListener:SetScript("OnEvent", function(_, event, addon, action)
+		lib:Print(("%s: %s, %s"):format(event, tostring(addon), tostring(action)))
+	end)
+end
+
+-- Timing: each name keeps its run count, total and slowest run, per module, for the session.
+lib.timings = lib.timings or {}
+
+function lib:TimeMs(module, name, ms)
+	local record = self.timings[module.addon]
+	if not record then
+		record = { order = {} }
+		self.timings[module.addon] = record
+	end
+	local entry = record[name]
+	if not entry then
+		entry = { count = 0, total = 0, max = 0 }
+		record[name] = entry
+		record.order[#record.order + 1] = name
+	end
+	entry.count, entry.total = entry.count + 1, entry.total + ms
+	if ms > entry.max then entry.max = ms end
+end
+
+-- Times a call that began at started (from debugprofilestop()).
+function lib:Time(module, name, started)
+	self:TimeMs(module, name, debugprofilestop() - started)
+end
+
+-- The module's timings as lines, for its log or a window.
+function lib:TimingLines(module)
+	local lines, record = {}, self.timings[module.addon]
+	for _, name in ipairs(record and record.order or {}) do
+		local entry = record[name]
+		lines[#lines + 1] = ("PERF %-24s runs %5d | average %7.2f ms | slowest %7.2f ms | total %8.1f ms"):format(
+			name, entry.count, entry.total / entry.count, entry.max, entry.total)
+	end
+	return lines
 end
 
 -- Options pages. A module describes its page as data and lib:BuildOptions builds it from Blizzard's own
