@@ -14,9 +14,11 @@ local CARDS = {
 	{ level = LEVEL.FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking" },
 	{ level = LEVEL.PUBLIC, icon = "Interface\\Icons\\Ability_Warrior_BattleShout" },
 }
--- The chosen card is lit and ticked, the others dimmed.
+-- The chosen card is lit, the others dimmed.
 local UNCHOSEN_ALPHA = 0.55
-local CHECK_TEXTURE, CHECK_SIZE, CHECK_INSET = "Interface\\Buttons\\UI-CheckBox-Check", 28, 4
+-- Spell icons carry a dark border on their outer edge; it is cut away before the round mask, as
+-- Blizzard does for round icons, so the circle shows only the picture.
+local ICON_EDGE = 0.08
 local CHOSEN_BACKGROUND = CreateColor(0.16, 0.13, 0.05)
 
 local function CreateCard(parent, index, info, setting)
@@ -33,23 +35,22 @@ local function CreateCard(parent, index, info, setting)
 	icon:SetSize(ICON_SIZE, ICON_SIZE)
 	icon:SetPoint("TOP", 0, ICON_TOP)
 	icon:SetTexture(info.icon)
+	icon:SetTexCoord(ICON_EDGE, 1 - ICON_EDGE, ICON_EDGE, 1 - ICON_EDGE)
 	local mask = card:CreateMaskTexture()
 	mask:SetAllPoints(icon)
 	mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
 	icon:AddMaskTexture(mask)
 
 	local text = card:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-	text:SetPoint("TOPLEFT", TEXT_INSET, TEXT_TOP)
-	text:SetPoint("TOPRIGHT", -TEXT_INSET, TEXT_TOP) -- both anchors on one line: the width is set, the height free to wrap
+	-- A set width and no line limit, so the description wraps instead of ending in "...".
+	text:SetPoint("TOP", 0, TEXT_TOP)
+	text:SetWidth(CARD_WIDTH - 2 * TEXT_INSET)
+	text:SetWordWrap(true)
+	text:SetMaxLines(0)
 	text:SetJustifyH("CENTER")
 	text:SetJustifyV("TOP")
 	text:SetText(ns.levelText[info.level])
-
-	local check = card:CreateTexture(nil, "OVERLAY")
-	check:SetSize(CHECK_SIZE, CHECK_SIZE)
-	check:SetPoint("TOPRIGHT", -CHECK_INSET, -CHECK_INSET)
-	check:SetTexture(CHECK_TEXTURE)
-	card.Title, card.Icon, card.Check = title, icon, check
+	card.Title, card.Icon = title, icon
 	card:SetScript("OnEnter", function() card:SetAlpha(1) end)
 	card:SetScript("OnLeave", function() card:SetAlpha(card.chosen and 1 or UNCHOSEN_ALPHA) end)
 
@@ -66,7 +67,6 @@ local function ShowChoice(frame, level)
 		card:SetBackdropColor((chosen and CHOSEN_BACKGROUND or TOOLTIP_DEFAULT_BACKGROUND_COLOR):GetRGB())
 		card.Title:SetTextColor((chosen and NORMAL_FONT_COLOR or DISABLED_FONT_COLOR):GetRGB())
 		card.Icon:SetDesaturated(not chosen)
-		card.Check:SetShown(chosen)
 		card.chosen = chosen
 		card:SetAlpha((chosen or card:IsMouseOver()) and 1 or UNCHOSEN_ALPHA)
 	end
