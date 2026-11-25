@@ -54,7 +54,7 @@ A file must still compile with the marked blocks removed.
 
 ## Development commands
 
-In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. `watch on` logs where loot, quest rewards, vendor stock and trainer lists come from, to the log only, with one chat line when recipes are involved. `log` shows the current run in a window to copy from; `log all` shows the last 2,000 lines; `log clear` empties it. The log is written with the saved variables on `/reload` or logout.
+In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. Watch and log are the toolkit's, shared by every Boltgrip addon (owner, 2026-11-25: "Go, kit commands only"): `/boltgrip watch on` logs where loot, quest rewards, vendor stock and trainer lists come from, to the log only, with one chat line when recipes are involved. `/boltgrip log` shows each addon's current run in a window to copy from; `/boltgrip log all` shows the last 2,000 lines of each; `/boltgrip log clear` empties them. The log is written with the saved variables on `/reload` or logout.
 
 ## Seeding
 

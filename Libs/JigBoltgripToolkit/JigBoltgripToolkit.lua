@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 20
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 21
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -189,6 +189,7 @@ end
 -- Lines are timestamped so a long watch reads as a timeline; the last LOG_LINES are kept.
 local LOG_LINES = 2000
 lib.logs = lib.logs or {}
+lib.logOrder = lib.logOrder or {} -- addon names in the order their logs started, for /boltgrip log
 
 -- At logout each log gets the session's timings, as one dated block.
 local function WriteTimings()
@@ -208,8 +209,12 @@ end
 
 -- Starts the module's log once its saved table is loaded; resumes a watch left on.
 function lib:StartLog(module, saved, handlers)
-	local log = self.logs[module.addon] or {}
-	self.logs[module.addon] = log
+	local log = self.logs[module.addon]
+	if not log then
+		log = {}
+		self.logs[module.addon] = log
+		self.logOrder[#self.logOrder + 1] = module.addon
+	end
 	log.module, log.saved, log.handlers = module, saved, handlers or {}
 	saved.devLog = saved.devLog or {}
 	if not self.logWriter then
@@ -238,8 +243,12 @@ function lib:Log(module, line, dated)
 		log.saved.devLogRun = math.max((log.saved.devLogRun or 1) - over, 1)
 		if log.viewStart then log.viewStart = math.max(log.viewStart - over, 1) end
 	end
-	if self:IsTextShown() and self.textFrame.log == log then
-		self:ShowLog(module)
+	if self:IsTextShown() then
+		if self.textFrame.log == log then
+			self:ShowLog(module)
+		elseif self.textFrame.log == "all" then
+			self:ShowAllLogs(self.textFrame.allLines)
+		end
 	end
 end
 
@@ -251,6 +260,20 @@ function lib:ShowLog(module, all)
 	local first = all and 1 or math.min(log.viewStart or log.saved.devLogRun or 1, #lines + 1)
 	self:ShowText(module.title .. ": Log", table.concat(lines, "\n", first))
 	self.textFrame.log = log
+end
+
+-- /boltgrip log: every module's log in one copy window, a section per module under its title. Not merged
+-- by time: lines carry only the time of day, so a merge across days or reloads would interleave wrongly.
+function lib:ShowAllLogs(all)
+	local sections = {}
+	for _, addon in ipairs(self.logOrder) do
+		local log = self.logs[addon]
+		local lines = log.saved.devLog
+		local first = all and 1 or math.min(log.viewStart or log.saved.devLogRun or 1, #lines + 1)
+		sections[#sections + 1] = log.module.title .. "\n" .. table.concat(lines, "\n", first)
+	end
+	self:ShowText(self.title .. ": Log", table.concat(sections, "\n\n"))
+	self.textFrame.log, self.textFrame.allLines = "all", all
 end
 
 -- The next line starts a new run; a running watch keeps its run unless forced.
@@ -289,7 +312,7 @@ function lib:SetWatch(module, on, quiet)
 	end
 	log.saved.watch = on or nil
 	if not quiet then
-		self:Print(on and "Watch enabled!" or "Watch disabled!")
+		self:Print(("%s: %s"):format(module.title, on and "Watch enabled!" or "Watch disabled!"))
 	end
 end
 
@@ -316,29 +339,41 @@ function lib:LoggedCommand(module, action, run, details)
 	end
 end
 
--- The watch and log commands, for a module's working-build command table.
-function lib:WorkingBuildCommands(module)
-	return {
-		{ action = "watch", usage = "on|off", troubleshooting = true,
-			description = "Start or stop logging what " .. module.title .. " sees as you play", run = function(word)
-			word = (word or ""):lower()
-			local log = self.logs[module.addon]
-			self:SetWatch(module, word == "on" or (word == "" and not (log and log.watcher)))
-		end },
-		{ action = "log", usage = "[all|clear]", troubleshooting = true,
-			description = "Show the log; \"all\" shows everything kept, \"clear\" empties it", run = function(word)
-			word = (word or ""):lower()
-			local log = self.logs[module.addon]
-			if not log then return end
-			if word == "clear" then
-				log.saved.devLog, log.saved.devLogRun = {}, nil
-				self:Print("Log purged!")
-			else
-				log.viewStart = nil
-				self:ShowLog(module, word == "all")
-			end
-		end },
-	}
+-- /boltgrip watch on|off and /boltgrip log [all|clear]: one switch and one viewer for every module that
+-- started a log (owner, 2026-11-25: kit commands only). Release builds start no logs, so these do nothing
+-- there and are not listed.
+local WORKING_BUILD_ROWS = {
+	"/boltgrip watch on|off - Start or stop logging what each addon sees as you play",
+	"/boltgrip log [all|clear] - Show every addon's log; \"all\" shows everything kept, \"clear\" empties them",
+}
+
+local function KitCommand(name, word)
+	if #lib.logOrder == 0 or (name ~= "watch" and name ~= "log") then
+		return false
+	end
+	word = (word or ""):lower()
+	if name == "watch" then
+		local anyOn = false
+		for _, addon in ipairs(lib.logOrder) do
+			anyOn = anyOn or lib.logs[addon].watcher ~= nil
+		end
+		local on = word == "on" or (word == "" and not anyOn)
+		for _, addon in ipairs(lib.logOrder) do
+			lib:SetWatch(lib.logs[addon].module, on)
+		end
+	elseif word == "clear" then
+		for _, addon in ipairs(lib.logOrder) do
+			local saved = lib.logs[addon].saved
+			saved.devLog, saved.devLogRun = {}, nil
+		end
+		lib:Print("Logs purged!")
+	else
+		for _, addon in ipairs(lib.logOrder) do
+			lib.logs[addon].viewStart = nil
+		end
+		lib:ShowAllLogs(word == "all")
+	end
+	return true
 end
 
 -- Timing: each name keeps its run count, total and slowest run, per module, for the session.
@@ -685,6 +720,9 @@ end
 SLASH_BOLTGRIP1 = "/boltgrip"
 SlashCmdList.BOLTGRIP = function(message)
 	local name, rest = strtrim(message or ""):match("^(%S*)%s*(.-)$")
+	if KitCommand(name:lower(), rest) then
+		return
+	end
 	if lib.commands[name:lower()] then
 		lib:Dispatch(name:lower(), rest)
 		return
@@ -693,6 +731,11 @@ SlashCmdList.BOLTGRIP = function(message)
 	for _, module in ipairs(lib.modules) do
 		if module.command then
 			table.insert(rows, ("/%s - %s"):format(module.command, module.title))
+		end
+	end
+	if #lib.logOrder > 0 then
+		for _, row in ipairs(WORKING_BUILD_ROWS) do
+			table.insert(rows, row)
 		end
 	end
 	lib:PrintBlock(lib.title .. ": /boltgrip <module> <command>", rows)

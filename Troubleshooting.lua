@@ -744,9 +744,6 @@ end, quiet = true })
 table.insert(troubleshooting, { "scan", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 
 ns.commands = ns.commands or {}
-for _, entry in ipairs(toolkit:WorkingBuildCommands(ns.device)) do
-	table.insert(ns.commands, entry)
-end
 for _, command in ipairs(troubleshooting) do
 	local action, description, run = command[1], command[2], command[3]
 	-- Quiet commands print to chat only, so the profession window stays in view.
