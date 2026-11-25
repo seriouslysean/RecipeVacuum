@@ -3,6 +3,8 @@ local _, ns = ...
 
 --@debug@
 local UseScan -- defined below
+-- A checkout build shows Lua errors, so a fault while developing is seen, not silent.
+C_CVar.SetCVar("scriptErrors", "1")
 --@end-debug@
 
 --@debug@

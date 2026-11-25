@@ -46,6 +46,7 @@ Code between `--@debug@` and `--@end-debug@` exists in a checkout and is strippe
 
 - has the development commands `perf`, `scan` and `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character);
 - times its own work all session (list builds, row marks, loot, vendor, trainer and quest reads, tooltips, linking) and writes the table to the saved log at logout or `/reload`, as `PERF` lines in `RecipeVacuumDB.devLog`;
+- turns on the game's Lua error display (`scriptErrors`) at load and leaves it on;
 - uses a scan from the current game build ahead of the seed;
 - reads what each recipe makes whenever a profession list opens, once per profession per game build, into `RecipeVacuumDB.devMade`, with nothing to run.
 
