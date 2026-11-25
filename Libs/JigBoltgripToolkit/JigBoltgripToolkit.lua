@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 9
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 10
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -47,9 +47,11 @@ local PREFIX = "Boltgrip's"
 local DEVICE_COLOR_MIX = 0.6 -- share of a module's own color in its name; the rest is the line color
 local BLOCK_INDENT = "    "
 
+-- The color is read at print time (chat colors are not set until chat settings load) and passed with
+-- its id, as Blizzard does, so printed lines follow the player's change to that chat color.
 local function AddLine(text)
 	local color = ChatTypeInfo.MONSTER_SAY
-	DEFAULT_CHAT_FRAME:AddMessage(text, color.r, color.g, color.b)
+	DEFAULT_CHAT_FRAME:AddMessage(text, color.r, color.g, color.b, color.id)
 end
 
 -- A module's title in its device color, mixed into the line color so the family stays one tone.
