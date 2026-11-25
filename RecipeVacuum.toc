@@ -22,8 +22,6 @@ Voice.lua
 Sources.lua
 Finds.lua
 Sharing.lua
-LevelCards.xml
-LevelCards.lua
 Settings.lua
 Record.lua
 Heard.lua

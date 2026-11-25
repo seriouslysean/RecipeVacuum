@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 15
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 16
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -138,6 +138,148 @@ function lib:AddNote(layout, text)
 	end
 	layout:AddInitializer(initializer)
 	return initializer
+end
+
+-- Options pages. A module describes its page as data and lib:BuildOptions builds it from Blizzard's own
+-- controls, so every toolkit page has the same headings, labels, notes and spacing (docs/standards.md,
+-- "Options"). The data shape follows AceConfig's options tables; the drawing is Blizzard's.
+--
+--   lib:BuildOptions(module, db, sections), sections = { { heading = text, rows = { row, ... } }, ... }
+--   Every row may have a note: gray text under it, for what the one-sentence tooltip cannot hold.
+--   { kind = "checkbox", key, label, tooltip, default, onChange, under = key of a checkbox it is indented under }
+--   { kind = "dropdown", key, label, tooltip, default, values = { { value, label }, ... }, onChange }
+--   { kind = "cards", key, label, default, values = { { value, label, icon, text }, ... }, onChange }
+--   { kind = "keybinding", binding = the Bindings.xml name }
+-- Saved values live in db[key]; the setting is named "<addon>_<key>". Returns the settings by key.
+
+-- Cards: a choice shown as a row of cards, laid out like the game's ruleset choice. The template in
+-- JigBoltgripToolkit.xml gives the row its height.
+local CARD_WIDTH, CARD_HEIGHT, CARD_GAP = 184, 198, 12
+local CARD_LEFT = 37 -- where Blizzard's own controls start
+local CARD_TITLE_TOP, CARD_ICON_TOP, CARD_ICON_SIZE = -14, -40, 48
+local CARD_TEXT_TOP, CARD_TEXT_INSET = -100, 12
+local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask" -- Blizzard's round portrait mask
+-- Spell icons carry a dark border; it is cut away before the round mask, as Blizzard does for round icons.
+local ICON_EDGE = 0.08
+local UNCHOSEN_ALPHA = 0.55 -- the cards not chosen are dimmed
+local CHOSEN_BACKGROUND = { r = 0.16, g = 0.13, b = 0.05 } -- a warm dark behind the gold border
+
+local function CreateCard(parent, index, choice, setting)
+	local card = CreateFrame("Button", nil, parent, "TooltipBackdropTemplate")
+	card:SetSize(CARD_WIDTH, CARD_HEIGHT)
+	card:SetPoint("TOPLEFT", CARD_LEFT + (index - 1) * (CARD_WIDTH + CARD_GAP), 0)
+	card.value = choice[1]
+	local title = card:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOP", 0, CARD_TITLE_TOP)
+	title:SetText(choice[2])
+	local icon = card:CreateTexture(nil, "ARTWORK")
+	icon:SetSize(CARD_ICON_SIZE, CARD_ICON_SIZE)
+	icon:SetPoint("TOP", 0, CARD_ICON_TOP)
+	icon:SetTexture(choice[3])
+	icon:SetTexCoord(ICON_EDGE, 1 - ICON_EDGE, ICON_EDGE, 1 - ICON_EDGE)
+	local mask = card:CreateMaskTexture()
+	mask:SetAllPoints(icon)
+	mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	icon:AddMaskTexture(mask)
+	local text = card:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	text:SetPoint("TOP", 0, CARD_TEXT_TOP)
+	text:SetWidth(CARD_WIDTH - 2 * CARD_TEXT_INSET) -- a set width and no line limit, so the text wraps
+	text:SetWordWrap(true)
+	text:SetMaxLines(0)
+	text:SetJustifyH("CENTER")
+	text:SetJustifyV("TOP")
+	text:SetText(choice[4])
+	card.Title, card.Icon = title, icon
+	card:SetScript("OnEnter", function() card:SetAlpha(1) end)
+	card:SetScript("OnLeave", function() card:SetAlpha(card.chosen and 1 or UNCHOSEN_ALPHA) end)
+	card:SetScript("OnClick", function() setting:SetValue(card.value) end)
+	return card
+end
+
+local function ShowChoice(frame, value)
+	for _, card in ipairs(frame.cards) do
+		local chosen = card.value == value
+		local background = chosen and CHOSEN_BACKGROUND or TOOLTIP_DEFAULT_BACKGROUND_COLOR
+		card:SetBackdropBorderColor((chosen and NORMAL_FONT_COLOR or TOOLTIP_DEFAULT_COLOR):GetRGB())
+		card:SetBackdropColor(background.r, background.g, background.b)
+		card.Title:SetTextColor((chosen and NORMAL_FONT_COLOR or DISABLED_FONT_COLOR):GetRGB())
+		card.Icon:SetDesaturated(not chosen)
+		card.chosen = chosen
+		card:SetAlpha((chosen or card:IsMouseOver()) and 1 or UNCHOSEN_ALPHA)
+	end
+end
+
+local function AddCards(layout, setting, values)
+	local initializer = Settings.CreateElementInitializer("JigBoltgripToolkitCardsTemplate", {})
+	local shown -- the list's frame for this row while it is on screen
+	initializer.InitFrame = function(_, frame)
+		if not frame.cards then
+			frame.cards = {}
+			for index, choice in ipairs(values) do
+				frame.cards[index] = CreateCard(frame, index, choice, setting)
+			end
+		end
+		shown = frame
+		ShowChoice(frame, setting:GetValue())
+	end
+	initializer.Resetter = function()
+		shown = nil
+	end
+	layout:AddInitializer(initializer)
+	return function(value)
+		if shown then ShowChoice(shown, value) end
+	end
+end
+
+local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
+
+function lib:BuildOptions(module, db, sections)
+	local category, layout, settings, rows = module.category, module.layout, {}, {}
+	for _, section in ipairs(sections) do
+		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(section.heading))
+		for _, row in ipairs(section.rows) do
+			local setting, initializer, showChoice
+			if row.key then
+				setting = Settings.RegisterAddOnSetting(category, module.addon .. "_" .. row.key, row.key, db,
+					Settings.VarType[VAR_TYPES[type(row.default)]], row.label, row.default)
+				settings[row.key] = setting
+			end
+			if row.kind == "checkbox" then
+				initializer = Settings.CreateCheckbox(category, setting, row.tooltip)
+				local parent = row.under and rows[row.under]
+				if parent then
+					initializer:SetParentInitializer(parent, function() return settings[row.under]:GetValue() end)
+				end
+			elseif row.kind == "dropdown" then
+				initializer = Settings.CreateDropdown(category, setting, function()
+					local container = Settings.CreateControlTextContainer()
+					for _, choice in ipairs(row.values) do
+						container:Add(choice[1], choice[2])
+					end
+					return container:GetData()
+				end, row.tooltip)
+			elseif row.kind == "cards" then
+				showChoice = AddCards(layout, setting, row.values)
+			elseif row.kind == "keybinding" then
+				-- Blizzard's own key binding row, as the Controls page shows the Interact Key (Controls.lua).
+				local bindingIndex = C_KeyBindings.GetBindingIndex(row.binding)
+				if bindingIndex then
+					initializer = CreateKeybindingEntryInitializer(bindingIndex, true)
+					initializer:AddSearchTags(GetBindingName(row.binding))
+					layout:AddInitializer(initializer)
+				end
+			end
+			if setting and (row.onChange or showChoice) then
+				setting:SetValueChangedCallback(function(_, value)
+					if showChoice then showChoice(value) end
+					if row.onChange then row.onChange(value) end
+				end)
+			end
+			if row.key then rows[row.key] = initializer end
+			if row.note then self:AddNote(layout, row.note) end
+		end
+	end
+	return settings
 end
 
 -- Closing sections every module page shares: commands and links.

@@ -12,4 +12,8 @@
 			</Layer>
 		</Layers>
 	</Frame>
+	<!-- A row of cards for lib:BuildOptions; the options list sizes a row from its template. -->
+	<Frame name="JigBoltgripToolkitCardsTemplate" virtual="true">
+		<Size y="214"/>
+	</Frame>
 </Ui>
