@@ -1,59 +1,146 @@
 local _, ns = ...
 
--- Profession rank books: when the open profession's next rank comes from a book (Expert Fishing - The Bass
--- and You), and a source of that book with a place is recorded, a mark right of the link button names it and
--- pins it on the map (owner, 2026-11-25; docs/client-notes.md, "Rank books"). Trainer ranks are not covered yet.
+-- Profession ranks, derived from what the client shows, with no shipped rank list (Astra review and owner,
+-- 2026-11-25; docs/data.md, "Ranks"). A rank is its profession's skill line plus the cap it raises from:
+--   a trainer is a source when its window offers the next rank (the skill step, shown apart by Blizzard);
+--   a book or a quest is a source once a cap rises right after the book is used or the quest turned in.
+-- The mark right of the link button shows when the open profession's cap has a recorded source with a place,
+-- names it, and pins it on the map. The other faction's sources are left out. Kept per account, not shared yet.
 local MARK_SIZE = 20
 local MARK_GAP = 4 -- space after the link button
-local LINK_X, LINK_Y = -2, -4 -- the link button's anchor offsets on the rank bar
+local LINK_X, LINK_Y = -2, -4 -- the link button's anchor offsets on the rank bar (Blizzard_ProfessionsCrafting.xml)
+-- A cap that rises this soon after a book use or quest turn-in is taken as caused by it; the client sends
+-- SKILL_LINES_CHANGED right after the rank is learned. Unmeasured: kept short so play in between is not blamed.
+local CAUSE_SECONDS = 5
 
--- Whether this character has the book's rank: the book's own "Already known" requirement, by enum
--- (C_SpellBook.IsSpellKnown says no for a learned rank: 19889 with Fishing at 225, build 71091).
-local function Learned(itemID)
-	local tooltip = C_TooltipInfo.GetItemByID(itemID)
-	for _, line in ipairs(tooltip and tooltip.lines or {}) do
-		if line.requirementType == Enum.TooltipDataUsageRequirementType.NotAlreadyKnown then
-			return not line.usable
-		end
+-- Each known profession's cap, by skill line (GetProfessionInfo, as Blizzard's Camelot professions book reads it).
+local function Caps()
+	local caps = {}
+	-- GetProfessions leaves nil for an empty slot, which pairs skips.
+	for _, index in pairs({ GetProfessions() }) do
+		local _, _, _, maxRank, _, _, skillLine = GetProfessionInfo(index)
+		if skillLine then caps[skillLine] = maxRank end
 	end
-	return false
+	return caps
 end
 
--- The first book of the profession this character has not learned and has a pin for.
-local function NeededBook()
-	local info = ProfessionsFrame.CraftingPage.professionInfo
-	local profession = info and info.profession
-	if not profession then
-		return nil
+local function RankSources(skillLine, fromCap)
+	local byLine = ns.db.ranks[skillLine]
+	if not byLine then
+		byLine = {}
+		ns.db.ranks[skillLine] = byLine
 	end
-	for _, book in ipairs(ns.GetRankBooks(profession)) do
-		if not Learned(book.item) then
-			local entries, targets = ns.GetItemSources(book.item), {}
-			for _, observation in ipairs(entries) do
-				local target = ns.SourceTarget(observation)
-				if target then
-					targets[#targets + 1] = target
+	local sources = byLine[fromCap]
+	if not sources then
+		sources = { npcs = {}, items = {}, quests = {} }
+		byLine[fromCap] = sources
+	end
+	return sources
+end
+
+-- Called by the trainer scan (Record.lua); true when the trainer offers a next rank.
+function ns.NoteTrainerRank(npcID)
+	local step = GetTrainerServiceStepIndex()
+	local tooltip = step and C_TooltipInfo.GetTrainerService(step)
+	local spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
+	local skillLine = spellID and C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)
+	if not skillLine then
+		return false
+	end
+	RankSources(skillLine, Caps()[skillLine] or 0).npcs[npcID] = GetServerTime()
+	return true
+end
+
+-- The last book used and quest turned in, so a cap rise right after can be credited to it.
+local lastCause, knownCaps
+hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
+	local itemID = C_Container.GetContainerItemID(bag, slot)
+	if itemID and ns.IsRecipeItem(itemID) then
+		lastCause = { item = itemID, at = GetTime() }
+	end
+end)
+
+local questGiver -- the NPC at the quest's completion window
+local watcher = CreateFrame("Frame")
+watcher:RegisterEvent("PLAYER_LOGIN")
+watcher:RegisterEvent("QUEST_COMPLETE")
+watcher:RegisterEvent("QUEST_TURNED_IN")
+watcher:RegisterEvent("SKILL_LINES_CHANGED")
+watcher:SetScript("OnEvent", function(_, event, questID)
+	if event == "PLAYER_LOGIN" then
+		knownCaps = Caps()
+	elseif event == "QUEST_COMPLETE" then
+		local guid = UnitGUID("questnpc")
+		local unitType, _, _, _, _, npcID = strsplit("-", guid and not issecretvalue(guid) and guid or "")
+		local mapID, x, y = ns.GetPlayerLocation()
+		questGiver = unitType == "Creature" and { tonumber(npcID), UnitName("questnpc"), mapID, x, y,
+			faction = (UnitFactionGroup("questnpc")) } or nil
+	elseif event == "QUEST_TURNED_IN" then
+		lastCause = { quest = questID, giver = questGiver, at = GetTime() }
+	elseif event == "SKILL_LINES_CHANGED" and knownCaps and ns.db then
+		local caps = Caps()
+		local recent = lastCause and GetTime() - lastCause.at <= CAUSE_SECONDS
+		for skillLine, cap in pairs(caps) do
+			local before = knownCaps[skillLine]
+			if recent and before and cap > before and ns.db.selfFound then
+				local sources = RankSources(skillLine, before)
+				if lastCause.item then
+					sources.items[lastCause.item] = GetServerTime()
+				elseif lastCause.giver then
+					local giver = lastCause.giver
+					ns.NoteNPC(ns.db.npcs, giver[1], giver[2], giver[3], giver[4], giver[5], GetServerTime())
+					ns.NoteNPCFaction(giver[1], giver.faction)
+					sources.quests[lastCause.quest] = giver[1]
 				end
-			end
-			if #targets > 0 then
-				return { book = book, entries = entries, targets = targets }
+				lastCause = nil
 			end
 		end
+		knownCaps = caps
 	end
+end)
+
+-- The open profession's next rank: its usable recorded sources and their pins, or nil when none has a place.
+local function NextRank()
+	local info = ProfessionsFrame.CraftingPage.professionInfo
+	local skillLine = info and info.professionID
+	local byLine = skillLine and ns.db.ranks[skillLine]
+	local sources = byLine and byLine[Caps()[skillLine] or 0]
+	if not sources then
+		return nil
+	end
+	local candidates = {}
+	for npcID in pairs(sources.npcs) do
+		candidates[#candidates + 1] = { kind = "trainer", npc = npcID }
+	end
+	for itemID in pairs(sources.items) do
+		for _, observation in ipairs(ns.GetItemSources(itemID)) do
+			candidates[#candidates + 1] = observation
+		end
+	end
+	for questID, giver in pairs(sources.quests) do
+		candidates[#candidates + 1] = { kind = "quest", quest = questID, npc = giver }
+	end
+	local entries, targets = {}, {}
+	for _, observation in ipairs(candidates) do
+		if not ns.IsOtherFactionNPC(observation) then
+			entries[#entries + 1] = observation
+			targets[#targets + 1] = ns.SourceTarget(observation)
+		end
+	end
+	return #targets > 0 and { name = info.professionName, entries = entries, targets = targets } or nil
 end
 
 local mark
 
 local function OnEnter(button)
-	local needed = button.needed
 	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-	GameTooltip_SetTitle(GameTooltip, C_Spell.GetSpellName(needed.book.spell) or UNKNOWN)
-	ns.AddEntryLines(GameTooltip, needed.entries)
+	GameTooltip_SetTitle(GameTooltip, button.rank.name or UNKNOWN)
+	ns.AddEntryLines(GameTooltip, button.rank.entries)
 	GameTooltip:Show()
 end
 
 local function OnClick(button)
-	ns.ShowOnMap(button.needed.targets[1])
+	ns.ShowOnMap(button.rank.targets[1])
 end
 
 local function Update()
@@ -70,15 +157,15 @@ local function Update()
 		mark:SetScript("OnLeave", GameTooltip_Hide)
 		mark:SetScript("OnClick", OnClick)
 	end
-	-- After the link button, or where it would sit when it is hidden (its anchor in Blizzard_ProfessionsCrafting.xml).
+	-- After the link button, or where it would sit when it is hidden.
 	mark:ClearAllPoints()
 	if page.LinkButton:IsShown() then
 		mark:SetPoint("LEFT", page.LinkButton, "RIGHT", MARK_GAP, 0)
 	else
 		mark:SetPoint("LEFT", page.RankBar, "RIGHT", LINK_X, LINK_Y)
 	end
-	mark.needed = Professions.InLocalCraftingMode() and NeededBook() or nil
-	mark:SetShown(mark.needed ~= nil)
+	mark.rank = Professions.InLocalCraftingMode() and NextRank() or nil
+	mark:SetShown(mark.rank ~= nil)
 end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()

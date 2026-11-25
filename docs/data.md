@@ -116,6 +116,18 @@ A source can be known in part. The tooltip shows "Unknown" in the place column f
 
 Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe, and the first-run dialog.
 
+## Ranks
+
+Profession ranks come only from what the client shows; no rank list ships (owner, 2026-11-25, on the Astra review: "Build it"). A rank is a profession's skill line plus the cap it raises from, kept in `ranks[skill line][cap]` with three kinds of source:
+
+| Source | Recorded when |
+|---|---|
+| Trainer | The trainer window offers a next rank: its skill step (`GetTrainerServiceStepIndex`, which Blizzard's trainer window shows apart). The rank's skill line comes from the step's spell; the cap is the character's at the visit. |
+| Book | A recipe item used from the bags is followed within 5 seconds by a cap rise. The book's vendors come from the items layer, as for any recipe item. |
+| Quest | A turn-in is followed within 5 seconds by a cap rise. The NPC at the completion window is kept as the giver. |
+
+The mark shows when the open profession's cap has a source with a place; the other faction's are left out. Ranks are kept per account and not shared yet. Unverified in game: the 5-second window, a trainer the character has outgrown, and a quest rank (Nat Pagle).
+
 ## Schema
 
 `RecipeVacuumDB.schema` is the saved layout's version; `Core.lua` runs the migrations in order.

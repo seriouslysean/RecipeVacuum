@@ -171,6 +171,30 @@ quest = { id = 77, rewards = {}, choices = { 7 } }
 fire("QUEST_DETAIL")
 check("quest NPCs are saved only with a recipe reward", db.npcs[4784] ~= nil and db.npcs[1444] ~= nil and db.npcs[9999] == nil)
 
+-- 3c. Profession ranks (Ranks.lua). Fails if a book used just before a cap rise is not kept as the source of
+-- that profession's rank from its old cap, or if a rise long after a use is credited to it.
+do
+  local hooks, caps = {}, { [185] = 150 }
+  hooksecurefunc = function(t, name, fn) hooks[name] = fn end
+  C_Container = { GetContainerItemID = function() return 2000 end }
+  GetProfessions = function() return nil, nil, nil, nil, 5 end
+  GetProfessionInfo = function() return "Cooking", 0, 150, caps[185], 0, 0, 185 end
+  local framesBefore = #frames
+  load("Ranks.lua", a)
+  local rankFrame = frames[framesBefore + 1]
+  rankFrame.script(rankFrame, "PLAYER_LOGIN")
+  hooks.UseContainerItem(0, 1)
+  caps[185] = 225
+  rankFrame.script(rankFrame, "SKILL_LINES_CHANGED")
+  local from150 = db.ranks[185] and db.ranks[185][150]
+  check("a book used before a cap rise is that rank's source", from150 and from150.items[2000] ~= nil)
+  hooks.UseContainerItem(0, 1)
+  clock = clock + 60
+  caps[185] = 300
+  rankFrame.script(rankFrame, "SKILL_LINES_CHANGED")
+  check("a cap rise long after a use is not credited to it", db.ranks[185][225] == nil)
+end
+
 -- 3b. Group rolls: a recipe someone else looted is kept by zone; one the player looted adds nothing.
 -- Fails if a roll records no find, names a mob it cannot know, or doubles the player's own loot.
 rollLinks[1], rollLinks[2] = "item:3000", "item:1000"

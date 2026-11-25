@@ -10,7 +10,7 @@ local function Round(value)
 	return math.floor(value * COORDINATE_PRECISION + 0.5) / COORDINATE_PRECISION
 end
 
-local function GetPlayerLocation()
+function ns.GetPlayerLocation()
 	local mapID = C_Map.GetBestMapForUnit("player")
 	local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
 	if not position then
@@ -19,6 +19,7 @@ local function GetPlayerLocation()
 	local x, y = position:GetXY()
 	return mapID, Round(x), Round(y)
 end
+local GetPlayerLocation = ns.GetPlayerLocation
 
 local BUILD = ns.BUILD
 
@@ -175,6 +176,10 @@ function ReadTrainerServices(npc, professionTrainer)
 				if isNew then count = count + 1 end
 			end
 		end
+	end
+	-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step).
+	if professionTrainer and ns.NoteTrainerRank(npc.npcID) then
+		NoteVisit(npc)
 	end
 	if recipes > 0 then NoteVisit(npc) end
 	return count, npc, services > 0, changed

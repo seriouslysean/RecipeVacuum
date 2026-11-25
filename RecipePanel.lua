@@ -123,7 +123,7 @@ end
 -- The other faction's NPCs stay in the source list but get no map target.
 local OTHER_FACTION = { Alliance = "Horde", Horde = "Alliance" }
 
-local function IsOtherFactionNPC(observation)
+function ns.IsOtherFactionNPC(observation)
 	local npc = ns.GetNPC(observation.npc)
 	return npc and npc.faction ~= nil and npc.faction == OTHER_FACTION[UnitFactionGroup("player")]
 end
@@ -131,7 +131,7 @@ end
 -- One source's pin, or nil when it has no place this character can be sent to.
 function ns.SourceTarget(observation)
 	local mapID, x, y = ns.SourcePosition(observation)
-	if mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not IsOtherFactionNPC(observation) then
+	if mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not ns.IsOtherFactionNPC(observation) then
 		local name = ns.SourceInfo(observation)
 		local mapInfo = C_Map.GetMapInfo(mapID)
 		return {

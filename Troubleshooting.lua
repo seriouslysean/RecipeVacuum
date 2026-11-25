@@ -4,6 +4,7 @@ local _, ns = ...
 --@debug@
 
 local UseScan -- defined below
+local mockedRanks = {} -- rank links the mockbooks command added, removed at logout
 -- Lua errors shown and blocked actions reported, and timing, from the toolkit's working-build helpers.
 local toolkit = LibStub("JigBoltgripToolkit-1.0")
 toolkit:EnableWorkingBuild()
@@ -348,7 +349,7 @@ function UseScan(scan)
 			scanned[itemID] = recipeID
 		end
 	end
-	ns.scanned, ns.scannedRanks = scanned, scan.ranks
+	ns.scanned = scanned
 	ns.ResetRecipeItems()
 end
 
@@ -374,10 +375,8 @@ local function Report(scan)
 			none = none + 1
 		end
 	end
-	local ranks = 0
-	for _ in pairs(scan.ranks or {}) do ranks = ranks + 1 end
-	Append(("SCAN %d recipe items: %d name the recipe they teach, %d teach nothing (%d of them a spell, as rank books do), %d unanswered"):format(
-		#scan.items, known, none, ranks, #scan.items - known - none))
+	Append(("SCAN %d recipe items: %d name the recipe they teach, %d teach nothing, %d unanswered"):format(
+		#scan.items, known, none, #scan.items - known - none))
 	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
 		Say(voice.scanNoWindow)
 		return
@@ -459,11 +458,6 @@ local function ReadTaught(scan)
 				-- An answer that still carries no data counts as none.
 				local recipeID = ns.GetTaughtRecipe(itemID)
 				scan.teaches[itemID] = recipeID == nil and NO_ANSWER or recipeID
-				-- A recipe item that teaches no recipe may teach a profession rank: its item spell, by ID.
-				if recipeID == false then
-					local _, spellID = C_Item.GetItemSpell(itemID)
-					scan.ranks[itemID] = spellID
-				end
 				answered = answered + 1
 				if answered == #pending then Finish() end
 			end)
@@ -513,7 +507,7 @@ local function WalkItems()
 			Say(voice.scanBadCount)
 			return
 		end
-		ns.db.devScan = { build = select(2, GetBuildInfo()), items = found, teaches = {}, ranks = {},
+		ns.db.devScan = { build = select(2, GetBuildInfo()), items = found, teaches = {},
 			timing = { walkMs = cpu, walkSeconds = GetTime() - started, walkedIDs = id } }
 		ReadTaught(ns.db.devScan)
 	end)
@@ -557,6 +551,9 @@ local perfWriter = CreateFrame("Frame")
 perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
 	-- Retired probes' data, so it does not stay in the saved file.
+	for _, mocked in ipairs(mockedRanks) do
+		mocked[1].items[mocked[2]] = nil
+	end
 	-- Retired probes' data.
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
 	local lines = PerfLines()
@@ -643,6 +640,8 @@ local MOCK_BOOK_VENDORS = {
 	{ 16084, 2805, "Deneb Walker", "Alliance", 1417, 0.270, 0.588 },
 	{ 16084, 13476, "Balai Lok'Wein", "Horde", 1445, 0.364, 0.304 },
 }
+-- The rank each book raises, as a witnessed use would record it: skill line, cap it raises from.
+local MOCK_BOOK_RANKS = { [16072] = { 185, 150 }, [16084] = { 129, 150 } } -- Cooking, First Aid
 table.insert(troubleshooting, { "mockbooks", "Add the Expert book vendors for this session, to test the rank mark", function()
 	local now = GetServerTime()
 	for _, row in ipairs(MOCK_BOOK_VENDORS) do
@@ -650,6 +649,17 @@ table.insert(troubleshooting, { "mockbooks", "Add the Expert book vendors for th
 		ns.included.npcs[npcID] = { name = name, faction = faction, positions = { [mapID] = { x = x, y = y, seen = now } } }
 		ns.included.items[itemID] = ns.included.items[itemID] or {}
 		table.insert(ns.included.items[itemID], { kind = "vendor", npc = npcID, faction = faction, seen = now })
+	end
+	-- Rank links go in the saved table for the session and are taken out at logout (below).
+	for itemID, rank in pairs(MOCK_BOOK_RANKS) do
+		local skillLine, fromCap = unpack(rank)
+		ns.db.ranks[skillLine] = ns.db.ranks[skillLine] or {}
+		local sources = ns.db.ranks[skillLine][fromCap] or { npcs = {}, items = {}, quests = {} }
+		ns.db.ranks[skillLine][fromCap] = sources
+		if not sources.items[itemID] then
+			sources.items[itemID] = now
+			mockedRanks[#mockedRanks + 1] = { sources, itemID }
+		end
 	end
 	ns.SourcesChanged()
 	ns.Log("Expert book vendors added for this session. Reopen the profession window.")

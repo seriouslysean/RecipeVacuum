@@ -192,40 +192,6 @@ function ns.GetMadeRecipe(itemID)
 	return made or (ns.seed and ns.seed.made and ns.seed.made[itemID]) or nil
 end
 
--- Profession rank books (Expert Fishing - The Bass and You): recipe items whose item spell is the rank
--- they teach (C_Item.GetItemSpell, by ID; docs/client-notes.md, "Rank books"). From the seed, with this
--- session's scan over it. A book's profession is its recipe subclass.
-local PROFESSION_SUBCLASS = { "FirstAid", "Blacksmithing", "Leatherworking", "Alchemy", "Cooking", "Tailoring",
-	"Engineering", "Enchanting", "Fishing" } -- names shared by Enum.Profession and Enum.ItemRecipeSubclass
-local rankBookSubclass
-
-local function RankBookSubclass(profession)
-	if not rankBookSubclass then
-		rankBookSubclass = {}
-		for _, name in ipairs(PROFESSION_SUBCLASS) do
-			rankBookSubclass[Enum.Profession[name]] = Enum.ItemRecipeSubclass[name]
-		end
-	end
-	return rankBookSubclass[profession]
-end
-
-function ns.GetRankBooks(profession)
-	local subclass, books, seen = RankBookSubclass(profession), {}, {}
-	if not subclass then
-		return books
-	end
-	for _, source in ipairs({ ns.scannedRanks or {}, ns.seed and ns.seed.ranks or {} }) do
-		for itemID, spellID in pairs(source) do
-			if not seen[itemID] and select(7, C_Item.GetItemInfoInstant(itemID)) == subclass then
-				seen[itemID] = true
-				books[#books + 1] = { item = itemID, spell = spellID }
-			end
-		end
-	end
-	table.sort(books, function(a, b) return a.spell < b.spell end)
-	return books
-end
-
 -- Every source recorded for one item, across the visible layers.
 function ns.GetItemSources(itemID)
 	local list = {}
