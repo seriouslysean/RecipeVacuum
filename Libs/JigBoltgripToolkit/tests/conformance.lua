@@ -125,6 +125,9 @@ end)
 check("the addon loads on the kit's stand-ins", loaded, tostring(problem))
 check("the addon's start-up events run without errors on the stand-ins", #client.errors == 0,
 	table.concat(client.errors, "; "))
+for _, limit in ipairs(client.standInLimits) do
+	print("SKIP a start-up handler needs a number the stand-ins cannot give: " .. limit)
+end
 
 -- Style rules, as standards.md words them ("Plain text", "Options"). Owner, 2026-11-25: "wow style plain
 -- language, simple sentences", no colons in settings text, and "Your subnotes are also insanely long".

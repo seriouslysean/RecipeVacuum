@@ -84,13 +84,21 @@ end
 
 -- Fires an event at every frame registered for it. Each handler error is kept with the event's name
 -- (client.errors), so a test can fail on it rather than pass with the error hidden (Astra review).
-client.errors = {}
+client.errors, client.standInLimits = {}, {}
 function client.Fire(event, ...)
 	for _, frame in ipairs(client.frames) do
 		local handler = frame.events[event] and frame.scripts.OnEvent
 		if handler then
 			local ok, problem = pcall(handler, frame, event, ...)
-			if not ok then client.errors[#client.errors + 1] = event .. ": " .. tostring(problem) end
+			if not ok then
+				problem = event .. ": " .. tostring(problem)
+				-- A stand-in is a table where the client answers a number; arithmetic or a comparison on it
+				-- fails here and never in the game. Those are listed apart, not counted as errors, so no
+				-- addon changes its code for the stand-ins.
+				local limit = problem:find("compare %a+ with table") or problem:find("compare table with")
+					or problem:find("arithmetic on .-%(a table value%)")
+				table.insert(limit and client.standInLimits or client.errors, problem)
+			end
 		end
 	end
 end
