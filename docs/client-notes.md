@@ -78,3 +78,15 @@ Recorded by the working build on low-level characters:
 
 - Subzones have IDs: `C_MapExplorationInfo.GetExploredAreaIDsAtPosition(mapID, position)` returned `{ 42 }` in Darkshire, and `C_Map.GetAreaInfo(42)` returned "Darkshire" (build 71091, 2026-11-25). Overlap, unexplored areas and dungeons are being measured by a capture in the working build (`RecipeVacuumDB.devAreas`).
 - The dungeon journal does not load on Forever: `C_EncounterJournal and EJ_GetNumTiers` is nil (owner, build 71091, 2026-11-25), so boss loot cannot be read from the client.
+
+## Saved data size and the facts cache
+
+Measured on build 71091, 2026-11-25, one character, one run each (working build timings):
+
+| Run | Saved file | Saved variables load | Cold list build | Of which reading recipes |
+|---|---|---|---|---|
+| With the old item scan | 219 KB | 2.7 ms | 13.0 ms | 1.5 ms |
+| Scan cleared | 153 KB | 1.7 ms | 8.9 ms | 0.6 ms |
+| Facts cache dropped | 153 KB | 1.7 ms | 29.7 ms | 17.9 ms |
+
+Size costs little: about 1 ms per 66 KB at load. The recipe facts cache saves about 20 ms on a profession's first list build per game build, so it stays.
