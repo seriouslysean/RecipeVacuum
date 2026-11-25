@@ -40,13 +40,12 @@ else
 	taughtNote = current.taughtNote or "Kept from the previous seed."
 end
 
--- The made-item read: grows across runs, since each character reads only the professions it has.
-local made = {}
+-- The made-item read: grows across runs, since each character reads only the professions it has. Pairs
+-- this read did not see are kept; pairs it read win, so a changed pair shows below as a change (Astra review).
+local made, readMade = {}, db.devMade or {}
 for itemID, recipeID in pairs(current.made or {}) do made[itemID] = recipeID end
 local readProfessions = {}
-for itemID, recipeID in pairs(db.devMade or {}) do
-	if made[itemID] == nil then made[itemID] = recipeID end
-end
+for itemID, recipeID in pairs(readMade) do made[itemID] = recipeID end
 for professionID in pairs(db.devMadeDone and db.devMadeDone.missing or {}) do
 	readProfessions[#readProfessions + 1] = professionID
 end
@@ -73,7 +72,11 @@ end
 
 local function Count(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
 local taughtAdded, taughtProblems = Differences("taught item", taught, current.taught or {})
-local madeAdded, madeProblems = Differences("made item", made, current.made or {})
+-- Only what this read saw is compared; the rest of the old table is kept as it is.
+local madeAdded, madeProblems = Differences("made item", readMade, current.made or {})
+for index = #madeProblems, 1, -1 do
+	if madeProblems[index]:find("is no longer read", 1, true) then table.remove(madeProblems, index) end
+end
 print(("taught: %d pairs, %d added, %d removed or changed | made: %d pairs, %d added, %d removed or changed"):format(
 	Count(taught), taughtAdded, #taughtProblems, Count(made), madeAdded, #madeProblems))
 if (#taughtProblems > 0 or #madeProblems > 0) and not accept then
