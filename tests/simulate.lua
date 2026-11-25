@@ -360,6 +360,15 @@ do
   place.area, place.instance = 40, nil
 end
 check("reject a subzone on a vendor row", boot(nil).MergeFinds({ { k = "vendor", i = 1000, n = 1, a = 5 } }, 1) == nil)
+-- Fails if a row of a kind a newer version adds makes an older version refuse the whole batch, which would
+-- stop every later find from that player arriving.
+do
+  local m = boot(nil)
+  local merged = m.MergeFinds({ { k = "rank", r = 3464, n = 1, s = 500 },
+    { k = "vendor", i = 1000, n = 4, m = 1429, x = 0.5, y = 0.5, s = 500 } }, 2)
+  check("a row of an unknown kind is skipped and the rest merge", merged == true and m.db.shared.items[1000] ~= nil
+    and m.db.shared.recipes[3464] == nil)
+end
 -- Fails if two same-second reports of one drop merge into a spot neither stood at, or a drop without its
 -- own spot takes the creature's position on another map (Astra review, 2026-11-25).
 do

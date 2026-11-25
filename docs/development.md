@@ -81,7 +81,7 @@ Recorded from the Astra review of 2026-11-25 (RecipeVacuum a763a62..434c27a); no
 | Options card rows on Blizzard's pooled settings list may leave hidden buttons when switching between toolkit pages | Switching between two toolkit addons' pages many times | A measured growth in game |
 | Kit calls from versions between MINOR 19 and 29 are not kept | No one: those versions were never released | Not applicable; from the first release the kit keeps every call under `-1.0` (toolkit standards) |
 | The "blocked from an action" popup when learning a recipe from the bags (`cairn:h57tf`) | Seen once | It happening again: the log then names the function |
-| Ranks are not shared with friends | Everyone | A decision to share them (a new wire row kind needs the change below first) |
+| Ranks are not shared with friends | Everyone | A decision to share them (older versions skip a new row kind, so adding one is safe) |
 
 ## Release
 

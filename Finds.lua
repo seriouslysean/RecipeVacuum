@@ -178,16 +178,25 @@ local MERGED_FIELDS = {
 	giverItem = "gi", map = "m", x = "x", y = "y", area = "a", instance = "di", count = "cn",
 }
 
+-- Row kinds this version reads. A row of a kind a newer version added is skipped, not a reason to refuse
+-- the batch: refusing it would stop every later find from that player reaching an older version.
+local KNOWN_KINDS = { trainer = true, vendor = true, quest = true, drop = true }
+
 function ns.MergeFinds(rows, maxRows)
 	if type(rows) ~= "table" or #rows > maxRows then return nil end
 	local count = 0
+	local known = {}
 	for index, row in pairs(rows) do
-		if not PositiveID(index) or index > #rows or not ValidRow(row) then return nil end
+		if not PositiveID(index) or index > #rows or type(row) ~= "table" then return nil end
+		if KNOWN_KINDS[row.k] then
+			if not ValidRow(row) then return nil end
+			known[#known + 1] = row
+		end
 		count = count + 1
 	end
 	if count ~= #rows then return nil end
 	local db, changed = ns.db, false
-	for _, row in ipairs(rows) do
+	for _, row in ipairs(known) do
 		local wireField = SourceField(row)
 		local field, value = IDENTITY[wireField], row[wireField]
 		if row.n then
