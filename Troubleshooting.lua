@@ -701,27 +701,35 @@ end
 local madeFrame = CreateFrame("Frame")
 madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 madeFrame:SetScript("OnEvent", ScanMade)
--- Line color sample; remove once the family's color is chosen. Prints the announcement in each candidate
--- and saves the game's own chat colors, so candidates can be measured against them.
-local COLOR_CANDIDATES = {
-	{ "pale NPC yellow (now)" },
-	{ "light cyan-blue, as another addon", 0x69, 0xCC, 0xF0 },
-	{ "between the two", 0x5B, 0xD9, 0xDE },
-	{ "aqua, as Auctioneer", 0x4D, 0xE6, 0xCC },
-	{ "between, softer", 0x7F, 0xD8, 0xD8 },
-	{ "between, greener", 0x5F, 0xE0, 0xC8 },
+-- Name color sample; remove once the family's colors are chosen. The line is the chosen teal; each
+-- device's name is a class color, shown pure and mixed part of the way toward the line color.
+local LINE_COLOR = CreateColor(0x5B / 255, 0xD9 / 255, 0xDE / 255)
+local NAME_MIXES = { 0, 0.25, 0.5 } -- share of the line color in the name
+local DEVICE_SAMPLES = {
+	{ "Recipe Vacuum", "WARRIOR" }, { "Recipe Vacuum", "DRUID" }, { "Tackletron", "SHAMAN" }, { "Tackletron", "MAGE" },
+	{ "Sparkle tool", "PALADIN" }, { "Buff tool", "WARLOCK" },
 }
 local SAVED_CHAT_TYPES = { "SYSTEM", "SAY", "YELL", "EMOTE", "WHISPER", "BN_WHISPER", "PARTY", "RAID", "GUILD", "OFFICER",
 	"CHANNEL", "MONSTER_SAY", "MONSTER_EMOTE", "SKILL", "LOOT", "MONEY", "COMBAT_XP_GAIN", "COMBAT_FACTION_CHANGE" }
-table.insert(troubleshooting, { "colors", "Show the announcement in each candidate line color", function()
-	local brown = ns.device.color
-	local name = ("|cff%02x%02x%02x%s|r"):format(brown.r * 255, brown.g * 255, brown.b * 255, ns.title)
-	for index, candidate in ipairs(COLOR_CANDIDATES) do
-		local label, r, g, b = unpack(candidate)
-		local line = ChatTypeInfo.MONSTER_SAY
-		r, g, b = (r or line.r * 255) / 255, (g or line.g * 255) / 255, (b or line.b * 255) / 255
-		DEFAULT_CHAT_FRAME:AddMessage(("|TInterface\\WorldMap\\GEAR_64GREY:0|t Boltgrip's %s sucks up 8 recipes from Stephen Ryback! (%d: %s)")
-			:format(name, index, label), r, g, b)
+table.insert(troubleshooting, { "colors", "Show device names in class colors on the chosen line color", function()
+	local function Name(title, class, mix)
+		local color = RAID_CLASS_COLORS[class]
+		local function Channel(key)
+			return (color[key] * (1 - mix) + LINE_COLOR[key] * mix) * 255
+		end
+		return ("|cff%02x%02x%02x%s|r"):format(Channel("r"), Channel("g"), Channel("b"), title)
+	end
+	local function Line(text)
+		DEFAULT_CHAT_FRAME:AddMessage("|TInterface\\WorldMap\\GEAR_64GREY:0|t " .. text, LINE_COLOR:GetRGB())
+	end
+	for _, mix in ipairs(NAME_MIXES) do
+		Line(("Boltgrip's %s sucks up 8 recipes from Stephen Ryback! (name %d%% toward the line color)")
+			:format(Name("Recipe Vacuum", "WARRIOR", mix), mix * 100))
+		local names = {}
+		for _, sample in ipairs(DEVICE_SAMPLES) do
+			names[#names + 1] = Name(("%s (%s)"):format(sample[1], sample[2]:lower()), sample[2], mix)
+		end
+		Line(table.concat(names, "  "))
 	end
 	ns.db.devChatColors = {}
 	for _, chatType in ipairs(SAVED_CHAT_TYPES) do
