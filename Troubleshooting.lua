@@ -663,10 +663,13 @@ local function ScanMade()
 		done = { build = ns.BUILD, format = MADE_FORMAT, missing = {} }
 		ns.db.devMadeDone, ns.db.devMade = done, {}
 	end
-	if not professionID or done[professionID] then
+	if not professionID or (done[professionID] or 0) > 0 then
 		return
 	end
 	local recipeIDs, made, index = C_TradeSkillUI.GetAllRecipeIDs(), ns.db.devMade, 0
+	if #recipeIDs == 0 then
+		return -- the list is not filled yet; read it on a later update rather than record it as empty
+	end
 	local noSchematic, noOutput, samples = 0, 0, {}
 	madeScanning = true
 	local function Batch()
