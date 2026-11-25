@@ -23,13 +23,13 @@ function ns.InitSettings()
 				-- The kit words the cards; Recipe Vacuum names what it tracks (the toolkit's docs/standards.md, "Options").
 				values = toolkit:SourceCards({ what = "recipes", friends = true, public = "recipes people link in chat" }),
 				onChange = function()
-					ns.SetSharing(ns.SharingWanted())
+					ns.SharingSettingsChanged()
 					ns.SourcesChanged()
 				end },
 			{ kind = "checkbox", key = "shareFinds", label = "Share My Finds", default = true,
 				tooltip = "Send what you find to party, guild and friends who use Recipe Vacuum.",
 				note = "Sends your trainers, vendors, quests and drops to friends who use Recipe Vacuum. Nothing else is sent.",
-				onChange = function() ns.SetSharing(ns.SharingWanted()) end },
+				onChange = ns.SharingSettingsChanged },
 		} },
 		{ heading = "Personal Finds", place = "features", rows = {
 			{ kind = "checkbox", key = "selfFound", label = "Track Personal Finds", default = true,

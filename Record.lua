@@ -344,7 +344,8 @@ local function ReadLoot()
 		return
 	end
 	lootRead = true
-	local count, changed, sourceName = 0, false, nil
+	-- One loot window is one sighting per recipe item and source, however many slots hold it (Astra review).
+	local counted, newItems, names, changed = {}, {}, {}, false
 	for slot = 1, GetNumLootItems() do
 		local link = GetLootSlotType(slot) == Enum.LootSlotType.Item and GetLootSlotLink(slot)
 		local itemID = link and ns.IsRecipeItem(link)
@@ -352,19 +353,28 @@ local function ReadLoot()
 			local sources = { GetLootSourceInfo(slot) }
 			for index = 1, #sources, 2 do
 				local source, details, name = LootSource(sources[index])
-				if source then
+				local key = source and ("%d %s %s"):format(itemID, source.field, tostring(source.value))
+				if key and not counted[key] then
+					counted[key] = true
 					NotePendingItem(itemID)
 					lootedAt[itemID] = GetTime()
 					local isNew, updated = Save("items", itemID, "drop", source, details)
 					changed = changed or updated
 					if isNew then
-						count, sourceName = count + 1, name
+						newItems[itemID] = true
+						names[name or UNKNOWN] = true
 					end
 				end
 			end
 		end
 	end
-	Announce(count, sourceName)
+	-- The line names the source only when every new recipe came from it; otherwise the zone.
+	local count, onlyName = 0, nil
+	for _ in pairs(newItems) do count = count + 1 end
+	for name in pairs(names) do onlyName = onlyName == nil and name or false end
+	local mapID = C_Map.GetBestMapForUnit("player")
+	local mapInfo = mapID and C_Map.GetMapInfo(mapID)
+	Announce(count, onlyName or (mapInfo and mapInfo.name))
 	if changed then
 		ns.SourcesChanged()
 	end

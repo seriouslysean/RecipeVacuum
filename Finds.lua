@@ -63,9 +63,9 @@ local function WireRow(row)
 	local mapID, position = ns.NewestPosition(named.positions)
 	if observation.fishing then
 		mapID, position = observation.fishing, { x = observation.x, y = observation.y }
-	elseif observation.kind == "drop" and observation.x then
-		-- A drop carries its own spot, not the creature's latest one.
-		mapID, position = observation.map, { x = observation.x, y = observation.y }
+	elseif observation.kind == "drop" then
+		-- A drop carries its own spot or none, never the creature's latest one elsewhere (Astra review).
+		mapID, position = observation.map, observation.x and { x = observation.x, y = observation.y } or nil
 	end
 	return {
 		k = observation.kind, r = row.ref == "recipe" and row.id or nil, i = row.ref == "item" and row.id or nil,
@@ -224,8 +224,7 @@ function ns.MergeFinds(rows, maxRows)
 		local seen = row.s or 0
 		for name, key in pairs(MERGED_FIELDS) do
 			local incoming = row[key]
-			-- A fishing spot and a creature or object drop keep their own position; other sources use the NPC's.
-			if incoming ~= nil and ((name ~= "x" and name ~= "y") or row.fi or (row.k == "drop" and (row.n or row.o))) then
+			if incoming ~= nil and name ~= "x" and name ~= "y" then
 				local current, learned = observation[name], at[name]
 				-- Equal times: the higher value wins, so every player settles on the same one.
 				local tie = seen == learned and incoming ~= current and tostring(incoming) > tostring(current)
@@ -236,6 +235,20 @@ function ns.MergeFinds(rows, maxRows)
 					end
 					at[name] = seen
 				end
+			end
+		end
+		-- A fishing spot and a creature or object drop keep their own position, merged as one pair so two
+		-- reports never combine into a spot nobody stood at (Astra review); other sources use the NPC's.
+		if row.x and (row.fi or (row.k == "drop" and (row.n or row.o))) then
+			local learned = at.x
+			local incoming, current = ("%s,%s"):format(row.x, row.y), observation.x and ("%s,%s"):format(observation.x, observation.y)
+			local tie = seen == learned and incoming ~= current and incoming > current
+			if current == nil or seen > learned or tie then
+				if incoming ~= current then
+					observation.x, observation.y = row.x, row.y
+					changed = true
+				end
+				at.x, at.y = seen, seen
 			end
 		end
 		if seen > (observation.seen or 0) then

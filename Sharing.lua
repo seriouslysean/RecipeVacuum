@@ -211,6 +211,8 @@ NextPeer = function()
 end
 
 local function QueuePeer(sender, id, tip)
+	-- Revision 0 is a peer that does not share (Offer); it says nothing about our cursor for it.
+	if tip == 0 then return end
 	local received = ns.db.exchange.received
 	-- Tip below what we saved: that collection was reset, restart from zero.
 	if received[id] and tip < received[id] then
@@ -411,6 +413,19 @@ local function ScheduleRefresh()
 		scheduled = true
 		C_Timer.After(0, Refresh)
 	end
+end
+
+-- After either sharing setting changes: the connection follows whether either is wanted, a player who
+-- starts sharing advertises at once, and one who stops taking friends' finds in drops pending requests.
+function ns.SharingSettingsChanged()
+	ns.SetSharing(ns.SharingWanted())
+	if not enabled then return end
+	if not Receiving() then
+		if active and active.timer then active.timer:Cancel() end
+		active = nil
+		wipe(waiting)
+	end
+	ns.ScheduleFindOffer()
 end
 
 function ns.SetSharing(value)

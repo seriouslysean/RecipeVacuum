@@ -55,7 +55,9 @@ function ns.SourceInfo(observation)
 			giver and giver.positions, observation.map
 	elseif observation.object then
 		local object = GetObject(observation.object)
-		return object and object.name, OwnPosition(observation) or object and object.positions, observation.map
+		local positions = OwnPosition(observation)
+		if observation.kind ~= "drop" then positions = positions or object and object.positions end
+		return object and object.name, positions, observation.map
 	elseif observation.container then
 		return C_Item.GetItemNameByID(observation.container), nil, nil
 	elseif observation.fishing then
@@ -66,7 +68,10 @@ function ns.SourceInfo(observation)
 		return UNKNOWN, nil, observation.zone
 	end
 	local npc = ns.GetNPC(observation.npc)
-	return npc and npc.name, OwnPosition(observation) or npc and npc.positions, observation.map
+	-- A drop is placed by its own spot only; without one it keeps its map and gets no pin (Astra review).
+	local positions = OwnPosition(observation)
+	if observation.kind ~= "drop" then positions = positions or npc and npc.positions end
+	return npc and npc.name, positions, observation.map
 end
 
 -- Drop scope from sightings (docs/data.md, "Drops"). Thresholds are the owner's choice, set

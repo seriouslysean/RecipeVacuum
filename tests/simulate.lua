@@ -132,11 +132,14 @@ local lootFrame
 for _, f in ipairs(frames) do if f.events.LOOT_READY then lootFrame = f end end
 local function fire(event, ...) lootFrame.script(lootFrame, event, ...) end
 target.target, target.targetname = "Creature-0-1-0-1-732-AAAA", "Murloc Lurker"
+-- Two slots of one recipe from one creature are one sighting (Astra review, 2026-11-25).
 loot = { { type = 1, link = "item:1000", sources = { "Creature-0-1-0-1-732-AAAA", 1 } },
+         { type = 1, link = "item:1000", sources = { "Creature-0-1-0-1-732-AAAA", 1 } },
          { type = 1, link = "item:5", sources = { "Creature-0-1-0-1-732-AAAA", 1 } } }
 fire("LOOT_READY"); fire("LOOT_READY"); fire("LOOT_OPENED"); fire("LOOT_CLOSED")
 local obs = db.found.items[1000]
-check("creature drop saved once", obs and #obs == 1 and obs[1].kind == "drop" and obs[1].npc == 732)
+check("creature drop saved once, as one sighting per loot window", obs and #obs == 1 and obs[1].kind == "drop"
+  and obs[1].npc == 732 and obs[1].count == 1)
 check("non-recipe item ignored", db.found.items[5] == nil)
 check("npc name and position noted", db.npcs[732] and db.npcs[732].name == "Murloc Lurker" and db.npcs[732].positions[1429])
 fire("UNIT_SPELLCAST_SENT", "player", "Battered Chest")
@@ -357,6 +360,18 @@ do
   place.area, place.instance = 40, nil
 end
 check("reject a subzone on a vendor row", boot(nil).MergeFinds({ { k = "vendor", i = 1000, n = 1, a = 5 } }, 1) == nil)
+-- Fails if two same-second reports of one drop merge into a spot neither stood at, or a drop without its
+-- own spot takes the creature's position on another map (Astra review, 2026-11-25).
+do
+  local m = boot(nil)
+  m.MergeFinds({ { k = "drop", i = 1000, n = 77, m = 1429, x = 0.9, y = 0.1, s = 500 } }, 1)
+  m.MergeFinds({ { k = "drop", i = 1000, n = 77, m = 1429, x = 0.1, y = 0.9, s = 500 } }, 1)
+  local merged = m.db.shared.items[1000][1]
+  check("a drop's spot merges as one pair", (merged.x == 0.9 and merged.y == 0.1) or (merged.x == 0.1 and merged.y == 0.9))
+  m.db.npcs[78] = { name = "Elsewhere", positions = { [1430] = { x = 0.5, y = 0.5, seen = 1 } } }
+  local _, positions, map = m.SourceInfo({ kind = "drop", npc = 78, map = 1429 })
+  check("a drop without its own spot gets no pin from another map", positions == nil and map == 1429)
+end
 
 -- 5b. Merging never loses detail. Fails if a newer row without a cost clears it, an older row cannot fill a gap, a newer value does not correct an older one, or a repeat counts as a change.
 do
