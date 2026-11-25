@@ -28,5 +28,6 @@ Filter.lua
 Unlearned.lua
 RecipeList.lua
 RecipePanel.lua
+Ranks.lua
 
 Troubleshooting.lua

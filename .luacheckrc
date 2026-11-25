@@ -11,7 +11,7 @@ read_globals = {
 	"C_GuildInfo", "C_Item", "C_Map", "C_MerchantFrame", "C_QuestLog", "C_Spell", "C_SpellBook", "C_SuperTrack", "C_Texture",
 	"C_Timer", "C_TooltipInfo", "C_TradeSkillUI", "ChatTypeInfo", "CHECK_ALL", "CopyTable", "COSTS_LABEL",
 	"CreateAtlasMarkup", "CreateColor", "CreateFrame", "CreateSettingsButtonInitializer",
-	"CreateSettingsListSectionHeaderInitializer", "date", "debugprofilestop", "DISABLED_FONT_COLOR", "DEFAULT_CHAT_FRAME", "Enum",
+	"CreateSettingsListSectionHeaderInitializer", "date", "debugprofilestop", "debugstack", "RANK", "DISABLED_FONT_COLOR", "DEFAULT_CHAT_FRAME", "Enum",
 	"ERR_CHAT_PLAYER_NOT_FOUND_S", "EventRegistry", "EventUtil", "FACTION_LABELS_FROM_STRING", "GameTooltip",
 	"GameTooltip_AddColoredDoubleLine", "GameTooltip_AddColoredLine", "GameTooltip_AddDisabledLine",
 	"GameTooltip_AddNormalLine", "GameTooltip_Hide", "GameTooltip_SetTitle", "GetBuildInfo", "GetLocale",

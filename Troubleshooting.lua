@@ -348,7 +348,7 @@ function UseScan(scan)
 			scanned[itemID] = recipeID
 		end
 	end
-	ns.scanned = scanned
+	ns.scanned, ns.scannedRanks = scanned, scan.ranks
 	ns.ResetRecipeItems()
 end
 
@@ -374,8 +374,10 @@ local function Report(scan)
 			none = none + 1
 		end
 	end
-	Append(("SCAN %d recipe items: %d name the recipe they teach, %d teach nothing, %d unanswered"):format(
-		#scan.items, known, none, #scan.items - known - none))
+	local ranks = 0
+	for _ in pairs(scan.ranks or {}) do ranks = ranks + 1 end
+	Append(("SCAN %d recipe items: %d name the recipe they teach, %d teach nothing (%d of them a spell, as rank books do), %d unanswered"):format(
+		#scan.items, known, none, ranks, #scan.items - known - none))
 	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
 		Say(voice.scanNoWindow)
 		return
@@ -457,6 +459,11 @@ local function ReadTaught(scan)
 				-- An answer that still carries no data counts as none.
 				local recipeID = ns.GetTaughtRecipe(itemID)
 				scan.teaches[itemID] = recipeID == nil and NO_ANSWER or recipeID
+				-- A recipe item that teaches no recipe may teach a profession rank: its item spell, by ID.
+				if recipeID == false then
+					local _, spellID = C_Item.GetItemSpell(itemID)
+					scan.ranks[itemID] = spellID
+				end
 				answered = answered + 1
 				if answered == #pending then Finish() end
 			end)
@@ -506,7 +513,7 @@ local function WalkItems()
 			Say(voice.scanBadCount)
 			return
 		end
-		ns.db.devScan = { build = select(2, GetBuildInfo()), items = found, teaches = {},
+		ns.db.devScan = { build = select(2, GetBuildInfo()), items = found, teaches = {}, ranks = {},
 			timing = { walkMs = cpu, walkSeconds = GetTime() - started, walkedIDs = id } }
 		ReadTaught(ns.db.devScan)
 	end)
@@ -550,9 +557,8 @@ local perfWriter = CreateFrame("Frame")
 perfWriter:RegisterEvent("PLAYER_LOGOUT")
 perfWriter:SetScript("OnEvent", function()
 	-- Retired probes' data, so it does not stay in the saved file.
-	-- Retired probes' data, and the old item scan (its pairs ship in Data/Seed.lua; owner, 2026-11-25).
+	-- Retired probes' data.
 	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
-	ns.db.devScan = nil
 	local lines = PerfLines()
 	if #lines > 0 then
 		local version, build = GetBuildInfo()
@@ -792,6 +798,15 @@ table.insert(ns.commands, { action = "log", usage = "[all|clear]", description =
 			ShowLog(word == "all")
 		end
 	end })
+
+-- Blocked actions go to the saved log too, with the call stack, so they can be read after a reload.
+local blocked = CreateFrame("Frame")
+blocked:RegisterEvent("ADDON_ACTION_BLOCKED")
+blocked:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+blocked:SetScript("OnEvent", function(_, event, addon, action)
+	Append(("%s %s, %s"):format(event, tostring(addon), tostring(action)))
+	Append(debugstack(2, 12, 0))
+end)
 
 -- Saved variables load time: the client reads them after the addon's last file (this one) and before
 -- ADDON_LOADED, so the gap between the two is that read (plus any other addon's files in between).
