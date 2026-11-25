@@ -90,3 +90,7 @@ Measured on build 71091, 2026-11-25, one character, one run each (working build 
 | Facts cache dropped | 153 KB | 1.7 ms | 29.7 ms | 17.9 ms |
 
 Size costs little: about 1 ms per 66 KB at load. The recipe facts cache saves about 20 ms on a profession's first list build per game build, so it stays.
+
+## Rank books
+
+A rank book (Expert Fishing - The Bass and You, item 16083) is a recipe item whose item spell is the rank it teaches (`C_Item.GetItemSpell`: 19889, Expert Fishing); its recipe subclass names the profession, and "Requires Fishing (125)" and "Already known" come as tooltip data (build 71091, 2026-11-25). The books are sold by a few vendors spread across the world, not by trainers (owner, 2026-11-25), so they are recorded as vendor sources like any recipe item.
