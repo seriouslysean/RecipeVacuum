@@ -634,6 +634,27 @@ table.insert(troubleshooting, { "item", "Save an item's tooltip data to the log"
 	ns.db.devItems[itemID] = lines
 	ns.Log(("Saved %d tooltip lines for item %d. Reload to write them."):format(#lines - 1, itemID))
 end, quiet = true })
+-- Rank book test data, for this session only (not saved): the Expert book vendors from Wowhead's WoW Forever
+-- pages (npc and item pages read 2026-11-25), so the rank mark can be checked without visiting them.
+local MOCK_BOOK_VENDORS = {
+	-- item, npc, name, faction, uiMapID, x, y
+	{ 16072, 3955, "Shandrina", "Alliance", 1440, 0.494, 0.670 },
+	{ 16072, 12033, "Wulan", "Horde", 1443, 0.262, 0.698 },
+	{ 16084, 2805, "Deneb Walker", "Alliance", 1417, 0.270, 0.588 },
+	{ 16084, 13476, "Balai Lok'Wein", "Horde", 1445, 0.364, 0.304 },
+}
+table.insert(troubleshooting, { "mockbooks", "Add the Expert book vendors for this session, to test the rank mark", function()
+	local now = GetServerTime()
+	for _, row in ipairs(MOCK_BOOK_VENDORS) do
+		local itemID, npcID, name, faction, mapID, x, y = unpack(row)
+		ns.included.npcs[npcID] = { name = name, faction = faction, positions = { [mapID] = { x = x, y = y, seen = now } } }
+		ns.included.items[itemID] = ns.included.items[itemID] or {}
+		table.insert(ns.included.items[itemID], { kind = "vendor", npc = npcID, faction = faction, seen = now })
+	end
+	ns.SourcesChanged()
+	ns.Log("Expert book vendors added for this session. Reopen the profession window.")
+end, quiet = true })
+
 -- Facts cache test: drops the cache, so the next profession window builds its list cold without it.
 -- Compare that build's "list build, cold" with one after a plain reload (cache kept).
 table.insert(troubleshooting, { "nofacts", "Drop the recipe facts cache for a timing test", function()
