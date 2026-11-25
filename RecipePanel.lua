@@ -128,6 +128,19 @@ local function IsOtherFactionNPC(observation)
 	return npc and npc.faction ~= nil and npc.faction == OTHER_FACTION[UnitFactionGroup("player")]
 end
 
+-- One source's pin, or nil when it has no place this character can be sent to.
+function ns.SourceTarget(observation)
+	local mapID, x, y = ns.SourcePosition(observation)
+	if mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not IsOtherFactionNPC(observation) then
+		local name = ns.SourceInfo(observation)
+		local mapInfo = C_Map.GetMapInfo(mapID)
+		return {
+			label = ("%s (%s)"):format(name or UNKNOWN, ns.PlaceName(observation, mapInfo)), -- a drop names its subzone
+			mapID = mapID, x = x, y = y,
+		}
+	end
+end
+
 -- Mappable sources, each { label, mapID, x, y }.
 -- Drops follow their scope (docs/data.md, "Drops"): one creature is pinned where it was killed, a zone
 -- drop opens its zone, a world drop has no place to show.
@@ -139,15 +152,10 @@ local function MapTargets(recipeInfo)
 		table.insert(targets, { label = ns.DropPlaceName("map", scope.place.id), mapID = scope.place.id, zoneOnly = true })
 	end
 	for _, observation in ipairs(entries) do
-		local mapID, x, y = ns.SourcePosition(observation)
 		local pinned = observation.kind ~= "drop" or observation.fishing or (scope and scope.scope == "single")
-		if pinned and mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not IsOtherFactionNPC(observation) then
-			local name = ns.SourceInfo(observation)
-			local mapInfo = C_Map.GetMapInfo(mapID)
-			table.insert(targets, {
-				label = ("%s (%s)"):format(name or UNKNOWN, ns.PlaceName(observation, mapInfo)), -- a drop names its subzone
-				mapID = mapID, x = x, y = y,
-			})
+		local target = pinned and ns.SourceTarget(observation)
+		if target then
+			table.insert(targets, target)
 		end
 	end
 	-- The zone the player is in first, then by label.
@@ -161,7 +169,7 @@ local function MapTargets(recipeInfo)
 	return targets
 end
 
-local function ShowOnMap(target)
+function ns.ShowOnMap(target)
 	if target.zoneOnly then
 		if not InCombatLockdown() then
 			OpenWorldMap(target.mapID)
@@ -181,7 +189,7 @@ end
 local function OnMapClick(button)
 	local target = MapTargets(button.recipeInfo)[1]
 	if target then
-		ShowOnMap(target)
+		ns.ShowOnMap(target)
 	end
 end
 
@@ -194,7 +202,7 @@ local function MapMenu(dropdown, rootDescription)
 	if not dropdown.recipeInfo then return end
 	rootDescription:SetScrollMode(MAP_MENU_MAX_HEIGHT) -- Blizzard's own menu scrolling, past this height
 	for _, target in ipairs(MapTargets(dropdown.recipeInfo)) do
-		rootDescription:CreateButton(target.label, function() ShowOnMap(target) end)
+		rootDescription:CreateButton(target.label, function() ns.ShowOnMap(target) end)
 	end
 end
 

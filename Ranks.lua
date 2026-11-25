@@ -1,37 +1,46 @@
 local _, ns = ...
 
--- Profession ranks: a mark right of the profession window's link button, shown when the rank books of the
--- open profession are known. Its tooltip lists each rank, whether this character has it, and where its book
--- comes from (docs/data.md, "Rank books"). Not yet shown to players: the owner validates it first.
+-- Profession rank books: when the open profession's next rank comes from a book (Expert Fishing - The Bass
+-- and You), and a source of that book with a place is recorded, a mark right of the link button names it and
+-- pins it on the map (owner, 2026-11-25; docs/client-notes.md, "Rank books"). Trainer ranks are not covered yet.
 local MARK_SIZE = 20
 local MARK_GAP = 4 -- space after the link button
 
-local function Profession()
-	local info = ProfessionsFrame and ProfessionsFrame.CraftingPage.professionInfo
-	return info and info.profession, info and info.professionName
-end
-
-local function ShowRanks(mark)
-	local profession, name = Profession()
-	GameTooltip:SetOwner(mark, "ANCHOR_RIGHT")
-	GameTooltip_SetTitle(GameTooltip, ("%s: %s"):format(name or UNKNOWN, RANK))
+-- The first book of the profession this character has not learned, with its pins.
+local function NeededBook()
+	local info = ProfessionsFrame.CraftingPage.professionInfo
+	local profession = info and info.profession
+	if not profession then
+		return nil
+	end
 	for _, book in ipairs(ns.GetRankBooks(profession)) do
-		local known = C_SpellBook.IsSpellKnown(book.spell)
-		local rank = C_Spell.GetSpellName(book.spell) or UNKNOWN
-		GameTooltip_AddColoredLine(GameTooltip, rank, known and DISABLED_FONT_COLOR or HIGHLIGHT_FONT_COLOR)
-		if not known then
-			local entries = ns.GetItemSources(book.item)
-			if #entries > 0 then
-				ns.AddEntryLines(GameTooltip, entries)
-			else
-				GameTooltip_AddColoredLine(GameTooltip, ns.SOURCE_LABEL .. " " .. UNKNOWN, GRAY_FONT_COLOR)
+		if not C_SpellBook.IsSpellKnown(book.spell) then
+			local entries, targets = ns.GetItemSources(book.item), {}
+			for _, observation in ipairs(entries) do
+				local target = ns.SourceTarget(observation)
+				if target then
+					targets[#targets + 1] = target
+				end
 			end
+			return #targets > 0 and { book = book, entries = entries, targets = targets } or nil
 		end
 	end
-	GameTooltip:Show()
 end
 
 local mark
+
+local function OnEnter(button)
+	local needed = button.needed
+	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+	GameTooltip_SetTitle(GameTooltip, C_Spell.GetSpellName(needed.book.spell) or UNKNOWN)
+	ns.AddEntryLines(GameTooltip, needed.entries)
+	GameTooltip_AddInstructionLine(GameTooltip, SHOW_MAP)
+	GameTooltip:Show()
+end
+
+local function OnClick(button)
+	ns.ShowOnMap(button.needed.targets[1])
+end
 
 local function Update()
 	local page = ProfessionsFrame.CraftingPage
@@ -42,11 +51,12 @@ local function Update()
 		local icon = mark:CreateTexture(nil, "ARTWORK")
 		icon:SetAllPoints()
 		icon:SetAtlas(ns.sourceTypes.trainer.atlas) -- the same book as the trainer mark
-		mark:SetScript("OnEnter", ShowRanks)
+		mark:SetScript("OnEnter", OnEnter)
 		mark:SetScript("OnLeave", GameTooltip_Hide)
+		mark:SetScript("OnClick", OnClick)
 	end
-	local profession = Profession()
-	mark:SetShown(Professions.InLocalCraftingMode() and profession ~= nil and #ns.GetRankBooks(profession) > 0)
+	mark.needed = Professions.InLocalCraftingMode() and NeededBook() or nil
+	mark:SetShown(mark.needed ~= nil)
 end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
