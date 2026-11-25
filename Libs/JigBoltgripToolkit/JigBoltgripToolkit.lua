@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 17
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 18
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -72,10 +72,11 @@ local function DeviceName(module)
 	return InDeviceColor(module, module.title)
 end
 
--- A voiced line: the mark, "Boltgrip's", the device's name, then what it just did. action is the
--- rest of the sentence, e.g. "deploys a bobber!".
-function lib:Say(module, action)
-	AddLine(("%s %s %s %s"):format(MARK, PREFIX, DeviceName(module), action))
+-- A voiced line: the mark, "Boltgrip's", the device's name and the noise it makes, then its own report.
+-- noise is a short present-tense phrase with no end mark ("whirs and rattles"); the library adds the
+-- period. report is one or more robot-speak beats, each ending in "!" ("Intake complete! 2 recipes from X!").
+function lib:Say(module, noise, report)
+	AddLine(("%s %s %s %s. %s"):format(MARK, PREFIX, DeviceName(module), noise, report))
 end
 
 -- A plain line with the mark: an error's text, a development command's answer.

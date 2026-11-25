@@ -42,12 +42,12 @@ local defaults = {
 }
 
 -- Chat goes through the toolkit library, which owns the line's shape and colors (docs/voice.md).
--- ns.Say is a voiced line: "Boltgrip's Recipe Vacuum <action>". ns.Log is a plain one.
+-- ns.Say is a voiced line: "Boltgrip's Recipe Vacuum <noise>. <report>". ns.Log is a plain one.
 local toolkit = LibStub("JigBoltgripToolkit-1.0")
 ns.device = { title = ns.title, class = "DRUID" } -- the class whose color the Vacuum's name takes in chat
 
-function ns.Say(action)
-	toolkit:Say(ns.device, action)
+function ns.Say(noise, report)
+	toolkit:Say(ns.device, noise, report)
 end
 
 function ns.Log(text)

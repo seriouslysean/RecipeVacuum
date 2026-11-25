@@ -1,14 +1,12 @@
 # Voice
 
-The addon's chat lines say what the Vacuum just did: "Boltgrip's Recipe Vacuum sucks up 8 recipes from Stephen Ryback!" Every line is in `Voice.lua`; a new or changed line goes there, never inline in code. The rules and the delivery are the toolkit's, in the library repository's `docs/standards.md` ("Voice"); this page holds what is the Vacuum's own.
+The addon's one voiced line shows the Vacuum at work: "Boltgrip's Recipe Vacuum whirs and rattles. Intake complete! 8 recipes from Stephen Ryback!" Every line is in `Voice.lua`; a new or changed line goes there, never inline in code. The rules and the delivery are the toolkit's, in the library repository's `docs/standards.md` ("Voice"); this page holds what is the Vacuum's own.
 
 ## Rules
 
-1. One action per line, present tense, one exclamation mark. The library puts "Boltgrip's Recipe Vacuum" in front, so a line here is the rest of the sentence.
-2. The verb never repeats the device's name: "sucks up", not "vacuums".
-3. Facts stay exact: real counts, names and places. The announcement counts recipes recorded from that person on this visit, so it never says "new".
-4. A failure is the voiced line, then the error's text on a plain line.
-5. Development-only lines are plain, not voiced.
+1. The shape is the toolkit's: the noise, then the report (owner, 2026-11-25, of this line: "I like the 1 options above, can we apply that to all lines in both addons?").
+2. Facts stay exact: real counts, names and places. The announcement counts recipes recorded from that source on this visit, so it never says "new".
+3. Development lines (watch, log, scan, perf) are checkout-only and plain, not voiced.
 
 Settings labels and tooltips are not in this voice: they follow Blizzard's wording.
 

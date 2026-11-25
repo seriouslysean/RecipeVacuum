@@ -92,7 +92,6 @@ local logOnly
 
 -- A line from Voice.lua goes to chat through ns.Log and to the saved log with the same tag.
 local LOG_TAG = ns.title .. ": "
-local VOICED_TAG = "Boltgrip's " .. ns.title .. " "
 local voice = ns.voice
 
 local function Chat(line)
@@ -109,10 +108,10 @@ local function print(...)
 end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
--- A voiced line, logged as chat shows it.
-local function Voiced(action)
-	Append(VOICED_TAG .. action)
-	ns.Say(action)
+-- A development line: logged, and shown as a plain line in chat.
+local function Voiced(line)
+	Append(LOG_TAG .. line)
+	Chat(line)
 end
 
 -- A failure: the voiced line, then the error itself on a plain line so it stays exact.
@@ -761,7 +760,7 @@ table.insert(ns.commands, { action = "log", usage = "[all|clear]", description =
 		word = (word or ""):lower()
 		if word == "clear" then
 			ns.db.devLog, ns.db.devLogRun = {}, nil
-			ns.Say(voice.logPurged)
+			Chat(voice.logPurged)
 		else
 			viewStart = nil
 			ShowLog(word == "all")

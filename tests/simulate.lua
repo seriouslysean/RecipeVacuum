@@ -155,7 +155,7 @@ check("pending link noted", db.pendingItems[1000] ~= nil)
 -- Fails if the line loses the family's shape, the count, or who it came from.
 check("the announcement says what was taken in and from whom", messages[1] ~= nil
   and messages[1]:find("Boltgrip's", 1, true) ~= nil and messages[1]:find("Recipe Vacuum", 1, true) ~= nil
-  and messages[1]:find("sucks up 1 recipe from Murloc Lurker!", 1, true) ~= nil)
+  and messages[1]:find("whirs and rattles. Intake complete! 1 recipe from Murloc Lurker!", 1, true) ~= nil)
 
 -- 3. Quests: giver at detail, finisher at complete, choice flag kept
 target.questnpc, target.questnpcname = "Creature-0-1-1-1-4784-DDDD", "Argent Guard Manados"

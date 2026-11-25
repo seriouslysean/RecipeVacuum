@@ -2,16 +2,18 @@ local _, ns = ...
 
 -- Every line the Vacuum says; read docs/voice.md before adding one.
 ns.voice = {
-	-- Voiced lines: the library puts "Boltgrip's Recipe Vacuum" in front, so each is the rest of a sentence.
-	-- Arguments: count, "recipe" or "recipes", who or where.
-	intake = "sucks up %d %s from %s!",
-	watchOn = "switches on its recipe sensors!",
-	watchOff = "switches off its recipe sensors!",
+	-- The voiced line: the noise, then the report (the toolkit's docs/standards.md, "Voice"); the library
+	-- puts "Boltgrip's Recipe Vacuum" in front and the period after the noise.
+	-- Report arguments: count, "recipe" or "recipes", who or where.
+	intake = { noise = "whirs and rattles", report = "Intake complete! %d %s from %s!" },
+	-- Development lines (watch and log, checkout builds only): plain, not voiced.
+	watchOn = "Watch enabled! Logging recipe sources!",
+	watchOff = "Watch disabled!",
 	-- Arguments: count, "recipe" or "recipes".
-	detected = "detects %d %s!",
-	-- Argument: where. The error itself follows on a plain line.
-	malfunction = "malfunctions in %s!",
-	logPurged = "purges its log!",
+	detected = "%d %s detected!",
+	-- Argument: where. The error itself follows on its own line.
+	malfunction = "Malfunction in %s!",
+	logPurged = "Log purged!",
 	-- Window titles.
 	logTitle = "Log ready! Select all, then copy!",
 	exportTitle = "Export ready! Copy it and send it to the maintainer as a .json file!",
