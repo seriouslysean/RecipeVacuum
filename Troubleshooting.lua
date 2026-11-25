@@ -619,12 +619,12 @@ end
 
 
 local troubleshooting = {
-	{ "watch", "Log where recipes come from as you play", Watch, quiet = true, usage = "on|off" },
+	{ "watch", "Start or stop logging where recipes come from as you play", Watch, quiet = true, usage = "on|off" },
 }
 
 --@debug@
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
-table.insert(troubleshooting, { "perf", "Show timings", function()
+table.insert(troubleshooting, { "perf", "Show how long the profession window and its list took", function()
 	local function Ms(value)
 		return value and ("%.1f ms"):format(value) or voice.noSample
 	end
@@ -702,7 +702,7 @@ local madeFrame = CreateFrame("Frame")
 madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 madeFrame:SetScript("OnEvent", ScanMade)
 -- Sharing self-test for one account (Sharing.lua).
-table.insert(troubleshooting, { "sharetest", "Test sharing on your own", function()
+table.insert(troubleshooting, { "sharetest", "Test sharing without a second player", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
 	ns.ShareSelfTest(function(line)
 		table.insert(ns.db.devShareTest, line)
@@ -710,7 +710,7 @@ table.insert(troubleshooting, { "sharetest", "Test sharing on your own", functio
 	end)
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
-table.insert(troubleshooting, { "scan", "Match recipe items to the open profession", Scan, quiet = true })
+table.insert(troubleshooting, { "scan", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 --@end-debug@
 
 ns.commands = ns.commands or {}
@@ -723,7 +723,7 @@ for _, command in ipairs(troubleshooting) do
 			if logged then logged({ action = action, text = text }) else run(text) end
 		end })
 end
-table.insert(ns.commands, { action = "log", usage = "[all|clear]", description = "Show the log", troubleshooting = true,
+table.insert(ns.commands, { action = "log", usage = "[all|clear]", description = "Show the watch log; \"all\" shows everything kept, \"clear\" empties it", troubleshooting = true,
 	run = function(word)
 		word = (word or ""):lower()
 		if word == "clear" then

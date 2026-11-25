@@ -17,7 +17,7 @@ ns.commands = ns.commands or {}
 table.insert(ns.commands, 1, { action = "", description = "Open the options", run = function()
 	Settings.OpenToCategory(ns.module.category:GetID())
 end })
-table.insert(ns.commands, 2, { action = "export", description = "Copy your finds to send in", run = function()
+table.insert(ns.commands, 2, { action = "export", description = "Copy your recorded sources to send to the author", run = function()
 	ns.ExportFinds()
 end })
 
