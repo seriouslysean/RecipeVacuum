@@ -73,3 +73,8 @@ Recorded by the working build on low-level characters:
 - The row's lock and skill-up child buttons leave through the row's `OnLeave` method, not its script (`ProfessionsRecipeListRecipeMixin:OnLoad`), so a row's leave is hooked both ways. Seen in the hover trace: one method leave after a skill-up button enter.
 - Build 71091 changed this file only in the craftable-count callback and an early return in `OnEnter`; the checks pass against it.
 - Blizzard's row `OnEnter` method fires `EventRegistry` event `Professions.RecipeListOnEnter` with the row and its element data, from the row's script and from its child buttons (skill-up arrows, lock). Row hover is taken from that event.
+
+## Places
+
+- Subzones have IDs: `C_MapExplorationInfo.GetExploredAreaIDsAtPosition(mapID, position)` returned `{ 42 }` in Darkshire, and `C_Map.GetAreaInfo(42)` returned "Darkshire" (build 71091, 2026-11-25). Overlap, unexplored areas and dungeons are being measured by a capture in the working build (`RecipeVacuumDB.devAreas`).
+- The dungeon journal does not load on Forever: `C_EncounterJournal and EJ_GetNumTiers` is nil (owner, build 71091, 2026-11-25), so boss loot cannot be read from the client.

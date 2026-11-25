@@ -701,6 +701,50 @@ end
 local madeFrame = CreateFrame("Frame")
 madeFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 madeFrame:SetScript("OnEvent", ScanMade)
+-- Area capture; remove once it has answered: do several area IDs come back at one spot, and which is
+-- the subzone; do unexplored areas return anything; what does a dungeon report. One entry per zone or
+-- subzone change, to the saved file only.
+local AREA_LOG_LIMIT = 400
+local lastArea
+
+local function CaptureArea(event)
+	local mapID = C_Map.GetBestMapForUnit("player")
+	local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
+	local areas = position and C_MapExplorationInfo.GetExploredAreaIDsAtPosition(mapID, position) or {}
+	local named = {}
+	for _, areaID in ipairs(areas) do
+		named[#named + 1] = ("%d %s"):format(areaID, C_Map.GetAreaInfo(areaID) or "?")
+	end
+	local inInstance, instanceType = IsInInstance()
+	local instance = ""
+	if inInstance then
+		local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
+		instance = (" | instance %s %s %s"):format(instanceType, tostring(instanceID), name)
+	end
+	local entry = ("map %s %s | areas [%s] | zone %s | subzone %s | minimap %s%s"):format(tostring(mapID),
+		position and ("%.3f,%.3f"):format(position:GetXY()) or "no position", table.concat(named, "; "),
+		GetZoneText(), GetSubZoneText(), GetMinimapZoneText(), instance)
+	if entry:gsub("^map %S+ %S+ ", "") == lastArea then
+		return -- same place as the last entry, only moved
+	end
+	lastArea = entry:gsub("^map %S+ %S+ ", "")
+	local log = ns.db.devAreas or {}
+	ns.db.devAreas = log
+	log[#log + 1] = date("%H:%M:%S ") .. event .. " | " .. entry
+	if #log > AREA_LOG_LIMIT then
+		table.remove(log, 1)
+	end
+end
+
+local areaCapture = CreateFrame("Frame")
+for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" }) do
+	areaCapture:RegisterEvent(event)
+end
+areaCapture:SetScript("OnEvent", function(_, event)
+	if ns.db then
+		CaptureArea(event)
+	end
+end)
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Test sharing without a second player", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
