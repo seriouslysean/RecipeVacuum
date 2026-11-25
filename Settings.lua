@@ -2,21 +2,6 @@ local addonName, ns = ...
 
 local LEVEL = ns.LEVEL
 
--- The levels as cards, in the order the player reads them.
-local LEVEL_ICONS = {
-	[LEVEL.SELF] = "Interface\\Icons\\INV_Misc_Spyglass_03",
-	[LEVEL.FRIENDS] = "Interface\\Icons\\INV_Misc_GroupLooking",
-	[LEVEL.PUBLIC] = "Interface\\Icons\\Ability_Warrior_BattleShout",
-}
-
-local function LevelCards()
-	local cards = {}
-	for level = LEVEL.SELF, LEVEL.PUBLIC do
-		cards[#cards + 1] = { level, ns.levelNames[level], LEVEL_ICONS[level], ns.levelText[level] }
-	end
-	return cards
-end
-
 -- Player commands; Troubleshooting.lua adds diagnostics. One table drives the chat help and the Commands rows.
 ns.commands = ns.commands or {}
 table.insert(ns.commands, 1, { action = "", description = "Open the options", run = function()
@@ -33,8 +18,9 @@ function ns.InitSettings()
 	local module = toolkit:RegisterModule(addonName, ns.device.class)
 	ns.module = module
 	toolkit:BuildOptions(module, ns.db, {
-		{ heading = "Recipe Sources", rows = {
-			{ kind = "cards", key = "sourceLevel", label = "Recipe Sources", default = LEVEL.FRIENDS, values = LevelCards(),
+		{ heading = "Recipe Sources", place = "sources", rows = {
+			{ kind = "cards", key = "sourceLevel", label = "Recipe Sources", default = LEVEL.FRIENDS,
+				values = toolkit:SourceCards(ns.levelText),
 				onChange = function()
 					ns.SetSharing(ns.SharingWanted())
 					ns.SourcesChanged()
@@ -45,7 +31,7 @@ function ns.InitSettings()
 					.. "also use Recipe Vacuum. Nothing else is sent. Which of their finds you see is set by the cards above.",
 				onChange = function() ns.SetSharing(ns.SharingWanted()) end },
 		} },
-		{ heading = "Personal Finds", rows = {
+		{ heading = "Personal Finds", place = "features", rows = {
 			{ kind = "checkbox", key = "selfFound", label = "Record Personal Finds", default = true,
 				tooltip = "Remember recipe sources from the trainers, vendors, quests and loot you see, even on characters without that profession." },
 			{ kind = "checkbox", key = "announceNewFinds", label = "Announce New Finds", default = true, under = "selfFound",

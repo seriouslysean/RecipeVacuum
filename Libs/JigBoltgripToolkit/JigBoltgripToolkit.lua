@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 23
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 25
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -160,7 +160,7 @@ function lib:AddNote(layout, text)
 	return initializer
 end
 
--- Working builds. A module calls these from its own --@debug@ block, so a release never does; the library
+-- Working builds. A module calls these from its own debug-only block, so a release never does; the library
 -- file itself is the same in every build. One listener and one record serve every module.
 
 -- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
@@ -575,9 +575,49 @@ end
 
 local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
 
+-- Every module's page has one order (owner, 2026-11-25: "The order needs to be aligned between both addons"):
+-- the sources cards, then the module's own features, then sections Blizzard names (Key Binding, Combat,
+-- Sound) in Blizzard's order; the kit's Commands and Links follow (FinishModule). Each section says its place.
+local SECTION_PLACES = { sources = 1, features = 2, blizzard = 3 }
+
+local function OrderedSections(sections)
+	local ordered = {}
+	for index, section in ipairs(sections) do
+		local rank = assert(SECTION_PLACES[section.place], ("section %q needs a place: sources, features or blizzard"):format(
+			tostring(section.heading)))
+		ordered[#ordered + 1] = { section = section, rank = rank, index = index }
+	end
+	table.sort(ordered, function(left, right)
+		if left.rank ~= right.rank then return left.rank < right.rank end
+		return left.index < right.index
+	end)
+	for index, entry in ipairs(ordered) do ordered[index] = entry.section end
+	return ordered
+end
+
+-- Sources cards, the same in every module: the levels, names, icons and range openings are the kit's; the
+-- module gives the sentence after each opening (what that range tracks for it).
+lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
+local SOURCE_CARDS = {
+	{ name = "Self Found", icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = "Short range." },
+	{ name = "Friends", icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range." },
+	{ name = "Public", icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = "Long range." },
+}
+
+-- texts = { [level] = "Tracks only what you see for yourself." }; a level without text is left out.
+function lib:SourceCards(texts)
+	local cards = {}
+	for level, card in ipairs(SOURCE_CARDS) do
+		if texts[level] then
+			cards[#cards + 1] = { level, card.name, card.icon, card.opening .. " " .. texts[level] }
+		end
+	end
+	return cards
+end
+
 function lib:BuildOptions(module, db, sections)
 	local category, layout, settings, rows = module.category, module.layout, {}, {}
-	for _, section in ipairs(sections) do
+	for _, section in ipairs(OrderedSections(sections)) do
 		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(section.heading))
 		for _, row in ipairs(section.rows) do
 			local setting, initializer, showChoice

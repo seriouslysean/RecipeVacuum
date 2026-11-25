@@ -10,13 +10,13 @@ ns.BUILD = tonumber((select(2, GetBuildInfo())))
 ns.MAX_WIRE_NUMBER = 2^32
 
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
-ns.LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
-ns.levelNames = { "Self Found", "Friends", "Public" }
--- Player-facing wording for each level (docs/voice.md, "Plain text"): the options cards and the help tip.
+-- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
+ns.LEVEL = LibStub("JigBoltgripToolkit-1.0").SOURCE_LEVEL
+-- What each range tracks here, after the toolkit's opening (docs/voice.md, "Plain text").
 ns.levelText = {
-	"Short range. Tracks only what you see for yourself.",
-	"Medium range. Also tracks what your party, guild and friends find.",
-	"Long range. Also tracks recipes people link in chat.",
+	"Tracks only what you see for yourself.",
+	"Also tracks what your party, guild and friends find.",
+	"Also tracks recipes people link in chat.",
 }
 ns.levelHeard = { "only you", "you and your friends", "everyone nearby" }
 
