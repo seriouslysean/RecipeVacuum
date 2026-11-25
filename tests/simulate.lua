@@ -297,9 +297,9 @@ do
   check("a dungeon drop keeps the dungeon, not the subzone", d.db.found.items[2000][4].instance == 36 and d.db.found.items[2000][4].area == nil)
   local world = d.DropScope({ { kind = "drop", npc = 1, map = 1 }, { kind = "drop", npc = 2, map = 2 }, { kind = "drop", npc = 3, map = 3 } })
   check("three zones is a world drop", world.scope == "world" and world.places == 3)
-  local rows = d.FindsSince(0, math.huge)
+  local sent = d.FindsSince(0, math.huge)
   local wired
-  for _, row in ipairs(rows) do if row.i == 2000 and row.n == 900 and row.a == 41 then wired = row end end
+  for _, row in ipairs(sent) do if row.i == 2000 and row.n == 900 and row.a == 41 then wired = row end end
   check("a shared drop carries its subzone, its own spot and its count", wired and wired.cn == 2 and wired.x == 0.5 and wired.m == 1429)
   place.area, place.instance = 40, nil
 end
