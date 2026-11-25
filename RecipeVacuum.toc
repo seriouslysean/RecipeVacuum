@@ -13,7 +13,6 @@ Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
 Libs\AceComm-3.0\ChatThrottleLib.lua
 Libs\AceComm-3.0\AceComm-3.0.lua
 Libs\JigBoltgripToolkit\JigBoltgripToolkit.lua
-Libs\JigBoltgripToolkit\JigBoltgripToolkit.xml
 
 Data\Seed.lua
 Data\Included.lua

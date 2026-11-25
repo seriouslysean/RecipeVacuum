@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 16
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 17
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -114,14 +114,26 @@ function lib:RegisterModule(addonName, class)
 	return module
 end
 
+-- Custom options rows (notes, cards) are built in Lua on Blizzard's BackdropTemplate, which the options
+-- list never uses itself, so they pool apart from Blizzard's rows. No XML of our own: a named template
+-- in an embedded library is defined once per addon that embeds it, and the second definition warns.
+local ROW_TEMPLATE = "BackdropTemplate"
+local NOTE_LEFT = 37 -- where Blizzard's row labels start (SettingsAddOnDisabledLabelTemplate)
+
+-- Shows one kind of custom row on a pooled frame and hides the other.
+local function UseRow(frame, kind)
+	if frame.Note then frame.Note:SetShown(kind == "note") end
+	for _, card in ipairs(frame.cards or {}) do card:SetShown(kind == "cards") end
+end
+
 -- A note under an options row: gray, wrapped, in plain words, for what a hover tooltip alone would hide.
--- The template is in JigBoltgripToolkit.xml; the row's height is measured from the text.
+-- The row's height is measured from the text.
 local NOTE_WIDTH = 520    -- room for a note beside the options list's left margin
 local NOTE_GAP = 8        -- space below a note, before the next row
 local measure
 
 function lib:AddNote(layout, text)
-	local initializer = Settings.CreateElementInitializer("JigBoltgripToolkitNoteTemplate", { text = text })
+	local initializer = Settings.CreateElementInitializer(ROW_TEMPLATE, { text = text })
 	initializer.GetExtent = function()
 		if not measure then
 			measure = UIParent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -132,9 +144,16 @@ function lib:AddNote(layout, text)
 		return math.ceil(measure:GetStringHeight()) + NOTE_GAP
 	end
 	initializer.InitFrame = function(_, frame)
-		frame.Text:SetWidth(NOTE_WIDTH)
-		frame.Text:SetText(text)
-		frame.Text:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+		if not frame.Note then
+			frame.Note = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			frame.Note:SetPoint("TOPLEFT", NOTE_LEFT, 0)
+			frame.Note:SetJustifyH("LEFT")
+			frame.Note:SetJustifyV("TOP")
+		end
+		UseRow(frame, "note")
+		frame.Note:SetWidth(NOTE_WIDTH)
+		frame.Note:SetText(text)
+		frame.Note:SetTextColor(GRAY_FONT_COLOR:GetRGB())
 	end
 	layout:AddInitializer(initializer)
 	return initializer
@@ -152,9 +171,9 @@ end
 --   { kind = "keybinding", binding = the Bindings.xml name }
 -- Saved values live in db[key]; the setting is named "<addon>_<key>". Returns the settings by key.
 
--- Cards: a choice shown as a row of cards, laid out like the game's ruleset choice. The template in
--- JigBoltgripToolkit.xml gives the row its height.
+-- Cards: a choice shown as a row of cards, laid out like the game's ruleset choice.
 local CARD_WIDTH, CARD_HEIGHT, CARD_GAP = 184, 198, 12
+local CARDS_ROW_HEIGHT = 214 -- the cards plus the space below them
 local CARD_LEFT = 37 -- where Blizzard's own controls start
 local CARD_TITLE_TOP, CARD_ICON_TOP, CARD_ICON_SIZE = -14, -40, 48
 local CARD_TEXT_TOP, CARD_TEXT_INSET = -100, 12
@@ -210,15 +229,24 @@ local function ShowChoice(frame, value)
 end
 
 local function AddCards(layout, setting, values)
-	local initializer = Settings.CreateElementInitializer("JigBoltgripToolkitCardsTemplate", {})
+	local initializer = Settings.CreateElementInitializer(ROW_TEMPLATE, {})
 	local shown -- the list's frame for this row while it is on screen
+	initializer.GetExtent = function()
+		return CARDS_ROW_HEIGHT
+	end
 	initializer.InitFrame = function(_, frame)
+		-- A pooled frame may already hold another card row's cards; they are made for this one.
+		if frame.cardValues ~= values then
+			for _, card in ipairs(frame.cards or {}) do card:Hide() end
+			frame.cards, frame.cardValues = nil, values
+		end
 		if not frame.cards then
 			frame.cards = {}
 			for index, choice in ipairs(values) do
 				frame.cards[index] = CreateCard(frame, index, choice, setting)
 			end
 		end
+		UseRow(frame, "cards")
 		shown = frame
 		ShowChoice(frame, setting:GetValue())
 	end
