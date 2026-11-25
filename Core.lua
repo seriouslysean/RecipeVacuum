@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 8
+local SCHEMA = 9
 
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
@@ -28,6 +28,7 @@ end
 local defaults = {
 	showUnlearned = true, -- Blizzard default; Forever turns it off
 	sourceLevel = ns.LEVEL.FRIENDS,
+	shareFinds = true, -- send own finds to party, guild and friends; separate from what the level shows
 	met = { recipes = {}, items = {} }, -- come across without a source: [recipeID or recipe itemID] = ns.LEVEL
 	sourceFilter = {},     -- [sourceType or "unknown"] = true or false once set in the Sources filter (ns.IsSourceShown)
 	showUnavailable = true,
@@ -176,6 +177,11 @@ end
 migrations[8] = function(db)
 	db.sourceLevel = db.shareWithFriends == false and ns.LEVEL.SELF or ns.LEVEL.FRIENDS
 	db.shareWithFriends = nil
+end
+
+-- Schema 9 splits sending from the level: Self Found used to stop sending, so it keeps that choice.
+migrations[9] = function(db)
+	db.shareFinds = db.sourceLevel ~= ns.LEVEL.SELF
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()

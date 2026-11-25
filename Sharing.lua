@@ -73,9 +73,20 @@ failures:SetScript("OnEvent", function(_, _, message)
 	end
 end)
 
+-- Sending and receiving are separate choices: Share My Finds sends, the level decides whether friends'
+-- finds are taken in. The connection is up while either is on.
+function ns.SharingWanted()
+	return ns.db.shareFinds or ns.db.sourceLevel >= ns.LEVEL.FRIENDS
+end
+
+local function Receiving()
+	return ns.db.sourceLevel >= ns.LEVEL.FRIENDS
+end
+
+-- A player who does not share offers revision 0, so no one asks for their finds.
 local function Offer(kind)
 	local exchange = ns.db.exchange
-	return ("%s %s %d"):format(kind, exchange.id, exchange.revision)
+	return ("%s %s %d"):format(kind, exchange.id, ns.db.shareFinds and exchange.revision or 0)
 end
 
 local function IsGroupMember(name)
@@ -254,7 +265,9 @@ local function OnProbe(_, message, channel, sender)
 	elseif kind ~= KIND.OFFER then
 		return
 	end
-	QueuePeer(sender, id, revision)
+	if Receiving() then
+		QueuePeer(sender, id, revision)
+	end
 end
 
 local function OnData(_, message, channel, sender)
@@ -263,10 +276,10 @@ local function OnData(_, message, channel, sender)
 	local kind, id, after, rest = ParseHeader(message)
 	local exchange = ns.db.exchange
 	if kind == KIND.GET then
-		if rest ~= "" or id ~= exchange.id or after >= exchange.revision then return end
+		if not ns.db.shareFinds or rest ~= "" or id ~= exchange.id or after >= exchange.revision then return end
 		local reply = Reply(after)
 		if reply then SendData(reply, sender) end
-	elseif kind == KIND.DATA then
+	elseif kind == KIND.DATA and Receiving() then
 		-- Accept only the reply to our own request.
 		local peer = active
 		if not peer or peer.sender ~= sender or peer.id ~= id or peer.after ~= after then return end
@@ -423,7 +436,7 @@ frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 frame:SetScript("OnEvent", function(_, event, index)
 	if event == "PLAYER_ENTERING_WORLD" and not inWorld then
 		inWorld = true
-		if ns.db.sourceLevel >= ns.LEVEL.FRIENDS then ns.SetSharing(true) end
+		if ns.SharingWanted() then ns.SetSharing(true) end
 		return
 	end
 	if not enabled then return end

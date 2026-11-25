@@ -70,11 +70,11 @@ The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core
 
 | Level | Shows | Sends |
 |---|---|---|
-| Self Found (1) | The player's own finds | Nothing |
-| Friends (2), the default | Also the shared layer, and what party, raid, guild and whispers bring | The player's finds, to guild, group and friends |
-| Public (3) | Also what public chat brings | Same as Friends |
+| Self Found (1) | The player's own finds | What Share My Finds sends |
+| Friends (2), the default | Also the shared layer, and what party, raid, guild and whispers bring | What Share My Finds sends |
+| Public (3) | Also what public chat brings | What Share My Finds sends |
 
-Everything is recorded at every level, tagged with the level it arrived at; the choice only decides what is shown and whether finds are sent. The first-run question (`Heard.lua`) and the options page set the same setting.
+Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The first-run question (`Heard.lua`) and the options page set the same setting.
 
 ## Come across
 
@@ -128,3 +128,4 @@ Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), tha
 | 6 | Recipe item links are made again from the ID in the item's tooltip data |
 | 7 | The Full Color Source Icons option is removed |
 | 8 | The two source modes become three levels (`sourceLevel`); an earlier Self Found choice is kept |
+| 9 | Sending becomes its own option (`shareFinds`), off for anyone at Self Found |

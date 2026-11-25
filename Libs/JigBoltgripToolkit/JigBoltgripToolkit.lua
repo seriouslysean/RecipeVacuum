@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 13
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 14
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -43,6 +43,9 @@ end
 -- Chat. Everything a toolkit addon prints goes through lib:Say, lib:Print or lib:PrintBlock, so the
 -- family reads as one (docs/standards.md, "Voice").
 local MARK = "|TInterface\\WorldMap\\GEAR_64GREY:0|t" -- the world map's gear, at the line's height
+-- A blank the gear's size (Blizzard's inline spacer), so rows under a marked line start where its text
+-- does, as a tooltip's lines sit under its heading.
+local ALIGN = "|TInterface\\Common\\spacer:0|t "
 local PREFIX = "Boltgrip's"
 -- The family's own line color: a teal that matches none of the game's chat colors.
 local LINE_COLOR = { r = 0x5B / 255, g = 0xD9 / 255, b = 0xDE / 255 }
@@ -80,12 +83,11 @@ function lib:Print(text)
 	AddLine(MARK .. " " .. text)
 end
 
--- Several lines that belong together: the header carries the mark, the rows follow it without one.
--- No indent, as Blizzard's own chat help (CHAT_HELP_TEXT_LINE*): a wrapped row starts at the margin anyway.
+-- Several lines that belong together: the header carries the mark, the rows sit under its text.
 function lib:PrintBlock(header, rows)
 	self:Print(header)
 	for _, row in ipairs(rows) do
-		AddLine(row)
+		AddLine(ALIGN .. row)
 	end
 end
 
@@ -112,6 +114,32 @@ function lib:RegisterModule(addonName, class)
 	return module
 end
 
+-- A note under an options row: gray, wrapped, in plain words, for what a hover tooltip alone would hide.
+-- The template is in JigBoltgripToolkit.xml; the row's height is measured from the text.
+local NOTE_WIDTH = 520    -- room for a note beside the options list's left margin
+local NOTE_GAP = 8        -- space below a note, before the next row
+local measure
+
+function lib:AddNote(layout, text)
+	local initializer = Settings.CreateElementInitializer("JigBoltgripToolkitNoteTemplate", { text = text })
+	initializer.GetExtent = function()
+		if not measure then
+			measure = UIParent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+			measure:Hide()
+		end
+		measure:SetWidth(NOTE_WIDTH)
+		measure:SetText(text)
+		return math.ceil(measure:GetStringHeight()) + NOTE_GAP
+	end
+	initializer.InitFrame = function(_, frame)
+		frame.Text:SetWidth(NOTE_WIDTH)
+		frame.Text:SetText(text)
+		frame.Text:SetTextColor(GRAY_FONT_COLOR:GetRGB())
+	end
+	layout:AddInitializer(initializer)
+	return initializer
+end
+
 -- Closing sections every module page shares: commands and links.
 function lib:FinishModule(module)
 	local command = self.commands[module.command or ""]
@@ -128,6 +156,8 @@ function lib:FinishModule(module)
 			for _, entry in ipairs(rows) do
 				module.layout:AddInitializer(CreateSettingsButtonInitializer(
 					"/" .. command.name .. " " .. entry.action, "Run", entry.run, entry.description, false))
+				-- entry.note says what the command does in a sentence or two; the description is the short form.
+				self:AddNote(module.layout, entry.note or entry.description)
 			end
 		end
 	end
@@ -194,9 +224,7 @@ end
 lib.commands = lib.commands or {}
 
 -- Rows in Blizzard's own help shape, "/command <arguments> - What it does", with the command in the
--- device's color and indented under its section. help itself is not listed. The chat frame indents
--- a wrapped line on its own.
-local HELP_INDENT = "  "
+-- device's color. help itself is not listed. The chat frame indents a wrapped line on its own.
 
 local function AddEntries(rows, command, troubleshooting)
 	local any = false
@@ -208,7 +236,7 @@ local function AddEntries(rows, command, troubleshooting)
 			any = true
 			local slash = "/" .. command.name .. (entry.action ~= "" and " " .. entry.action or "")
 				.. (entry.usage and " " .. entry.usage or "")
-			table.insert(rows, ("%s%s - %s"):format(HELP_INDENT, InDeviceColor(command.module, slash), entry.description))
+			table.insert(rows, ("%s - %s"):format(InDeviceColor(command.module, slash), entry.description))
 		end
 	end
 end
@@ -252,7 +280,8 @@ function lib:RegisterCommands(module, name, entries)
 		hasHelp = hasHelp or entry.action == "help"
 	end
 	if not hasHelp then
-		table.insert(entries, { action = "help", description = "List these commands", run = function()
+		table.insert(entries, { action = "help", description = "List these commands",
+			note = "Prints this addon's commands in your chat window, with what each one does.", run = function()
 			lib:PrintHelp(name)
 		end })
 	end

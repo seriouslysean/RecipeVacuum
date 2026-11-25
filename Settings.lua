@@ -17,7 +17,8 @@ ns.commands = ns.commands or {}
 table.insert(ns.commands, 1, { action = "", description = "Open the options", run = function()
 	Settings.OpenToCategory(ns.module.category:GetID())
 end })
-table.insert(ns.commands, 2, { action = "export", description = "Copy your recorded sources to send to the author", run = function()
+table.insert(ns.commands, 2, { action = "export", description = "Copy your recorded sources to send to the author",
+	note = "Opens a window with everything you have recorded yourself, as text, ready to copy and send to the author.", run = function()
 	ns.ExportFinds()
 end })
 
@@ -34,9 +35,14 @@ function ns.InitSettings()
 	local showChoice = ns.AddLevelCards(layout, level)
 	level:SetValueChangedCallback(function(_, value)
 		showChoice(value)
-		ns.SetSharing(value >= LEVEL.FRIENDS)
+		ns.SetSharing(ns.SharingWanted())
 		ns.SourcesChanged()
 	end)
+	Checkbox(category, "shareFinds", "Share My Finds",
+		"Send what you find to party, guild and friends who use Recipe Vacuum.", true,
+		function() ns.SetSharing(ns.SharingWanted()) end)
+	toolkit:AddNote(layout, "Sends the trainers, vendors, quests and drops you find to your party, guild and friends who "
+		.. "also use Recipe Vacuum. Nothing else is sent. Which of their finds you see is set by the cards above.")
 
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Personal Finds"))
 	local record, recordSetting = Checkbox(category, "selfFound", "Record Personal Finds",

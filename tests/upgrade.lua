@@ -34,7 +34,7 @@ local db = ns.db
 local failed = false
 local function check(label, ok) print((ok and "PASS " or "FAIL ") .. label); failed = failed or not ok end
 
-check("schema is current, old tables gone", db.schema == 8 and db.sources == nil and db.found.trainerNames == nil)
+check("schema is current, old tables gone", db.schema == 9 and db.sources == nil and db.found.trainerNames == nil)
 local itemsKept = next(oldItems) ~= nil
 for itemID in pairs(oldItems) do
 	itemsKept = itemsKept and (db.found.items[itemID] or db.shared.items[itemID]) ~= nil
