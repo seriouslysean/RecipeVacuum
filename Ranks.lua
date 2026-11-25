@@ -38,64 +38,107 @@ local function RankSources(skillLine, fromCap)
 	return sources
 end
 
--- Called by the trainer scan (Record.lua); true when the trainer offers a next rank.
+-- A profession's own skill line. The game can report a child line with its parent third
+-- (GetTradeSkillLineForRecipe for Journeyman Mining gave 2946, "Mining", 186 on build 71091), and caps and
+-- the profession window use the parent.
+local function ProfessionLine(line, _, parent)
+	return parent and parent > 0 and parent or line
+end
+
+-- Called by the trainer scan (Record.lua); true when the trainer offers a rank this character lacks.
+-- The skill step is Blizzard's next-rank row (Blizzard_TrainerUI.lua); a "used" step is one already known,
+-- which a trainer the character has outgrown still shows.
 function ns.NoteTrainerRank(npcID)
 	local step = GetTrainerServiceStepIndex()
-	local tooltip = step and C_TooltipInfo.GetTrainerService(step)
+	if not step then
+		return false
+	end
+	local _, serviceType = GetTrainerServiceInfo(step)
+	if serviceType == "used" or serviceType == "header" then
+		return false
+	end
+	local tooltip = C_TooltipInfo.GetTrainerService(step)
 	local spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
-	local skillLine = spellID and C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)
+	local skillLine = spellID and ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID))
 	if not skillLine then
 		return false
 	end
+	-- A profession the character lacks has no cap: its next rank is the first, from 0.
 	local sources = RankSources(skillLine, Caps()[skillLine] or 0)
 	sources.npcs[npcID] = GetServerTime()
 	sources.spell = spellID -- the trainer's rank spell, for its name in the tooltip
 	return true
 end
 
--- The last book used and quest turned in, so a cap rise right after can be credited to it.
-local lastCause, knownCaps
+-- A cap rise is credited to a book or a quest only when it is unambiguous: one profession's cap rose,
+-- exactly one cause is recent, and no trainer window is open (a rank bought there is the trainer's).
+-- Anything else is left unrecorded rather than guessed.
+local recentBook, recentQuest, knownCaps, atTrainer
 hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
+	-- Read straight after the call; the server removes a used book later, with BAG_UPDATE.
 	local itemID = C_Container.GetContainerItemID(bag, slot)
-	if itemID and ns.IsRecipeItem(itemID) then
-		lastCause = { item = itemID, at = GetTime() }
+	-- A recipe item that teaches a recipe never raises a cap; only one that teaches none can.
+	if itemID and ns.IsRecipeItem(itemID) and not ns.GetTaughtRecipe(itemID) then
+		recentBook = { item = itemID, at = GetTime() }
 	end
 end)
 
-local questGiver -- the NPC at the quest's completion window
+local completing -- the quest and NPC at the open completion window
 local watcher = CreateFrame("Frame")
-watcher:RegisterEvent("PLAYER_LOGIN")
-watcher:RegisterEvent("QUEST_COMPLETE")
-watcher:RegisterEvent("QUEST_TURNED_IN")
-watcher:RegisterEvent("SKILL_LINES_CHANGED")
+for _, event in ipairs({ "PLAYER_LOGIN", "QUEST_COMPLETE", "QUEST_TURNED_IN", "SKILL_LINES_CHANGED",
+	"TRAINER_SHOW", "TRAINER_CLOSED" }) do
+	watcher:RegisterEvent(event)
+end
+
+local function Recent(cause)
+	return cause and GetTime() - cause.at <= CAUSE_SECONDS and cause or nil
+end
+
+local function CreditRise(skillLine, before)
+	local book, quest = Recent(recentBook), Recent(recentQuest)
+	recentBook, recentQuest = nil, nil
+	if atTrainer or (book and quest) or not (book or quest) or not ns.db.selfFound then
+		return
+	end
+	local sources = RankSources(skillLine, before)
+	if book then
+		sources.items[book.item] = GetServerTime()
+	elseif quest.giver then
+		local giver = quest.giver
+		ns.NoteNPC(ns.db.npcs, giver[1], giver[2], giver[3], giver[4], giver[5], GetServerTime())
+		ns.NoteNPCFaction(giver[1], giver.faction)
+		sources.quests[quest.quest] = giver[1]
+	end
+end
+
 watcher:SetScript("OnEvent", function(_, event, questID)
 	if event == "PLAYER_LOGIN" then
 		knownCaps = Caps()
+	elseif event == "TRAINER_SHOW" or event == "TRAINER_CLOSED" then
+		atTrainer = event == "TRAINER_SHOW"
 	elseif event == "QUEST_COMPLETE" then
 		local guid = UnitGUID("questnpc")
 		local unitType, _, _, _, _, npcID = strsplit("-", guid and not issecretvalue(guid) and guid or "")
 		local mapID, x, y = ns.GetPlayerLocation()
-		questGiver = unitType == "Creature" and { tonumber(npcID), UnitName("questnpc"), mapID, x, y,
-			faction = (UnitFactionGroup("questnpc")) } or nil
+		completing = unitType == "Creature" and { quest = GetQuestID(), giver = { tonumber(npcID),
+			UnitName("questnpc"), mapID, x, y, faction = (UnitFactionGroup("questnpc")) } } or nil
 	elseif event == "QUEST_TURNED_IN" then
-		lastCause = { quest = questID, giver = questGiver, at = GetTime() }
+		-- The giver counts only for the quest whose completion window it was.
+		local giver = completing and completing.quest == questID and completing.giver or nil
+		recentQuest, completing = { quest = questID, giver = giver, at = GetTime() }, nil
 	elseif event == "SKILL_LINES_CHANGED" and knownCaps and ns.db then
-		local caps = Caps()
-		local recent = lastCause and GetTime() - lastCause.at <= CAUSE_SECONDS
+		-- Every rise first, then credit: two at once are ambiguous.
+		local caps, rises, line, from = Caps(), 0, nil, nil
 		for skillLine, cap in pairs(caps) do
-			local before = knownCaps[skillLine]
-			if recent and before and cap > before and ns.db.selfFound then
-				local sources = RankSources(skillLine, before)
-				if lastCause.item then
-					sources.items[lastCause.item] = GetServerTime()
-				elseif lastCause.giver then
-					local giver = lastCause.giver
-					ns.NoteNPC(ns.db.npcs, giver[1], giver[2], giver[3], giver[4], giver[5], GetServerTime())
-					ns.NoteNPCFaction(giver[1], giver.faction)
-					sources.quests[lastCause.quest] = giver[1]
-				end
-				lastCause = nil
+			local before = knownCaps[skillLine] or 0 -- a profession just learned rose from 0
+			if cap > before then
+				rises, line, from = rises + 1, skillLine, before
 			end
+		end
+		if rises == 1 then
+			CreditRise(line, from)
+		elseif rises > 1 then
+			recentBook, recentQuest = nil, nil
 		end
 		knownCaps = caps
 	end
@@ -104,7 +147,7 @@ end)
 -- The open profession's next rank: its usable recorded sources and their pins, or nil when none has a place.
 local function NextRank()
 	local info = ProfessionsFrame.CraftingPage.professionInfo
-	local skillLine = info and info.professionID
+	local skillLine = info and ProfessionLine(info.professionID, nil, info.parentProfessionID)
 	local byLine = skillLine and ns.db.ranks[skillLine]
 	local sources = byLine and byLine[Caps()[skillLine] or 0]
 	if not sources then

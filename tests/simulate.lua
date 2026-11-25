@@ -104,7 +104,7 @@ local beforeRecipes, beforeItems = count(before.found)
 local beforeRevision = before.exchange.revision
 local a = boot(savedFile)
 local db = a.db
-check("schema is 9", db.schema == 9)
+check("schema is 10", db.schema == 10)
 check("trainerNames dropped", db.found.trainerNames == nil and db.shared.trainerNames == nil)
 -- Fails if the upgrade keeps NPCs no source names, or drops one a source does name.
 local named, strays, missing = {}, 0, 0
@@ -172,13 +172,20 @@ fire("QUEST_DETAIL")
 check("quest NPCs are saved only with a recipe reward", db.npcs[4784] ~= nil and db.npcs[1444] ~= nil and db.npcs[9999] == nil)
 
 -- 3c. Profession ranks (Ranks.lua). Fails if a book used just before a cap rise is not kept as the source of
--- that profession's rank from its old cap, or if a rise long after a use is credited to it.
+-- that profession's rank from its old cap; if a rise long after a use, or two rises at once, are credited
+-- (two at once raised a Lua error before); or if a trainer's already-known step or a child skill line is
+-- recorded (Astra review, 2026-11-25).
 do
-  local hooks, caps = {}, { [185] = 150 }
+  local hooks, caps = {}, { [185] = 150, [186] = 75 }
   hooksecurefunc = function(t, name, fn) hooks[name] = fn end
   C_Container = { GetContainerItemID = function() return 2000 end }
-  GetProfessions = function() return nil, nil, nil, nil, 5 end
-  GetProfessionInfo = function() return "Cooking", 0, 150, caps[185], 0, 0, 185 end
+  GetProfessions = function() return nil, nil, nil, 1, 2 end
+  GetProfessionInfo = function(index)
+    if index == 1 then return "Mining", 0, 1, caps[186], 0, 0, 186 end
+    return "Cooking", 0, 150, caps[185], 0, 0, 185
+  end
+  local taught = a.GetTaughtRecipe
+  a.GetTaughtRecipe = function() return false end -- item 2000 stands in for a book: it teaches no recipe
   local framesBefore = #frames
   load("Ranks.lua", a)
   local rankFrame = frames[framesBefore + 1]
@@ -193,6 +200,28 @@ do
   caps[185] = 300
   rankFrame.script(rankFrame, "SKILL_LINES_CHANGED")
   check("a cap rise long after a use is not credited to it", db.ranks[185][225] == nil)
+  hooks.UseContainerItem(0, 1)
+  caps[185], caps[186] = 375, 150
+  local ok = pcall(rankFrame.script, rankFrame, "SKILL_LINES_CHANGED")
+  check("two caps rising at once are credited to nothing, without an error", ok and db.ranks[185][300] == nil
+    and (db.ranks[186] == nil or db.ranks[186][75] == nil))
+  a.GetTaughtRecipe = taught
+  -- Trainer steps: Bronk Guzzlegear's "used" Apprentice Engineer, Yarr Hammerstone's Journeyman Mining under 2946.
+  C_TooltipInfo = C_TooltipInfo or {}
+  Enum.TooltipDataType = Enum.TooltipDataType or { Spell = 1 }
+  local stepType, stepSpell = "used", 4036
+  GetTrainerServiceStepIndex = function() return 1 end
+  GetTrainerServiceInfo = function() return "rank", stepType end
+  C_TooltipInfo.GetTrainerService = function() return { type = Enum.TooltipDataType.Spell, id = stepSpell } end
+  C_TradeSkillUI.GetTradeSkillLineForRecipe = function(spell)
+    if spell == 2576 then return 2946, "Mining", 186 end
+    return 202, "Engineering", nil
+  end
+  check("a trainer's already-known step is not recorded", a.NoteTrainerRank(1702) == false)
+  stepType, stepSpell = "unavailable", 2576
+  check("a rank under a child skill line is kept under its profession, at the character's cap",
+    a.NoteTrainerRank(5392) and db.ranks[186] and db.ranks[186][150] and db.ranks[186][150].npcs[5392] ~= nil
+    and db.ranks[2946] == nil)
 end
 
 -- 3b. Group rolls: a recipe someone else looted is kept by zone; one the player looted adds nothing.
@@ -489,6 +518,6 @@ RecipeVacuumDB = savedDB; loaded = {}
 local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-check("reload keeps schema and revision", c.db.schema == 9 and c.db.exchange.revision == savedDB.exchange.revision)
+check("reload keeps schema and revision", c.db.schema == 10 and c.db.exchange.revision == savedDB.exchange.revision)
 print(FAILED and "SOME CHECKS FAILED" or "ALL CHECKS PASSED")
 os.exit(FAILED and 1 or 0)

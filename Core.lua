@@ -1,7 +1,7 @@
 local addonName, ns = ...
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 9
+local SCHEMA = 10
 
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
@@ -180,6 +180,19 @@ end
 -- Schema 9 splits sending from the level: Self Found used to stop sending, so it keeps that choice.
 migrations[9] = function(db)
 	db.shareFinds = db.sourceLevel ~= ns.LEVEL.SELF
+end
+
+-- Trainer rank records made before the skill-step check could name a rank already known, under a child
+-- skill line (Astra review, 2026-11-25); which ones cannot be told now, so all trainer records go and the
+-- next visits record them again. Book and quest records stay; sources left empty are dropped.
+migrations[10] = function(db)
+	for skillLine, byCap in pairs(db.ranks or {}) do
+		for cap, sources in pairs(byCap) do
+			sources.npcs, sources.spell = {}, nil
+			if not (next(sources.items) or next(sources.quests)) then byCap[cap] = nil end
+		end
+		if not next(byCap) then db.ranks[skillLine] = nil end
+	end
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
