@@ -8,7 +8,7 @@ Link the repository into the Forever client, then `/reload` after each change:
 ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeVacuum"
 ```
 
-`luacheck` comes from LuaRocks and `luajit` from Homebrew; both match the client's Lua 5.1.
+`luacheck` and `busted` come from LuaRocks (`luarocks --lua-version 5.1 install busted`, the community's test runner, as other addons use) and `luajit` from Homebrew; all match the client's Lua 5.1.
 
 ## Checks
 
@@ -18,10 +18,11 @@ One script runs every check; run it before every commit:
 tools/check.sh <wow-ui-source checkout> [an old save] [a current save]
 ```
 
-It checks, in order: Lua 5.1 syntax (through LuaJIT; the `luac` on a current machine is a newer Lua and accepts syntax the client rejects), `luacheck`, that every file still compiles with the `--@debug@` blocks removed, then the scroll, upgrade and simulation tests, the scroll and simulation tests on the stripped build too. Every test runs; a missing UI source fails the run.
+It checks, in order: Lua 5.1 syntax (through LuaJIT; the `luac` on a current machine is a newer Lua and accepts syntax the client rejects), `luacheck`, that every file still compiles with the `--@debug@` blocks removed, then the scroll, upgrade and simulation specs (`busted`, specs in `tests/*_spec.lua`, set up by `.busted`), the scroll and simulation specs on the stripped build too. Every spec runs; a missing UI source fails the run, and so does any failing spec (the script reads busted's exit code).
 
-- The upgrade and simulation tests run on the made-up saved files in `tests/fixtures` (schema 2 and the current schema). A real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`) can be given instead, to try the code on real data; real saves stay out of the repository.
-- `tests/scroll.lua` runs the addon's list code against Blizzard's real ScrollBox and tree data provider, from a checkout of [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source) at the commit `.github/workflows/ci.yml` pins.
+- The script passes its arguments to the specs as `RV_UI_SOURCE`, `RV_OLD_SAVE` and `RV_SAVE`; one spec alone runs with them set, for example `RV_SAVE=tests/fixtures/current.lua busted tests/simulate_spec.lua`.
+- The upgrade and simulation specs run on the made-up saved files in `tests/fixtures` (schema 2 and the current schema). A real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`) can be given instead, to try the code on real data; real saves stay out of the repository.
+- `tests/scroll_spec.lua` runs the addon's list code against Blizzard's real ScrollBox and tree data provider, from a checkout of [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source) at the commit `.github/workflows/ci.yml` pins.
 - CI (`.github/workflows/ci.yml`) runs the same script on every push and pull request.
 - `luacheck` reports any global the code reads that is not listed in `.luacheckrc` (`read_globals`), so a misspelled API name fails the check. Add a name there when the code starts using a new one.
 - `.editorconfig` sets indentation and line endings for every editor.

@@ -1,4 +1,4 @@
--- A made-up saved file at the current schema (tests/simulate.lua). Every name and ID is invented; it holds one
+-- A made-up saved file at the current schema (tests/simulate_spec.lua). Every name and ID is invented; it holds one
 -- source of each recorded kind, a shared find, a rank and the dev fields a working build leaves behind.
 RecipeVacuumDB = {
 	schema = 10,

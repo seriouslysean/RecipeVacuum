@@ -33,4 +33,4 @@ read_globals = {
 }
 
 -- The offline tests stand in for the client, so they define its globals on purpose.
-files["tests"] = { ignore = { "111", "112", "113", "121", "122", "142", "143", "211" } }
+files["tests"] = { std = "+busted", ignore = { "111", "112", "113", "121", "122", "142", "143", "211" } }

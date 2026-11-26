@@ -3,9 +3,10 @@
 #
 #   tools/check.sh <ui-source> [old-save] [current-save]
 #
-# ui-source: a checkout of Gethe/wow-ui-source (branch forever), for the scroll test.
+# ui-source: a checkout of Gethe/wow-ui-source (branch forever), for the scroll spec.
 # The saves default to the made-up files in tests/fixtures; a real saved-variables file can be given
-# instead. Every test runs: a missing input fails the run rather than skipping a test.
+# instead. Every spec runs: a missing input fails the run rather than skipping a spec. The specs read these
+# inputs from RV_UI_SOURCE, RV_OLD_SAVE and RV_SAVE, which this script sets from its arguments.
 set -eu
 
 # Absolute paths: the release-build tests run from another directory.
@@ -36,15 +37,11 @@ for file in $(ours); do
 	luajit -bl "$stripped/$file" > /dev/null
 done
 
-echo "== scroll test"
-luajit tests/scroll.lua "$ui/Interface/AddOns" Unlearned.lua
-echo "== scroll test, release build"
-(cd "$stripped" && luajit tests/scroll.lua "$ui/Interface/AddOns" Unlearned.lua)
-echo "== upgrade test"
-luajit tests/upgrade.lua . "$old_save"
-echo "== simulation"
-luajit tests/simulate.lua . "$new_save"
-echo "== simulation, release build"
-(cd "$stripped" && luajit tests/simulate.lua . "$new_save")
+echo "== specs (busted: scroll, upgrade, simulation)"
+export RV_UI_SOURCE="$ui" RV_OLD_SAVE="$old_save" RV_SAVE="$new_save"
+busted
+echo "== specs, release build (scroll, simulation)"
+cp .busted "$stripped/"
+(cd "$stripped" && busted tests/scroll_spec.lua tests/simulate_spec.lua)
 
 echo "ALL CHECKS RAN AND PASSED"

@@ -1,4 +1,4 @@
--- A made-up saved file at schema 2, the oldest an upgrade starts from (tests/upgrade.lua). Every name and ID
+-- A made-up saved file at schema 2, the oldest an upgrade starts from (tests/upgrade_spec.lua). Every name and ID
 -- is invented; only the shape matches what schema 2 saved.
 RecipeVacuumDB = {
 	schema = 2,

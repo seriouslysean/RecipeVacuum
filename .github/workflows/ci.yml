@@ -1,5 +1,5 @@
 # Runs the repository's own check script on every push and pull request. The upgrade and
-# simulation tests run on the made-up saved files in tests/fixtures.
+# simulation specs run on the made-up saved files in tests/fixtures.
 name: ci
 
 on:
@@ -21,10 +21,11 @@ jobs:
           # The Forever build the addon is written against (1.60.1, build 71091).
           ref: c01a87b549bbc19e0f284c1616d18654c91297de
           path: .ui-source
-      - name: Install LuaJIT and luacheck
+      - name: Install LuaJIT, luacheck and busted
         run: |
           sudo apt-get update
           sudo apt-get install -y luajit luarocks
           sudo luarocks install luacheck
+          sudo luarocks --lua-version 5.1 install busted
       - name: Check
         run: tools/check.sh .ui-source
