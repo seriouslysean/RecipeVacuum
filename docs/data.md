@@ -76,6 +76,8 @@ The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core
 | Friends (2), the default | Also the shared layer: finds from party, raid, guild and friends' addons | What Share My Finds sends |
 | Public (3) | Also the data shipped with the addon | What Share My Finds sends |
 
+Self Found is knowing, with the details your own (owner, 2026-11-26: "Remember self found is knowing, but the details are your own"): seeing a recipe anywhere (bags, a tooltip, chat, another player's profession) records only that it exists, and where it comes from (who sells, teaches or drops it, and where) is only ever what the player found in person. Other players' details arrive only through sharing, at Friends.
+
 Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The options page sets the level.
 
 ## Come across
