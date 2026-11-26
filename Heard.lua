@@ -16,33 +16,42 @@ for _, event in ipairs(CHAT_EVENTS) do
 	isChatEvent[event] = true
 end
 
--- Windows that show the player many items at once. Recipes first seen while one is open are said once when the last closes
+-- Windows that show the player many items at once. Recipes first seen while one is open are said when that window closes
 -- (docs/data.md, "Come across"). Events: Blizzard_APIDocumentationGenerated (AuctionHouse, Bank, MailInfo, TradeInfo);
--- bags have no one event, so BAG_CLOSED re-asks IsAnyBagOpen (Blizzard_UIPanels_Game/Mainline/ContainerFrame.lua).
+-- bags have no one event, so they are asked of IsAnyBagOpen (Blizzard_UIPanels_Game/Mainline/ContainerFrame.lua).
 local WINDOW_OPENED = {
 	AUCTION_HOUSE_SHOW = "auction", BANKFRAME_OPENED = "bank", TRADE_SHOW = "trade", MAIL_SHOW = "mail",
 }
 local WINDOW_CLOSED = {
 	AUCTION_HOUSE_CLOSED = "auction", BANKFRAME_CLOSED = "bank", TRADE_CLOSED = "trade", MAIL_CLOSED = "mail",
 }
-local openWindows = {}
-local seenCount = 0
+-- Counts are per window (docs/data.md, "Come across"): a sighting credits the most recently opened window that is not the bags and is
+-- still open, and the bags only when none is. Each window says its own count when it closes.
+local BAGS = "bags"
+local openWindows = {}  -- [window] = true while open, the bags included
+local openOrder = {}    -- the windows other than the bags, oldest first
+local counts = {}       -- [window] = recipes first met while it was the credited window
 -- Recipe items sighted while a window was open whose data had not loaded: a search lists items the client has not met, and their recipes
 -- are known only when the load answers (ITEM_DATA_LOAD_RESULT), often after the window closes. The line waits for them, at most this long.
 -- Unmeasured: how long a search's items take to load.
 local DEFERRED_WAIT = 3
-local deferred = {}
-local closing, closeToken = false, 0
+local deferred = {}     -- [itemID] = the window it was sighted under
+local closing = {}      -- [window] = token while its closed window waits for deferred items
+local closeToken = 0
 
-local function WindowOpen()
-	return next(openWindows) ~= nil or IsAnyBagOpen()
+local function Unanswered(window)
+	local unanswered = 0
+	for _, owner in pairs(deferred) do
+		if owner == window then unanswered = unanswered + 1 end
+	end
+	return unanswered
 end
 
-local function SaySeen()
-	local count = seenCount
-	seenCount = 0
+local function Say(window)
+	local count = counts[window] or 0
+	counts[window] = nil
 	local announce = ns.db.announceNewFinds
-	ns.Trace("SEEN windows closed: %d counted, %s", count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Announce New Finds is off")
+	ns.Trace("SEEN %s closed: %d counted, %s", window, count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Announce New Finds is off")
 	if count > 0 and announce then
 		local seen = ns.voice.seen
 		ns.Say(seen.noise, (count == 1 and seen.reportOne or seen.report):format(count))
@@ -50,35 +59,101 @@ local function SaySeen()
 end
 
 -- Said once nothing waits any more, or the wait is up; a window opened meanwhile keeps the count for its own close.
-local function EndClosing(token)
-	if not closing or (token and token ~= closeToken) then
+local function EndClosing(window, token)
+	if not closing[window] or (token and token ~= closing[window]) then
 		return
 	end
-	closing = false
-	local unanswered = 0
-	for _ in pairs(deferred) do unanswered = unanswered + 1 end
+	closing[window] = nil
+	local unanswered = Unanswered(window)
 	if unanswered > 0 then
-		ns.Trace("SEEN %d items still unanswered, not counted", unanswered)
+		ns.Trace("SEEN %s: %d items still unanswered, not counted", window, unanswered)
 	end
-	wipe(deferred)
-	if not WindowOpen() then
-		SaySeen()
+	for itemID, owner in pairs(deferred) do
+		if owner == window then deferred[itemID] = nil end
+	end
+	if openWindows[window] then
+		ns.Trace("SEEN %s reopened while waiting, silent, its count stays for its next close", window)
+		return
+	end
+	Say(window)
+end
+
+local function OpenWindow(window)
+	if not openWindows[window] then
+		openWindows[window] = true
+		if window ~= BAGS then table.insert(openOrder, window) end
+		ns.Trace("SEEN %s opened", window)
+	else
+		ns.Trace("SEEN %s opened again while open, ignored", window)
 	end
 end
 
--- Closing the last window says the line, after the items it saw have answered; anything still open keeps the count.
-local function OnWindowClosed()
-	if WindowOpen() then
+-- A closing window says its own line, after the items it saw have answered, whatever else is still open.
+local function CloseWindow(window)
+	if not openWindows[window] then
+		ns.Trace("SEEN %s closed, silent: it was not open", window)
 		return
 	end
-	if next(deferred) then
-		closing, closeToken = true, closeToken + 1
+	openWindows[window] = nil
+	for index, open in ipairs(openOrder) do
+		if open == window then table.remove(openOrder, index) break end
+	end
+	if Unanswered(window) > 0 then
+		closeToken = closeToken + 1
 		local token = closeToken
-		ns.Trace("SEEN windows closed, waiting for items that had not loaded")
-		C_Timer.After(DEFERRED_WAIT, function() EndClosing(token) end)
+		closing[window] = token
+		ns.Trace("SEEN %s closed, waiting for items that had not loaded", window)
+		C_Timer.After(DEFERRED_WAIT, function() EndClosing(window, token) end)
 		return
 	end
-	SaySeen()
+	Say(window)
+end
+
+-- The bags have no one open or close event and the client does not always send BAG_CLOSED (measured on the Deck: the auction house opened
+-- the bags and no BAG_CLOSED was logged), so their state is asked of IsAnyBagOpen whenever it can have changed.
+local function SyncBags()
+	local open = IsAnyBagOpen()
+	if open then
+		if not openWindows[BAGS] then OpenWindow(BAGS) end
+	elseif openWindows[BAGS] then
+		CloseWindow(BAGS)
+	end
+end
+
+-- The window a sighting counts for, or nil when none is open.
+local function Target()
+	local latest = openOrder[#openOrder]
+	if latest then
+		return latest
+	end
+	SyncBags()
+	return openWindows[BAGS] and BAGS or nil
+end
+
+local bagSyncQueued
+local function QueueBagSync()
+	if bagSyncQueued then return end
+	bagSyncQueued = true
+	-- The bag's frame is hidden as the event fires; ask again once the client has settled.
+	C_Timer.After(0, function()
+		bagSyncQueued = nil
+		SyncBags()
+	end)
+end
+
+-- The client's combined bag frame and each container frame (Blizzard_UIPanels_Game/Mainline/ContainerFrame.xml:298-313); read-only hooks.
+local hookedBagFrames = {}
+local function HookBagFrames()
+	local names = { "ContainerFrameCombinedBags" }
+	for index = 1, tonumber(NUM_CONTAINER_FRAMES) or 0 do names[#names + 1] = "ContainerFrame" .. index end
+	for _, name in ipairs(names) do
+		local bagFrame = _G[name]
+		if bagFrame and not hookedBagFrames[name] then
+			hookedBagFrames[name] = true
+			bagFrame:HookScript("OnShow", QueueBagSync)
+			bagFrame:HookScript("OnHide", QueueBagSync)
+		end
+	end
 end
 
 -- One refresh after a burst of new recipes, and only when the chosen level shows them.
@@ -90,20 +165,24 @@ local function HasProfession(recipeID)
 	return ns.GetProfessionCaps()[ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))] ~= nil
 end
 
--- A recipe met at Self Found for the first time while a window is open counts toward its closing line, once:
+-- A recipe met at Self Found for the first time while a window is open counts toward that window's closing line, once:
 -- a repeat sighting changes nothing here, so it is not counted again.
-local function Note(bucket, id, level)
+local function Note(bucket, id, level, window)
 	local met = ns.db.met[bucket]
 	if met[id] and met[id] <= level then
 		return
 	end
 	met[id] = level
-	if level == LEVEL.SELF and bucket == "recipes" and (WindowOpen() or closing) then
-		local counted = HasProfession(id)
-		if counted then
-			seenCount = seenCount + 1
+	if level == LEVEL.SELF and bucket == "recipes" then
+		window = window or Target()
+		if not window then
+			ns.Trace("SEEN recipe %d not counted, no window open", id)
+		elseif HasProfession(id) then
+			counts[window] = (counts[window] or 0) + 1
+			ns.Trace("SEEN recipe %d counted for %s", id, window)
+		else
+			ns.Trace("SEEN recipe %d not counted, not the character's profession", id)
 		end
-		ns.Trace("SEEN recipe %d %s", id, counted and "counted" or "not counted, not the character's profession")
 	end
 	if level <= ns.db.sourceLevel and not refreshQueued then
 		refreshQueued = true
@@ -178,14 +257,15 @@ local function NoteSeenItem(itemID)
 		return
 	end
 	local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID] or ns.GetTaughtRecipe(itemID)
+	local window = deferred[itemID] or Target()
 	if recipeID ~= nil then
 		itemsDone[itemID] = true
 		deferred[itemID] = nil
 		if recipeID then
-			Note("recipes", recipeID, LEVEL.SELF)
+			Note("recipes", recipeID, LEVEL.SELF, window)
 		end
-	elseif WindowOpen() or closing then
-		deferred[itemID] = true -- read again when its data loads
+	elseif window then
+		deferred[itemID] = window -- read again when its data loads, for the window that saw it
 	end
 end
 
@@ -263,19 +343,21 @@ frame:SetScript("OnEvent", function(_, event, message, loaded)
 		return
 	end
 	if event == "ITEM_DATA_LOAD_RESULT" then
-		if deferred[message] then
+		local window = deferred[message]
+		if window then
 			if loaded then
 				NoteSeenItem(message)
 			else
 				deferred[message] = nil -- never answers
 			end
-			if closing and not next(deferred) then
-				EndClosing()
+			if closing[window] and Unanswered(window) == 0 then
+				EndClosing(window)
 			end
 		end
 		return
 	end
 	if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_ENTERING_WORLD" then
+		if event == "PLAYER_ENTERING_WORLD" then HookBagFrames() end
 		ReadBags()
 		return
 	end
@@ -284,8 +366,7 @@ frame:SetScript("OnEvent", function(_, event, message, loaded)
 		return
 	end
 	if WINDOW_OPENED[event] then
-		openWindows[WINDOW_OPENED[event]] = true
-		ns.Trace("SEEN %s opened", WINDOW_OPENED[event])
+		OpenWindow(WINDOW_OPENED[event])
 		-- The bank's contents count as seen, as the bags do.
 		if event == "BANKFRAME_OPENED" then ReadBank() end
 		return
@@ -303,14 +384,12 @@ frame:SetScript("OnEvent", function(_, event, message, loaded)
 		return
 	end
 	if WINDOW_CLOSED[event] then
-		openWindows[WINDOW_CLOSED[event]] = nil
-		ns.Trace("SEEN %s closed", WINDOW_CLOSED[event])
-		OnWindowClosed()
+		CloseWindow(WINDOW_CLOSED[event])
+		QueueBagSync() -- closing the window may have closed the bags with it
 		return
 	end
 	if event == "BAG_CLOSED" then
-		-- The bag's frame is hidden as the event fires; ask again once the client has settled.
-		C_Timer.After(0, OnWindowClosed)
+		QueueBagSync()
 		return
 	end
 	if event ~= "TRADE_SKILL_LIST_UPDATE" then

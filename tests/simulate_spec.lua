@@ -819,7 +819,7 @@ describe("simulation", function()
 				Event("AUCTION_HOUSE_CLOSED")
 				assert(#said == 0, "nothing new says nothing")
 			end)
-			it("one recipe says the singular, and the last window to close says it", function()
+			it("one recipe says the singular, and a window says its own count whichever others are open", function()
 				said = {}
 				h.scanned[2105] = 7005 -- a recipe item is read once a session, so each case brings its own
 				local hover = tooltipPostCalls[Enum.TooltipDataType.Item]
@@ -827,9 +827,9 @@ describe("simulation", function()
 				Event("TRADE_SHOW")
 				hover({}, { id = 2105 })
 				Event("TRADE_CLOSED")
-				assert(#said == 0, "an open mailbox keeps the count")
+				assert(#said == 1 and said[1] == "1 recipe seen!", "the trade, the latest window, was credited and says the singular")
 				Event("MAIL_CLOSED")
-				assert(#said == 1 and said[1] == "1 recipe seen!", "one recipe says the singular")
+				assert(#said == 1, "the mailbox saw none")
 			end)
 			-- Fails if an item whose data loads after the window closes (an auction search lists items the client has not met) is lost.
 			it("an item that loads after the window closes still counts, and the line waits for it", function()
@@ -848,16 +848,29 @@ describe("simulation", function()
 				assert(#said == 1, "the wait running out afterwards says nothing more")
 				C_Timer.After = after
 			end)
-			it("closing the last bag says the line, an open bag keeps it", function()
+			it("closing the bags says the line when only the bags saw the recipe", function()
 				said = {}
 				h.scanned[2106] = 7006
 				bagsOpen = true
 				tooltipPostCalls[Enum.TooltipDataType.Item]({}, { id = 2106 })
 				Event("BAG_CLOSED")
-				assert(#said == 0, "another open bag keeps the count")
+				assert(#said == 0, "an open bag keeps the count")
 				bagsOpen = false
 				Event("BAG_CLOSED")
-				assert(#said == 1, "closing the last bag says the line")
+				assert(#said == 1 and said[1] == "1 recipe seen!", "closing the last bag says the line")
+			end)
+			-- Fails if the auction house's close is silent while the bags it opened are still open (Deck, 2026-11-26: 150 recipes, no line).
+			it("the auction house says its count when it closes with the bags still open", function()
+				said = {}
+				h.scanned[2108] = 7008
+				bagsOpen = true
+				Event("AUCTION_HOUSE_SHOW")
+				tooltipPostCalls[Enum.TooltipDataType.Item]({}, { id = 2108 })
+				Event("AUCTION_HOUSE_CLOSED")
+				assert(#said == 1 and said[1] == "1 recipe seen!", "the auction count is said with the bags open")
+				bagsOpen = false
+				Event("BAG_CLOSED")
+				assert(#said == 1, "the bags saw none of their own")
 			end)
 		end)
 	end)
@@ -924,7 +937,7 @@ describe("simulation", function()
 				if rawget(f, "Rank") then f.Rank.Text = Fake(f.Rank) end
 				return f
 			end
-			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end }
+			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end, IsAddOnLoaded = function() return true end }
 			RunNextFrame = function(fn) queue[#queue + 1] = fn end
 			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
 			Enum.UITextureSliceMode = { Stretched = 0, Tiled = 1 } -- UITextureConstantsDocumentation.lua
@@ -976,7 +989,9 @@ describe("simulation", function()
 			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
 			  GetOnlyShowMakeableRecipes = function() return false end, GetShowUnlearned = function() return true end,
 			  GetOnlyShowSkillUpRecipes = function() return false end, GetOnlyShowFirstCraftRecipes = function() return false end,
-			  GetRecipeSchematic = function() return nil end }
+			  GetRecipeSchematic = function() return nil end, GetTradeSkillLineForRecipe = function() return 164 end }
+			GetProfessions = function() return 1 end
+			GetProfessionInfo = function() return "Blacksmithing", 0, 1, 75, 0, 0, 164 end
 			load("Unlearned.lua", pns)
 			pns.GetRecipeFaction = function() return false end -- read from tooltip data
 			pns.GetRecipeLock = function() return false end
@@ -989,6 +1004,14 @@ describe("simulation", function()
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
 			init = function(skill) ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = skill or 40, maxSkillLevel = 75 }) end
+		end)
+		-- Fails if the frames are not counted from the saved finds and made before a list needs them.
+		it("makes frames ahead of the list, from the finds the character's professions would list", function()
+			init()
+			Flush()
+			local text = table.concat(traces, "\n")
+			assert(text:find("POOL target", 1, true), "the target is worked out from the finds")
+			assert(text:find("POOL ready", 1, true), "the frames are made before the list needs them")
 		end)
 		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the owner's window froze for 6 s.
 		it("several Init calls in one frame build the list once", function()

@@ -69,9 +69,6 @@ local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
 local BUILD_BUDGET_MS = 4
 local ROWS_PER_STEP = 40
 local WAIT_SECONDS = 1 -- at most: the client may still be loading names and factions when the window opens; the list waits instead of redrawing
--- Frames made ahead of need, out of combat, a few a frame (docs/client-notes.md, "Panel"), so a profession only fills frames that exist.
-local POOL_ROWS = 60
-local POOL_HEADINGS = 8
 -- The window's own art under Camelot, which hides the list's inset border and the schematic's inset frame (docs/client-notes.md, "Panel"):
 -- the page atlas at 3, -21 (Blizzard_ProfessionsFrame.xml:71) and the schematic's sliced border (Blizzard_ProfessionsRecipeSchematicForm.xml:8).
 local PAGE_ATLAS, PAGE_LEFT, PAGE_TOP, PAGE_WIDTH, PAGE_RIGHT_GAP = "Profession-Background-Template2", 3, 21, 665, 5
@@ -133,6 +130,9 @@ local placeMenu -- the floating list of places under mapMore
 local mapOpen -- that list is open; a press toggles it, focus never does
 local shownDiscovery
 local rows, headings = {}, {}
+-- Frames made before the window exists have no panel to sit in; they wait here, hidden, and move into the list when one is built.
+local pool = { holder = CreateFrame("Frame", nil, UIParent) }
+pool.holder:Hide()
 -- Text widths a row reuses: a name's and a count's never change, and reading one asks the client to measure the text.
 local textWidths = { names = {}, counts = {} }
 local Lap -- a working build times the parts of a row's work (docs/client-notes.md, "Panel")
@@ -335,7 +335,7 @@ local function CreateSlimScroll(parent, place)
 end
 
 local function CreateRow()
-	local row = CreateFrame("Button", nil, child, ROW_TEMPLATE)
+	local row = CreateFrame("Button", nil, child or pool.holder, ROW_TEMPLATE)
 	row.SkillUps:Hide()
 
 	-- The skill the list is ordered by comes first: it is what the list is about.
@@ -420,7 +420,7 @@ local function IsOpen(band)
 end
 
 local function CreateHeading()
-	local heading = CreateFrame("Button", nil, child, HEADING_TEMPLATE)
+	local heading = CreateFrame("Button", nil, child or pool.holder, HEADING_TEMPLATE)
 	heading.RankBar:Hide() -- Blizzard's skill line progress bar; a band has none
 	-- The count after the name, smaller and dim as Blizzard's rows show theirs, so it is not part of the title font.
 	heading.Count = heading:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
@@ -602,6 +602,7 @@ local function BuildStep(buildGeneration)
 			Lap()
 			frame = rows[item.rowIndex] or CreateRow()
 			Lap("create")
+			if frame:GetParent() ~= child then frame:SetParent(child) end
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", ROW_INDENT, -item.top)
 			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
 			frame:SetHeight(ROW_HEIGHT)
@@ -610,6 +611,7 @@ local function BuildStep(buildGeneration)
 		else
 			if not headings[item.headingIndex] then made = made + 1 end
 			frame = headings[item.headingIndex] or CreateHeading()
+			if frame:GetParent() ~= child then frame:SetParent(child) end
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -item.top)
 			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
 			frame:SetHeight(HEADING_HEIGHT)
@@ -762,9 +764,9 @@ local function UpdateDiscovery(found, total)
 end
 
 -- The first frame of a pool of one kind, made when needed; later ones are reused for another recipe.
-local function Pooled(pool, index, make)
-	pool[index] = pool[index] or make()
-	return pool[index]
+local function Pooled(frames, index, make)
+	frames[index] = frames[index] or make()
+	return frames[index]
 end
 
 local function MakeReagentRow()
@@ -1259,20 +1261,170 @@ local function Update()
 	BuildStep(generation)
 end
 
--- Frames ahead of need, a few a frame and never in combat, so a profession's first show only fills them.
-local function Prewarm()
-	if #rows >= POOL_ROWS and #headings >= POOL_HEADINGS then return end
-	if InCombatLockdown() or nextItem and nextItem <= #items then
-		C_Timer.After(WAIT_SECONDS, Prewarm) -- a build in progress makes frames itself
-		return
+-- Frames made ahead of need, out of combat, in slices of BUILD_BUDGET_MS (docs/client-notes.md, "Panel"), so a profession only fills
+-- frames that exist. The target is what the character's professions would list now, plus these margins for finds that arrive meanwhile.
+pool.rowMargin = 10
+pool.headingMargin = 1
+pool.startDelay = 5 -- seconds after login, so the pool never competes with the login's own work
+pool.scanStep = 50 -- recipes counted between clock reads
+pool.templates = "Blizzard_ProfessionsTemplates" -- holds both templates; the window loads it with Blizzard_Professions
+-- Frames ahead of need: the target is the widest list any profession would show, counted from saved finds and never shrunk
+-- (docs/client-notes.md, "Panel", "Frame pool"). Fields of one table: this file is at the client's limit of local variables.
+pool.rowTarget, pool.headingTarget = 0, 0
+pool.scan = nil -- { ids, at, rows = { [line] = n }, bands = { [line] = { [band] = true } }, caps } while a count is running
+pool.running, pool.started, pool.dirty, pool.made, pool.ms = false, false, false, 0, 0
+
+function pool.ids()
+	local ids, seen = {}, {}
+	local function add(recipeID)
+		if recipeID and not seen[recipeID] then
+			seen[recipeID] = true
+			ids[#ids + 1] = recipeID
+		end
+	end
+	-- The layers the list reads at the chosen level (ns.GetSources).
+	local layers = ns.db.sourceLevel >= ns.LEVEL.FRIENDS and { ns.db.found, ns.db.shared, ns.included } or { ns.db.found }
+	for _, layer in ipairs(layers) do
+		for recipeID in pairs(layer.recipes) do add(recipeID) end
+		for itemID in pairs(layer.items) do add(ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]) end
+	end
+	for recipeID, level in pairs(ns.db.met.recipes) do
+		if level <= ns.db.sourceLevel then add(recipeID) end
+	end
+	for itemID, level in pairs(ns.db.met.items) do
+		if level <= ns.db.sourceLevel then add(ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]) end
+	end
+	return ids
+end
+
+-- The first rank band of a recipe's skill, as the list groups it; a recipe the seed gives no skill for is counted in the first.
+function pool.band(recipeID)
+	local seed = ns.seed
+	local skill = seed and (seed.learnSkill and seed.learnSkill[recipeID] or seed.trivialHigh and seed.trivialHigh[recipeID])
+	return ns.BandOf(skill or 1)
+end
+
+function pool.finishScan()
+	local scan = pool.scan
+	pool.scan = nil
+	local rowsWanted, headingsWanted = 0, 0
+	for line, count in pairs(scan.rows) do
+		local bands = 0
+		for _ in pairs(scan.bands[line]) do bands = bands + 1 end
+		rowsWanted = math.max(rowsWanted, count)
+		headingsWanted = math.max(headingsWanted, bands)
+	end
+	-- Only a profession that lists something has a margin; none means no frames.
+	local rowTarget = rowsWanted > 0 and rowsWanted + pool.rowMargin or 0
+	local headingTarget = headingsWanted > 0 and headingsWanted + pool.headingMargin or 0
+	rowTarget, headingTarget = math.max(rowTarget, pool.rowTarget), math.max(headingTarget, pool.headingTarget)
+	ns.Trace("POOL target: %d recipes counted in %d professions, widest lists %d rows under %d bands; target rows %d (was %d), headings %d (was %d), made %d and %d",
+		#scan.ids, scan.lines, rowsWanted, headingsWanted, rowTarget, pool.rowTarget, headingTarget, pool.headingTarget, #rows, #headings)
+	pool.rowTarget, pool.headingTarget = rowTarget, headingTarget
+	if pool.dirty then
+		pool.dirty = false
+		ns.Trace("POOL finds changed during the count, counting again")
+		pool.rescan()
+	end
+end
+
+function pool.kick()
+	if not pool.running then
+		pool.running = true
+		RunNextFrame(pool.step)
+	end
+end
+
+function pool.step()
+	pool.running = false
+	if InCombatLockdown() then
+		ns.Trace("POOL paused, in combat; resumes when it ends")
+		return -- PLAYER_REGEN_ENABLED starts it again
 	end
 	local started = debugprofilestop()
+	if pool.scan then
+		local scan = pool.scan
+		local counted = 0
+		while scan.at <= #scan.ids do
+			local recipeID = scan.ids[scan.at]
+			scan.at = scan.at + 1
+			local line = ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))
+			if line and scan.caps[line] then
+				if not scan.rows[line] then
+					scan.rows[line], scan.bands[line] = 0, {}
+					scan.lines = scan.lines + 1
+				end
+				scan.rows[line] = scan.rows[line] + 1
+				scan.bands[line][pool.band(recipeID)] = true
+			end
+			counted = counted + 1
+			if counted % pool.scanStep == 0 and debugprofilestop() - started >= BUILD_BUDGET_MS then break end
+		end
+		if scan.at > #scan.ids then pool.finishScan() end
+		pool.kick()
+		return
+	end
+	if #rows >= pool.rowTarget and #headings >= pool.headingTarget then
+		if pool.made > 0 then
+			ns.Trace("POOL ready: %d rows and %d headings, %d made ahead in %.1f ms", #rows, #headings, pool.made, pool.ms)
+			pool.made, pool.ms = 0, 0
+		end
+		return -- idle until the target grows
+	end
+	if nextItem and nextItem <= #items then
+		ns.Trace("POOL waits, a build in progress makes frames itself")
+		pool.running = true
+		C_Timer.After(WAIT_SECONDS, pool.step)
+		return
+	end
 	local made = 0
-	while made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS and (#rows < POOL_ROWS or #headings < POOL_HEADINGS) do
-		if #headings < POOL_HEADINGS then CreateHeading() else CreateRow() end
+	while made == 0 or (made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS) do
+		if #headings < pool.headingTarget then
+			CreateHeading()
+		elseif #rows < pool.rowTarget then
+			CreateRow()
+		else
+			break
+		end
 		made = made + 1
 	end
-	RunNextFrame(Prewarm)
+	local ms = debugprofilestop() - started
+	pool.made, pool.ms = pool.made + made, pool.ms + ms
+	ns.Trace("POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms)
+	pool.kick()
+end
+
+-- Counts again what the professions would list; the frames already made stay.
+function pool.rescan()
+	if not pool.started or not ns.db then return end
+	if pool.scan then
+		pool.dirty = true
+		return
+	end
+	local caps = ns.GetProfessionCaps()
+	pool.scan = { ids = pool.ids(), at = 1, rows = {}, bands = {}, lines = 0, caps = caps }
+	pool.kick()
+end
+
+function pool.start()
+	if pool.started or not ns.db then return end
+	if not C_AddOns.IsAddOnLoaded(pool.templates) then
+		if InCombatLockdown() then
+			ns.Trace("POOL start waits, in combat; the templates are loaded after it")
+			return
+		end
+		local started = debugprofilestop()
+		local loaded, reason = C_AddOns.LoadAddOn(pool.templates)
+		ns.Trace("POOL loaded %s: %s, %.1f ms", pool.templates, tostring(loaded or reason), debugprofilestop() - started)
+		if not loaded then return end
+	end
+	pool.started = true
+	pool.rescan()
+end
+
+function pool.afterLogin() C_Timer.After(pool.startDelay, pool.start) end
+function pool.resume()
+	if pool.started then pool.kick() else pool.start() end
 end
 
 -- However many times the window rebuilds its page in a frame, the panel asks once, on the next.
@@ -1493,6 +1645,7 @@ end
 -- A find, or the data level changing, can change what the panel lists (called from ns.SourcesChanged).
 function ns.RequestPanel()
 	Request()
+	pool.rescan()
 end
 
 -- Another window opened beside Professions takes the center slot; the panel steps aside for it. Read after
@@ -1508,7 +1661,7 @@ end
 local function OnInit(_, info)
 	if not panel then
 		panel = CreatePanel()
-		Prewarm()
+		pool.start() -- the window opened before the login start came, or in combat: the remainder is made now
 	end
 	local changed = not (professionInfo and professionInfo.professionID == info.professionID)
 	professionInfo = info
@@ -1528,7 +1681,7 @@ end
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
 local eventFrame = CreateFrame("Frame")
 for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
-	"BAG_UPDATE_DELAYED" }) do -- bags change the counts; the same content refreshes rows in place
+	"BAG_UPDATE_DELAYED", "PLAYER_LOGIN" }) do -- bags change the counts; the same content refreshes rows in place
 	eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event)
@@ -1539,6 +1692,9 @@ eventFrame:SetScript("OnEvent", function(_, event)
 		navPending = true
 	elseif event == "PLAYER_REGEN_ENABLED" then
 		if navPending then SyncNav() end
+		pool.resume()
+	elseif event == "PLAYER_LOGIN" then
+		pool.afterLogin()
 	else
 		Request()
 	end
