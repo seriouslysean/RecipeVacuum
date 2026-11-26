@@ -49,17 +49,16 @@ local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
 local BAR_ART_HEIGHT = 13 -- the bar's own height; the border art is taller
-local BAR_BORDER_WIDTH, BAR_BORDER_HEIGHT = 205, 29
+local BAR_BORDER_OVERHANG, BAR_BORDER_HEIGHT = 205 - 196, 29 -- the border art is 9 px wider than its bar
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
 local PORTRAIT_SIZE, PORTRAIT_LEFT = 62, 5
--- The discovery bar starts just right of the portrait ring and ends the same distance from the list's right edge, so it fills the
--- band between them (docs/client-notes.md, "Panel").
+-- The discovery bar is centered on the panel under the title, as the window centers its skill bar, and as wide as that allows
+-- while clearing the portrait ring on the left by RANK_BAR_CLEARANCE (docs/client-notes.md, "Panel").
 local RANK_BAR_CLEARANCE = 4
 local RANK_BAR_LEFT = PORTRAIT_SIZE - PORTRAIT_LEFT + RANK_BAR_CLEARANCE
-local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET - RANK_BAR_CLEARANCE
-local BAR_WIDTH = 196 -- the template's own width, centered in that band
+local BAR_WIDTH = math.min(196, PANEL_WIDTH - 2 * RANK_BAR_LEFT) -- 196 is the template's own width
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -1059,7 +1058,7 @@ local function CreatePanel()
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
 	-- The Collections journal's own "collected of total" bar (Blizzard_Collections/Shared/Blizzard_CollectionTemplates.xml:4) at its own 196 px:
-	-- the window's rank bar is 453 px of art and distorts when narrowed. Centered right of the portrait, on the rank bar's line.
+	-- the window's rank bar is 453 px of art and distorts when narrowed. Centered on the panel, on the rank bar's line.
 	-- Built from the template's parts (Blizzard_CollectionTemplates.xml:4-35): its addon loads on demand, and loading it from here risks taint.
 	rankBar = CreateFrame("StatusBar", nil, panel)
 	rankBar:SetSize(BAR_WIDTH, BAR_ART_HEIGHT)
@@ -1072,12 +1071,12 @@ local function CreatePanel()
 	rankBar.Background:SetPoint("BOTTOMRIGHT", 0, 1)
 	rankBar.Border = rankBar:CreateTexture(nil, "OVERLAY")
 	rankBar.Border:SetTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-BarBorder")
-	rankBar.Border:SetSize(BAR_BORDER_WIDTH, BAR_BORDER_HEIGHT)
+	rankBar.Border:SetSize(BAR_WIDTH + BAR_BORDER_OVERHANG, BAR_BORDER_HEIGHT)
 	rankBar.Border:SetPoint("LEFT", -5, 0)
 	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
 	rankBar.text:SetHeight(9)
 	rankBar.text:SetPoint("CENTER", 0, 1)
-	rankBar:SetPoint("CENTER", panel, "TOPLEFT", RANK_BAR_LEFT + RANK_BAR_WIDTH / 2, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
+	rankBar:SetPoint("CENTER", panel, "TOP", 0, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
 		ns.OwnTooltip(self)
