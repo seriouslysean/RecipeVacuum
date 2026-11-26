@@ -50,7 +50,6 @@ local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
 local BAR_CAP = 16 -- each end of the skill bar art kept at its own size: past its 3 px clipped corners, where the art is even
 local BAR_FILL_LEFT, BAR_FILL_TOP, BAR_FILL_INSET = 5, 3, 12 -- Blizzard_ProfessionsRankBar.xml: the fill at 5, -3, 441 of 453
-local BAR_FILL_SLICE = 4 -- the game's slice data for the Legacy fill (UiTextureAtlasElementSliceData, element 36419)
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
@@ -552,7 +551,7 @@ local function UpdateDiscovery(found, total)
 	-- The fill's width is the share found, as the skill bar's mask shows its share.
 	local share = total > 0 and math.min(found / total, 1) or 0
 	rankBar.Fill:SetShown(share > 0)
-	rankBar.Fill:SetWidth(math.max((BAR_WIDTH - BAR_FILL_INSET) * share, 2 * BAR_FILL_SLICE))
+	rankBar.Fill:SetWidth(math.max((BAR_WIDTH - BAR_FILL_INSET) * share, 1))
 	rankBar.text:SetText(L["%d / %d discovered"]:format(found, total))
 end
 
@@ -1118,12 +1117,16 @@ local function CreatePanel()
 	local textLayer = CreateFrame("Frame", nil, rankBar)
 	textLayer:SetAllPoints()
 	textLayer:SetFrameLevel(rankBar:GetFrameLevel() + 3)
+	-- The fill is the share's width under the skill bar's own mask, which shapes its ends to the frame, as the template masks its
+	-- fill (Blizzard_ProfessionsRankBar.xml: Fill and Mask). The mask covers exactly the fill, so nothing lies outside it.
 	rankBar.Fill = fillLayer:CreateTexture(nil, "ARTWORK")
 	rankBar.Fill:SetAtlas("Legacy-Progressbar-Fill")
-	rankBar.Fill:SetTextureSliceMargins(BAR_FILL_SLICE, BAR_FILL_SLICE, BAR_FILL_SLICE, BAR_FILL_SLICE)
-	rankBar.Fill:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
 	rankBar.Fill:SetPoint("TOPLEFT", BAR_FILL_LEFT, -BAR_FILL_TOP)
 	rankBar.Fill:SetHeight(RANK_BAR_HEIGHT)
+	rankBar.Mask = fillLayer:CreateMaskTexture()
+	rankBar.Mask:SetAtlas("Professions-skillbar-mask")
+	rankBar.Mask:SetAllPoints(rankBar.Fill)
+	rankBar.Fill:AddMaskTexture(rankBar.Mask)
 	rankBar.text = textLayer:CreateFontString(nil, "OVERLAY", "Number12FontOutline") -- the skill bar's own font
 	rankBar.text:SetPoint("CENTER", 0, -BAR_FILL_TOP)
 	rankBar:SetPoint("CENTER", panel, "TOP", 0, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
