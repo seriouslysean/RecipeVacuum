@@ -37,7 +37,7 @@ function ns.InitSettings()
 			{ kind = "checkbox", key = "selfFound", label = L["Track Personal Finds"], default = true,
 				tooltip = L["Remembers the trainers, vendors, quests and loot you see, on every character."] },
 			{ kind = "checkbox", key = "announceNewFinds", label = L["Announce New Finds"], default = true, under = "selfFound",
-				tooltip = L["Print one message in your chat window after a visit with new recipe sources."] },
+				tooltip = L["Print a message in chat after visits and windows with new recipes."] },
 		} },
 	})
 	toolkit:RegisterCommands(module, "recipevacuum", ns.commands)

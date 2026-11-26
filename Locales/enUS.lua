@@ -7,6 +7,8 @@ local L = LibStub("AceLocale-3.0"):NewLocale(addonName, "enUS", true)
 L["whirs and rattles"] = true
 L["Intake complete! %d recipe from %s!"] = true
 L["Intake complete! %d recipes from %s!"] = true
+L["%d recipe seen!"] = true
+L["%d recipes seen!"] = true
 L["Map pin set! %s marked on your map!"] = true
 
 -- Panel (Panel.lua)
@@ -31,7 +33,7 @@ L["Personal Finds"] = true
 L["Track Personal Finds"] = true
 L["Remembers the trainers, vendors, quests and loot you see, on every character."] = true
 L["Announce New Finds"] = true
-L["Print one message in your chat window after a visit with new recipe sources."] = true
+L["Print a message in chat after visits and windows with new recipes."] = true
 
 -- Commands (Settings.lua)
 L["Open the options"] = true

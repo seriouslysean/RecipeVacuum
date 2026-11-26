@@ -12,17 +12,6 @@ local LINK_X, LINK_Y = -2, -4 -- the link button's anchor offsets on the rank ba
 -- SKILL_LINES_CHANGED right after the rank is learned. Unmeasured: kept short so play in between is not blamed.
 local CAUSE_SECONDS = 5
 
--- Each known profession's cap, by skill line (GetProfessionInfo, as Blizzard's Camelot professions book reads it).
-local function Caps()
-	local caps = {}
-	-- GetProfessions leaves nil for an empty slot, which pairs skips.
-	for _, index in pairs({ GetProfessions() }) do
-		local _, _, _, maxRank, _, _, skillLine = GetProfessionInfo(index)
-		if skillLine then caps[skillLine] = maxRank end
-	end
-	return caps
-end
-
 local function RankSources(skillLine, fromCap)
 	local byLine = ns.db.ranks[skillLine]
 	if not byLine then
@@ -35,13 +24,6 @@ local function RankSources(skillLine, fromCap)
 		byLine[fromCap] = sources
 	end
 	return sources
-end
-
--- A profession's own skill line. The game can report a child line with its parent third
--- (GetTradeSkillLineForRecipe for Journeyman Mining gave 2946, "Mining", 186 on build 71091), and caps and
--- the profession window use the parent.
-local function ProfessionLine(line, _, parent)
-	return parent and parent > 0 and parent or line
 end
 
 -- Called by the trainer scan (Record.lua); true when the trainer offers a rank this character lacks.
@@ -58,12 +40,12 @@ function ns.NoteTrainerRank(npcID)
 	end
 	local tooltip = C_TooltipInfo.GetTrainerService(step)
 	local spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
-	local skillLine = spellID and ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID))
+	local skillLine = spellID and ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID))
 	if not skillLine then
 		return false
 	end
 	-- A profession the character lacks has no cap: its next rank is the first, from 0.
-	local sources = RankSources(skillLine, Caps()[skillLine] or 0)
+	local sources = RankSources(skillLine, ns.GetProfessionCaps()[skillLine] or 0)
 	sources.npcs[npcID] = GetServerTime()
 	sources.spell = spellID -- the trainer's rank spell, for its name in the tooltip
 	return true
@@ -113,7 +95,7 @@ end
 
 watcher:SetScript("OnEvent", function(_, event, questID)
 	if event == "PLAYER_LOGIN" then
-		knownCaps = Caps()
+		knownCaps = ns.GetProfessionCaps()
 	elseif event == "TRAINER_SHOW" or event == "TRAINER_CLOSED" then
 		atTrainer = event == "TRAINER_SHOW"
 	elseif event == "QUEST_COMPLETE" then
@@ -128,7 +110,7 @@ watcher:SetScript("OnEvent", function(_, event, questID)
 		recentQuest, completing = { quest = questID, giver = giver, at = GetTime() }, nil
 	elseif event == "SKILL_LINES_CHANGED" and knownCaps and ns.db then
 		-- Every rise first, then credit: two at once are ambiguous.
-		local caps, rises, line, from = Caps(), 0, nil, nil
+		local caps, rises, line, from = ns.GetProfessionCaps(), 0, nil, nil
 		for skillLine, cap in pairs(caps) do
 			local before = knownCaps[skillLine] or 0 -- a profession just learned rose from 0
 			if cap > before then
@@ -147,10 +129,10 @@ end)
 -- The open profession's next rank: its usable recorded sources and their pins, or nil when none has a place.
 local function NextRank()
 	local info = ProfessionsFrame.CraftingPage.professionInfo
-	local skillLine = info and ProfessionLine(info.professionID, nil, info.parentProfessionID)
+	local skillLine = info and ns.ProfessionLine(info.professionID, nil, info.parentProfessionID)
 	-- ns.rankOverlay: the working build's session-only test sources, never saved (Troubleshooting.lua).
 	local byLine = skillLine and (ns.rankOverlay and ns.rankOverlay[skillLine] or ns.db.ranks[skillLine])
-	local sources = byLine and byLine[Caps()[skillLine] or 0]
+	local sources = byLine and byLine[ns.GetProfessionCaps()[skillLine] or 0]
 	if not sources then
 		return nil
 	end

@@ -8,6 +8,9 @@ ns.voice = {
 	-- Report arguments: count, "recipe" or "recipes", who or where.
 	intake = { noise = L["whirs and rattles"], report = L["Intake complete! %d recipes from %s!"],
 		reportOne = L["Intake complete! %d recipe from %s!"] },
+	-- Said when the last of the bags, auction house, bank, trade or mail closes on recipes first seen while it was open
+	-- for a profession the character has. Argument: count.
+	seen = { noise = L["whirs and rattles"], report = L["%d recipes seen!"], reportOne = L["%d recipe seen!"] },
 	-- Said when a map pin is set; argument: the source's label.
 	pinned = { noise = L["whirs and rattles"], report = L["Map pin set! %s marked on your map!"] },
 	-- Development lines (checkout builds only): plain, not voiced. The watch and log lines are the toolkit's.

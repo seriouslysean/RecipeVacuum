@@ -718,6 +718,7 @@ describe("simulation", function()
 		it("links are noticed with how near they arrived", function()
 			h = boot(nil)
 			NUM_BAG_SLOTS = 1
+			IsAnyBagOpen = function() return false end
 			known = C_TradeSkillUI
 			C_TradeSkillUI = { GetTradeSkillLineForRecipe = function(id) return id == 5555 and 202 or nil end }
 			load("Heard.lua", h)
@@ -727,23 +728,19 @@ describe("simulation", function()
 			chat("CHAT_MSG_CHANNEL", "WTS |Henchant:5555|h[Engineering: Gizmo]|h and |Henchant:4444|h[Not a recipe]|h")
 			chat("CHAT_MSG_CHANNEL", "again |Hitem:1000::::|h[Pattern: Test]|h")
 			met = h.db.met
-			assert(met.items[1000] == 2 and met.recipes[5555] == 3
-				and met.items[777] == nil and met.recipes[4444] == nil, "links are noticed with how near they arrived")
+			assert(met.items[1000] == 1 and met.recipes[5555] == 1
+				and met.items[777] == nil and met.recipes[4444] == nil, "a link in any chat counts at Self Found")
 		end)
 		it("nothing about who or where is kept", function()
 			local onlyLevels = true
 			for _, bucket in pairs(met) do for _, value in pairs(bucket) do onlyLevels = onlyLevels and type(value) == "number" end end
 			assert(onlyLevels, "nothing about who or where is kept")
 		end)
-		it("a nearer sighting replaces a farther one", function()
-			chat("CHAT_MSG_GUILD", "mine |Henchant:5555|h[Engineering: Gizmo]|h")
-			assert(met.recipes[5555] == 2, "a nearer sighting replaces a farther one")
-		end)
-		-- Fails if a stranger's whisper counts as a friend's: at the default level it would show the recipe.
-		it("a stranger's whisper counts as public chat", function()
-			h.IsTrusted = function() return false end -- Sharing.lua, not loaded here
+		-- Fails if a link in a public channel or from a stranger counts below Self Found.
+		it("every channel counts at Self Found", function()
 			chat("CHAT_MSG_WHISPER", "psst |Hitem:1001::::|h[Pattern: Other]|h")
-			assert(met.items[1001] == 3, "a stranger's whisper counts as public chat")
+			chat("CHAT_MSG_SAY", "hi |Hitem:1002::::|h[Pattern: Third]|h")
+			assert(met.items[1001] == 1 and met.items[1002] == 1, "every channel counts at Self Found")
 			C_TradeSkillUI = known
 		end)
 		-- Fails if a recipe item in the bags is not listed at Self Found, or if a non-recipe item or an unanswered tooltip changes anything.
@@ -765,7 +762,7 @@ describe("simulation", function()
 			local items, recipes = 0, 0
 			for _ in pairs(h.db.met.items) do items = items + 1 end
 			for id in pairs(h.db.met.recipes) do if seen[id] == nil then recipes = recipes + 1 end end
-			assert(recipes == 2 and items == 2, "a non-recipe item in the bags records nothing")
+			assert(recipes == 2 and items == 3, "a non-recipe item in the bags records nothing")
 		end)
 		-- Fails if hovering a recipe item does not list its recipe at Self Found, or hovering a non-recipe item or a tooltip without an item ID records anything.
 		it("hovering a recipe item lists it at Self Found", function()
@@ -783,6 +780,67 @@ describe("simulation", function()
 			local hovered = { recipeID = 6002 }
 			h.SummarizeSources(hovered)
 			assert(h.db.met.recipes[6002] == 1 and h.IsListed(hovered), "hovering a recipe item lists it at Self Found")
+		end)
+		-- Fails if closing the auction house after two new recipes of the character's professions does not say one line with 2,
+		-- if a recipe already seen or one of another profession is counted, if nothing new says anything, or if a hover with no window open says anything.
+		describe("seen line", function()
+			local said, bagsOpen
+			local function Event(event) frames[#frames].script(frames[#frames], event) end
+			it("closing the auction house says one line with the new recipes of the character's professions", function()
+				said = {}
+				h.Say = function(noise, report) said[#said + 1] = report end
+				h.db.announceNewFinds = true
+				h.db.met.recipes[7000], h.db.met.recipes[7001], h.db.met.recipes[7002], h.db.met.recipes[7003] = nil, nil, nil, nil
+				bagsOpen = false
+				IsAnyBagOpen = function() return bagsOpen end
+				GetProfessions = function() return 1 end
+				GetProfessionInfo = function() return "Engineering", 0, 1, 75, 0, 0, 202 end
+				C_TradeSkillUI.GetTradeSkillLineForRecipe = function(id) return id == 7002 and 333 or 202 end
+				local hover = tooltipPostCalls[Enum.TooltipDataType.Item]
+				h.scanned[2100], h.scanned[2101], h.scanned[2102] = 7000, 7001, 7002
+				hover({}, { id = 2100 })
+				Event("AUCTION_HOUSE_CLOSED")
+				assert(#said == 0, "a hover with no window open says nothing")
+				Event("AUCTION_HOUSE_SHOW")
+				hover({}, { id = 2101 })
+				chat("CHAT_MSG_PARTY", "|Henchant:7003|h[Gizmo]|h")
+				hover({}, { id = 2102 })
+				chat("CHAT_MSG_PARTY", "|Henchant:7000|h[Gizmo]|h") -- seen before the window opened
+				Event("AUCTION_HOUSE_CLOSED")
+				assert(#said == 1 and said[1] == "2 recipes seen!", "one line with 2 recipes, said " .. tostring(said[1]) .. " x" .. #said)
+			end)
+			it("a recipe already seen is not counted again, and nothing new says nothing", function()
+				said = {}
+				local hover = tooltipPostCalls[Enum.TooltipDataType.Item]
+				Event("AUCTION_HOUSE_SHOW")
+				hover({}, { id = 2101 })
+				chat("CHAT_MSG_PARTY", "|Henchant:7000|h[Gizmo]|h")
+				Event("AUCTION_HOUSE_CLOSED")
+				assert(#said == 0, "nothing new says nothing")
+			end)
+			it("one recipe says the singular, and the last window to close says it", function()
+				said = {}
+				h.scanned[2105] = 7005 -- a recipe item is read once a session, so each case brings its own
+				local hover = tooltipPostCalls[Enum.TooltipDataType.Item]
+				Event("MAIL_SHOW")
+				Event("TRADE_SHOW")
+				hover({}, { id = 2105 })
+				Event("TRADE_CLOSED")
+				assert(#said == 0, "an open mailbox keeps the count")
+				Event("MAIL_CLOSED")
+				assert(#said == 1 and said[1] == "1 recipe seen!", "one recipe says the singular")
+			end)
+			it("closing the last bag says the line, an open bag keeps it", function()
+				said = {}
+				h.scanned[2106] = 7006
+				bagsOpen = true
+				tooltipPostCalls[Enum.TooltipDataType.Item]({}, { id = 2106 })
+				Event("BAG_CLOSED")
+				assert(#said == 0, "another open bag keeps the count")
+				bagsOpen = false
+				Event("BAG_CLOSED")
+				assert(#said == 1, "closing the last bag says the line")
+			end)
 		end)
 	end)
 

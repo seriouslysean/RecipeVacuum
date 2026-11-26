@@ -8,7 +8,7 @@ It tracks a recipe once you have come across it, and fills in where it comes fro
 - **Friends** (the default): also what your party, raid, guild and friends see, link or share. 
 - **Public**: also recipes linked in public chat.
 
-**Share My Finds** (on by default) sends what you find to your party, guild and friends who use Recipe Vacuum; turn it off to keep your finds to yourself. On a profession's rank bar, a mark appears when the next rank has a known place; clicking it sets a map pin. **Announce New Finds** controls the chat line after a visit with new sources.
+**Share My Finds** (on by default) sends what you find to your party, guild and friends who use Recipe Vacuum; turn it off to keep your finds to yourself. On a profession's rank bar, a mark appears when the next rank has a known place; clicking it sets a map pin. **Announce New Finds** controls the chat line after a visit with new sources and the line when a bag, auction house, bank, trade or mail window closes on new recipes for your professions.
 
 To contribute discoveries collected while playing alone, type `/recipevacuum export` (or press Run next to it in the options), copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
 

@@ -267,6 +267,24 @@ function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = types
 end
 
+-- A profession's own skill line. The game can report a child line with its parent third
+-- (GetTradeSkillLineForRecipe for Journeyman Mining gave 2946, "Mining", 186 on build 71091), and caps and
+-- the profession window use the parent.
+function ns.ProfessionLine(line, _, parent)
+	return parent and parent > 0 and parent or line
+end
+
+-- Each known profession's cap, by skill line (GetProfessionInfo, as Blizzard's Camelot professions book reads it).
+function ns.GetProfessionCaps()
+	local caps = {}
+	-- GetProfessions leaves nil for an empty slot, which pairs skips.
+	for _, index in pairs({ GetProfessions() }) do
+		local _, _, _, maxRank, _, _, skillLine = GetProfessionInfo(index)
+		if skillLine then caps[skillLine] = maxRank end
+	end
+	return caps
+end
+
 -- The panel's show rule (docs/data.md, "Show rule"): a recipe with a known source within the player's level, or come across within it.
 -- A recipe with neither is left out, which drops the client's later-expansion recipes without a list of them.
 function ns.IsListed(recipeInfo)

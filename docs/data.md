@@ -73,8 +73,8 @@ The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core
 | Level | Shows | Sends |
 |---|---|---|
 | Self Found (1) | The player's own finds | What Share My Finds sends |
-| Friends (2), the default | Also the shared layer, and what party, raid, guild and whispers bring | What Share My Finds sends |
-| Public (3) | Also what public chat brings | What Share My Finds sends |
+| Friends (2), the default | Also the shared layer and the guild's profession view | What Share My Finds sends |
+| Public (3) | Also a linked profession the player opens | What Share My Finds sends |
 
 Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The options page sets the level.
 
@@ -86,15 +86,27 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 |---|---|
 | A recipe item in the character's own bags, read when they change and on entering the world | Self Found |
 | A recipe item on any item tooltip the player hovers (bags, bank, auction house, vendor, chat link, trade, comparison) | Self Found |
-| A recipe item or recipe link in party, raid, instance, guild or officer chat, or whispered by someone in the party, guild or friends list | Friends |
-| A recipe item in a loot line (someone nearby looting) | Friends |
-| A recipe item or recipe link in say, yell or a numbered channel, or whispered by anyone else | Public |
+| A recipe item or recipe link in any chat: party, raid, instance, guild, officer, say, yell, a numbered channel, a whisper (Battle.net too) or a loot line | Self Found |
 | The guild's profession view | Friends |
-| A linked profession the player opens | The level its link was seen at this session, else Public |
+| A linked profession the player opens | Public |
 
 A recipe item in the bags counts as seen by the player (owner, 2026-11-26: "it makes sense to me. I saw them."), so the recipe is kept at Self Found without where the item came from. The scan reads item IDs only and reads each item once a session; an item whose data has not loaded is read again on the next bag event.
 
 Hovering a recipe item counts the same (owner, 2026-11-26: "seeing them makes sense, if I'm running around and people are hawking their wares, why wouldn't that count? It's like browsing a store. I know they exist but nothing else about them."). The hook is `TooltipDataProcessor.AddTooltipPostCall` for item tooltips (`Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua:199`): it reads the item ID from the tooltip data, uses the bag scan's item-to-recipe lookup and its once-a-session memory, and adds nothing to the tooltip.
+
+Chat counts at Self Found for every channel (owner, 2026-11-26: "I think public and anything you see is 'self found'"). Only the sharing between addons (Sharing.lua) brings Friends-level finds. A linked profession's own level no longer follows where its link was seen, since every channel is the same level now.
+
+When a window that shows many items closes, the addon says one voiced line, "%d recipes seen!" (Voice.lua, `seen`), for the recipes first met at Self Found while it was open (owner, 2026-11-26, "Ok yes" to a summary line like the vendor one). The windows are the bags, auction house, bank, trade and mail; the line comes when the last of them closes, and Announce New Finds turns it off. Only a recipe whose profession the character has counts: the recipe's skill line from `C_TradeSkillUI.GetTradeSkillLineForRecipe` (parent line when the game reports a child), against the skill lines of `GetProfessions`. A recipe counts when `Note` adds it or lowers its level, so one already seen is not counted again and nothing new says nothing. Hovers and chat links with no window open stay silent.
+
+| Window | Opens | Closes | Source in the Forever UI |
+|---|---|---|---|
+| Auction house | `AUCTION_HOUSE_SHOW` | `AUCTION_HOUSE_CLOSED` | `Blizzard_APIDocumentationGenerated/AuctionHouseDocumentation.lua:1159,1237` |
+| Bank | `BANKFRAME_OPENED` | `BANKFRAME_CLOSED` | `BankDocumentation.lua:392,398` |
+| Trade | `TRADE_SHOW` | `TRADE_CLOSED` | `TradeInfoDocumentation.lua:78,143` |
+| Mail | `MAIL_SHOW` | `MAIL_CLOSED` | `MailInfoDocumentation.lua:95,148` |
+| Bags | `IsAnyBagOpen()` | `BAG_CLOSED` (one per bag), asked again next frame | `ContainerDocumentation.lua:613`, `Blizzard_UIPanels_Game/Mainline/ContainerFrame.lua:2235` |
+
+Not verified in game: that `IsAnyBagOpen()` is false by the next frame after `BAG_CLOSED`, and that the five window events fire as documented on this build.
 
 A recipe with no known source counts as come across once it has been seen within the chosen level (`recipeInfo.met`).
 
