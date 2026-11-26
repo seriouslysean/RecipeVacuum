@@ -51,6 +51,8 @@ UnitName = function() return "Tester" end
 UnitLevel = function() return 1 end
 UnitFactionGroup = function() return "Alliance", "Alliance" end
 GetSubZoneText = function() return "" end
+GetPhysicalScreenSize = function() return 1280, 800 end
+GetLocale = function() return "enUS" end
 SlashCmdList = {}
 UISpecialFrames = {}
 NORMAL_FONT_COLOR = { WrapTextInColorCode = function(_, text) return text end }

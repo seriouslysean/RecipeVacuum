@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 36
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 37
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -303,6 +303,15 @@ local function ProfilerLine(addon)
 		C_AddOnProfiler.GetAddOnMetric(addon, metric.CountTimeOver10Ms))
 end
 
+-- How the game is being played: language, screen, UI scale and gamepad, so a report reads on its own.
+local function DeviceLine()
+	local width, height = GetPhysicalScreenSize()
+	local pad = C_GamePad and C_GamePad.IsEnabled()
+	return ("device: locale %s | screen %sx%s | UI scale %s | gamepad %s, device %s"):format(tostring(GetLocale()),
+		tostring(width), tostring(height), tostring(UIParent and UIParent:GetEffectiveScale()),
+		pad and "on" or "off", tostring(pad and C_GamePad.GetActiveDeviceID() or "-"))
+end
+
 local function WriteTimings()
 	for _, log in pairs(lib.logs) do
 		local lines = lib:TimingLines(log.module)
@@ -346,6 +355,7 @@ function lib:StartLog(module, saved, handlers)
 	self:Log(module, ("%s session: client %s (%s) | addon %s | %s, level %d | %s"):format(date("%Y-%m-%d %H:%M:%S"),
 		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
 		UnitLevel("player") or 0, ZoneLine()), true)
+	self:Log(module, DeviceLine())
 	-- A working build logs from the start; /boltgrip watch off is remembered.
 	if saved.watch ~= false and not log.watching then
 		self:SetWatch(module, true, true)

@@ -26,7 +26,7 @@ read_globals = {
 	"LE_PARTY_CATEGORY_INSTANCE", "LibStub", "Menu", "MenuResponse", "MISCELLANEOUS", "NORMAL_FONT_COLOR",
 	"OPEN", "OpenMapToUserWaypoint", "PROFESSION_RECIPES_SHOW_UNLEARNED", "Professions", "ProfessionsFrame",
 	"ProfessionsUtil", "QUEST", "RAID_CLASS_COLORS", "REQUIRES_LABEL", "ScrollBoxConstants", "ScrollUtil", "Settings",
-	"SetTrainerServiceTypeFilter", "SHOW_MAP", "C_AddOnProfiler", "CONTEXT_ACTION_LABEL_OPEN", "FRIENDS", "KEY_BINDING", "COMBAT", "SOUND", "ScriptErrorsFrame", "GetProfessions", "GetProfessionInfo", "C_Container", "SOURCE", "SOURCES", "strcmputf8i", "strjoin", "strsplit",
+	"SetTrainerServiceTypeFilter", "SHOW_MAP", "C_AddOnProfiler", "C_GamePad", "GetPhysicalScreenSize", "CONTEXT_ACTION_LABEL_OPEN", "FRIENDS", "KEY_BINDING", "COMBAT", "SOUND", "ScriptErrorsFrame", "GetProfessions", "GetProfessionInfo", "C_Container", "SOURCE", "SOURCES", "strcmputf8i", "strjoin", "strsplit",
 	"strtrim", "tContains", "TOOLTIP_DEFAULT_BACKGROUND_COLOR", "TOOLTIP_DEFAULT_COLOR", "tDeleteItem", "tostringall", "TRADESKILL_UNLEARNED_RECIPE_HEADER", "UiMapPoint",
 	"UIParent", "UISpecialFrames", "UNAVAILABLE", "UNCHECK_ALL", "UnitFactionGroup", "UnitGUID", "UnitInParty",
 	"UnitInRaid", "UnitLevel", "UnitName", "UNKNOWN", "wipe", "WOW_PROJECT_ID",
