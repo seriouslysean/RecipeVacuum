@@ -1,6 +1,6 @@
 # Recipe Vacuum
 
-A WoW Forever addon that tracks where recipes come from and which ones you don't know yet. It leaves Blizzard's profession window alone, so controller navigation and other windows keep working; a panel of its own for unlearned recipes is planned.
+A WoW Forever addon that tracks where recipes come from and which ones you don't know yet. It leaves Blizzard's profession window alone, so controller navigation and other windows keep working; a panel of its own beside the window lists the recipes you have found and not yet learned, by rank, with a discovery bar and each recipe's details and sources.
 
 It tracks a recipe once you have come across it, and fills in where it comes from as you learn more. Recipe sources are recorded from the trainers, vendors, quests and loot you see. How far it listens beyond that is a choice under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum:
 
