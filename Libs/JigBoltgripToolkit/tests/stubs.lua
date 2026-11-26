@@ -136,9 +136,12 @@ function CreateSettingsButtonInitializer(title) return { button = title } end
 
 -- Runs the ADDON_LOADED callbacks registered for addonName, as the client does once saved data is read.
 -- Then the start-up events, in the client's order, for code that waits for login (key bindings are read then).
+-- Newest registration first: the client promises no order, and an addon that depends on its files'
+-- registration order breaks in the game (Tackletron's log started before its saved table was set).
 function client.Loaded(addonName)
-	for _, entry in ipairs(client.loaded or {}) do
-		if entry.name == addonName then entry.callback() end
+	local loaded = client.loaded or {}
+	for index = #loaded, 1, -1 do
+		if loaded[index].name == addonName then loaded[index].callback() end
 	end
 	client.Fire("ADDON_LOADED", addonName)
 	client.Fire("PLAYER_LOGIN")
