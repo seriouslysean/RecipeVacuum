@@ -239,6 +239,9 @@ local function SyncNav()
 			SetNav(control, SMART_NAV_INPUT_DIRECTION.LEFT, back)
 			-- Nothing lies right of the details; left to itself, the d-pad would reach up and right into the list.
 			SetNav(control, SMART_NAV_INPUT_DIRECTION.RIGHT, control)
+			-- Up from the made item, the top of the details, also leads back to the chosen row: left to itself it lands on
+			-- whichever row is nearest above, scrolled out of view or not.
+			if control == detail.Output then SetNav(control, SMART_NAV_INPUT_DIRECTION.UP, back) end
 			count = count + 1
 		end
 	end
