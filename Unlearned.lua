@@ -91,7 +91,11 @@ local function GetUnlearnedCategories(professionInfo)
 		if not recipeInfo then
 			indexComplete = false
 		elseif C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID) then
-			ns.ReadSpecialization(recipeID) -- learned ones too, to detect a picked specialization
+			-- A learned recipe is read only to find a picked specialization, and only until one is found;
+			-- unlearned ones are read when drawn or filtered.
+			if recipeInfo.learned and not ns.HasSpecialization(recipeID) then
+				ns.ReadSpecialization(recipeID)
+			end
 			recipeInfo = Professions.GetFirstRecipe(recipeInfo)
 			if recipeInfo and recipeInfo.learned then
 				established[recipeInfo.categoryID] = true

@@ -158,6 +158,13 @@ fire("UNIT_SPELLCAST_SENT", "player", "Battered Chest")
 loot = { { type = 1, link = "item:1000", sources = { "GameObject-0-1-0-1-106318-BBBB", 1 } } }
 fire("LOOT_READY"); fire("LOOT_CLOSED")
 check("object drop saved", #db.found.items[1000] == 2 and db.objects[106318] and db.objects[106318].name == "Battered Chest")
+-- Fails if an object opened without a cast takes the name of an older cast at something else.
+fire("UNIT_SPELLCAST_SENT", "player", "Murloc Lurker")
+clock = clock + 30
+loot = { { type = 1, link = "item:1000", sources = { "GameObject-0-1-0-1-106319-DDDD", 1 } } }
+fire("LOOT_READY"); fire("LOOT_CLOSED")
+check("an object is not named after an old cast's target", db.objects[106319] and db.objects[106319].name == nil)
+table.remove(db.found.items[1000]) -- keep the sightings the checks below count
 loot = { { type = 1, link = "item:1000", sources = { "Item-1-0-ABC", 1 } } }
 fire("LOOT_READY"); fire("LOOT_CLOSED")
 check("container drop saved", db.found.items[1000][3].container == 10456)
@@ -220,6 +227,12 @@ do
   local ok = pcall(rankFrame.script, rankFrame, "SKILL_LINES_CHANGED")
   check("two caps rising at once are credited to nothing, without an error", ok and db.ranks[185][300] == nil
     and (db.ranks[186] == nil or db.ranks[186][75] == nil))
+  -- Fails if an item whose data has not loaded is taken for a book: "no answer yet" is not "teaches nothing".
+  a.GetTaughtRecipe = function() return nil end
+  hooks.UseContainerItem(0, 1)
+  caps[185] = 450
+  rankFrame.script(rankFrame, "SKILL_LINES_CHANGED")
+  check("an item not yet loaded is not taken for a book", db.ranks[185][375] == nil)
   a.GetTaughtRecipe = taught
   -- Trainer steps: Bronk Guzzlegear's "used" Apprentice Engineer, Yarr Hammerstone's Journeyman Mining under 2946.
   C_TooltipInfo = C_TooltipInfo or {}
@@ -369,6 +382,11 @@ do
   local wired
   for _, row in ipairs(sent) do if row.i == 2000 and row.n == 900 and row.a == 41 then wired = row end end
   check("a shared drop carries its subzone, its own spot and its count", wired and wired.cn == 2 and wired.x == 0.5 and wired.m == 1429)
+  -- Fails if one's own copy of a drop with no spot hides a friend's copy that has one: Show on Map gets nothing.
+  d.db.found.items[3000] = { { kind = "drop", npc = 950, map = 1429 } }
+  d.db.shared.items[3000] = { { kind = "drop", npc = 950, map = 1429, x = 0.25, y = 0.75 } }
+  local listed = d.GetItemSources(3000)
+  check("the same drop seen twice shows the copy with a spot", listed and #listed == 1 and listed[1].x == 0.25)
   place.area, place.instance = 40, nil
 end
 -- Fails if one bad row makes the whole batch refused: the same batch is refused again on every ask, and

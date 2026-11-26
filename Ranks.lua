@@ -73,8 +73,9 @@ local recentBook, recentQuest, knownCaps, atTrainer
 hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
 	-- Read straight after the call; the server removes a used book later, with BAG_UPDATE.
 	local itemID = C_Container.GetContainerItemID(bag, slot)
-	-- A recipe item that teaches a recipe never raises a cap; only one that teaches none can.
-	if itemID and ns.IsRecipeItem(itemID) and not ns.GetTaughtRecipe(itemID) then
+	-- A recipe item that teaches a recipe never raises a cap; only one known to teach none can. An item
+	-- whose data has not loaded has given no answer yet, and is not taken for a book.
+	if itemID and ns.IsRecipeItem(itemID) and not ns.GetSeededRecipe(itemID) and ns.GetTaughtRecipe(itemID) == false then
 		recentBook = { item = itemID, at = GetTime() }
 	end
 end)
@@ -166,9 +167,12 @@ local function NextRank()
 	for _, observation in ipairs(candidates) do
 		if not ns.IsOtherFactionNPC(observation) then
 			entries[#entries + 1] = observation
-			targets[#targets + 1] = ns.SourceTarget(observation)
+			local target = ns.SourceTarget(observation)
+			if target then targets[#targets + 1] = target end
 		end
 	end
+	-- Recorded sources come from unordered tables; a stable order keeps the menu the same each time.
+	table.sort(targets, function(left, right) return left.label < right.label end)
 	return #targets > 0 and { sources = sources, profession = info.professionName, entries = entries, targets = targets } or nil
 end
 
@@ -195,8 +199,18 @@ local function OnEnter(button)
 	GameTooltip:Show()
 end
 
+-- One place opens the map; several open a menu, as the recipe pane's Show Map does.
 local function OnClick(button)
-	ns.ShowOnMap(button.rank.targets[1])
+	local targets = button.rank.targets
+	if #targets == 1 then
+		ns.ShowOnMap(targets[1])
+		return
+	end
+	MenuUtil.CreateContextMenu(button, function(_, rootDescription)
+		for _, target in ipairs(targets) do
+			rootDescription:CreateButton(target.label, function() ns.ShowOnMap(target) end)
+		end
+	end)
 end
 
 local function Update()

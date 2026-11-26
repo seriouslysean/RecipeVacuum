@@ -151,17 +151,29 @@ function ns.SamePlace(a, b)
 	return a.map == b.map and a.area == b.area and a.instance == b.instance
 end
 
-local function SameSource(a, b)
+-- One test of "the same source" for recording, merging and listing, so the three cannot drift apart.
+-- A drop is one creature in one place: the same creature elsewhere is a separate sighting.
+function ns.SameSource(a, b)
 	if a.kind ~= b.kind then return false end
 	if a.quest or b.quest then return a.quest == b.quest end
 	return a.npc == b.npc and a.object == b.object and a.container == b.container and a.fishing == b.fishing
 		and a.zone == b.zone and (a.kind ~= "drop" or ns.SamePlace(a, b))
 end
 
--- A source found by the player and a peer is in two layers; the first layer read wins.
+function ns.FindSource(list, key)
+	for _, existing in ipairs(list) do
+		if ns.SameSource(existing, key) then return existing end
+	end
+end
+
+-- A source found by the player and a peer is in two layers; the first layer read wins, unless only the
+-- other copy has a spot to show on the map.
 local function AppendOnce(list, observation)
-	for _, listed in ipairs(list) do
-		if SameSource(listed, observation) then return end
+	for index, listed in ipairs(list) do
+		if ns.SameSource(listed, observation) then
+			if listed.x == nil and observation.x ~= nil then list[index] = observation end
+			return
+		end
 	end
 	table.insert(list, observation)
 end
@@ -668,7 +680,10 @@ function ns.GetRecipeFaction(recipeID)
 			end
 		end
 		if faction == nil then
-			return nil
+			-- A faction line no label matches: shown for this session rather than asked again on every
+			-- refresh, and not saved, so the next session reads it again.
+			recipeFactions[recipeID] = false
+			return false
 		end
 		facts.faction[recipeID] = faction
 	end
@@ -721,7 +736,7 @@ local function Profession(recipeID)
 end
 
 -- Reads the specialization requirement of what a recipe makes; nil while that item's data loads.
--- Learned recipes are read too, so one met requirement anywhere is found; recipes known to have none are skipped.
+-- Recipes known to have none are skipped.
 function ns.ReadSpecialization(recipeID)
 	local state = recipeSpecs[recipeID]
 	if state ~= nil then
@@ -779,6 +794,11 @@ function ns.ReadSpecialization(recipeID)
 	end
 	facts.spec[recipeID], recipeSpecs[recipeID] = hasLine or false, state
 	return state
+end
+
+function ns.HasSpecialization(recipeID)
+	local profession = Profession(recipeID)
+	return profession and specialized[profession] or false
 end
 
 -- The requirement text when a specialization other than the made item's is picked; false for no lock, nil while data loads.

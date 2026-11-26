@@ -6,7 +6,7 @@ globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER
 max_line_length = false
 ignore = { "21./self", "212" }
 read_globals = {
-	"CaseAccentInsensitiveParse", "CUSTOM_GAMEPLAY_SETTINGS_ORDER", "GetBindingName", "CreateKeybindingEntryInitializer", "C_KeyBindings", "TRANSMOG_SOURCE_4", "OpenWorldMap", "GetRealZoneText", "CreateVector2D", "GetMinimapZoneText", "GetSubZoneText", "GetZoneText", "GetInstanceInfo", "C_MapExplorationInfo", "ADDONS", "Ambiguate", "BATTLE_PET_SOURCE_1", "BATTLE_PET_SOURCE_2", "BATTLE_PET_SOURCE_3", "BNET_CLIENT_WOW",
+	"CaseAccentInsensitiveParse", "MenuUtil", "CUSTOM_GAMEPLAY_SETTINGS_ORDER", "GetBindingName", "CreateKeybindingEntryInitializer", "C_KeyBindings", "TRANSMOG_SOURCE_4", "OpenWorldMap", "GetRealZoneText", "CreateVector2D", "GetMinimapZoneText", "GetSubZoneText", "GetZoneText", "GetInstanceInfo", "C_MapExplorationInfo", "ADDONS", "Ambiguate", "BATTLE_PET_SOURCE_1", "BATTLE_PET_SOURCE_2", "BATTLE_PET_SOURCE_3", "BNET_CLIENT_WOW",
 	"BNGetNumFriends", "C_AddOns", "C_BattleNet", "C_CVar", "C_ChatInfo", "C_EncodingUtil", "C_FriendList", "C_GossipInfo",
 	"C_GuildInfo", "C_Item", "C_Map", "C_MerchantFrame", "C_QuestLog", "C_Spell", "C_SpellBook", "C_SuperTrack", "C_Texture",
 	"C_Timer", "C_TooltipInfo", "C_TradeSkillUI", "ChatTypeInfo", "CHECK_ALL", "CopyTable", "COSTS_LABEL",

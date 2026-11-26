@@ -210,14 +210,8 @@ function ns.MergeFinds(rows, maxRows)
 		if row.o then ns.NoteNPC(db.objects, row.o, row.on, row.m, row.x, row.y, row.s, true) end
 		local bucket, id = row.r and db.shared.recipes or db.shared.items, row.r or row.i
 		bucket[id] = bucket[id] or {}
-		local observation
-		for _, existing in ipairs(bucket[id]) do
-			if existing.kind == row.k and existing[field] == value
-				and (row.k ~= "drop" or ns.SamePlace(existing, { map = row.m, area = row.a, instance = row.di })) then
-				observation = existing
-				break
-			end
-		end
+		local observation = ns.FindSource(bucket[id], { kind = row.k, [field] = value, map = row.m, area = row.a,
+			instance = row.di })
 		if not observation then
 			observation = { kind = row.k, [field] = value, map = row.k == "drop" and row.m or nil }
 			table.insert(bucket[id], observation)

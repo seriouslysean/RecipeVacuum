@@ -62,14 +62,8 @@ local function Save(bucket, id, kind, npc, details)
 		observations = {}
 		ns.db.found[bucket][id] = observations
 	end
-	local observation
-	for _, existing in ipairs(observations) do
-		-- A drop is one creature in one place: the same creature elsewhere is a separate sighting.
-		if existing.kind == kind and existing[npc.field] == npc.value and (kind ~= "drop" or ns.SamePlace(existing, details)) then
-			observation = existing
-			break
-		end
-	end
+	local observation = ns.FindSource(observations, { kind = kind, [npc.field] = npc.value,
+		map = details.map, area = details.area, instance = details.instance })
 	local isNew = observation == nil
 	if isNew then
 		observation = { kind = kind, [npc.field] = npc.value }
@@ -293,7 +287,10 @@ frame:SetScript("OnEvent", function(_, event, itemID)
 end)
 
 -- Loot windows, read once each; sources come from GetLootSourceInfo and fishing is kept by zone (docs/client-notes.md, "Loot, quests and vendors").
-local castTarget, lootRead
+local castTarget, castAt, lootRead
+-- An object's name is the target of the cast that opened it. Opening, mining and herb casts run at most
+-- about five seconds, so an older cast was at something else and its target is not this object's name.
+local OPEN_CAST_SECONDS = 6
 local loot = CreateFrame("Frame")
 
 -- Where a drop happened, by ID: the dungeon or raid when inside one, else the subzone at the spot
@@ -327,9 +324,11 @@ local function LootSource(guid)
 		local area, instance = DropPlace(mapID, x, y)
 		return Source("npc", id), { map = mapID, x = x, y = y, area = area, instance = instance }, (ns.GetNPC(id) or {}).name
 	elseif unitType == "GameObject" and id then
-		ns.NoteNPC(ns.db.objects, id, castTarget, mapID, x, y, GetServerTime())
+		local name = castAt and GetTime() - castAt <= OPEN_CAST_SECONDS and castTarget or nil
+		ns.NoteNPC(ns.db.objects, id, name, mapID, x, y, GetServerTime())
 		local area, instance = DropPlace(mapID, x, y)
-		return Source("object", id), { map = mapID, x = x, y = y, area = area, instance = instance }, castTarget
+		return Source("object", id), { map = mapID, x = x, y = y, area = area, instance = instance },
+			name or (ns.db.objects[id] or {}).name
 	elseif unitType == "Item" then
 		local itemID = C_Item.GetItemIDByGUID(guid)
 		return itemID and Source("container", itemID), {}, itemID and C_Item.GetItemNameByID(itemID)
@@ -471,10 +470,10 @@ loot:RegisterEvent("QUEST_COMPLETE")
 loot:SetScript("OnEvent", function(_, event, unit, target)
 	if event == "UNIT_SPELLCAST_SENT" then
 		if unit == "player" and not issecretvalue(target) then
-			castTarget = target ~= "" and target or nil
+			castTarget, castAt = target ~= "" and target or nil, GetTime()
 		end
 	elseif event == "LOOT_CLOSED" then
-		lootRead, castTarget = nil, nil
+		lootRead, castTarget, castAt = nil, nil, nil
 	elseif event == "LOOT_READY" or event == "LOOT_OPENED" then
 		--@debug@
 		local perfStart = debugprofilestop()
