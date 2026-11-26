@@ -184,16 +184,15 @@ end
 -- The window's own filters, read where they can apply to a recipe not yet learned (docs/client-notes.md, "Panel").
 local function CollectEntries(list)
 	wipe(entries)
-	-- Nothing unlearned is makeable, and a window set to hide unlearned recipes hides these too.
-	if C_TradeSkillUI.GetOnlyShowMakeableRecipes() or not C_TradeSkillUI.GetShowUnlearned() then
-		return
-	end
+	-- "Have materials" and "Show unlearned" are left out: nothing here is makeable, and Forever turns Show
+	-- unlearned off by default, which emptied the panel. Skill-up reads the difficulty color, since a recipe
+	-- not yet learned never reports that it can skill up.
 	local search = CaseAccentInsensitiveParse(ProfessionsFrame.CraftingPage.RecipeList.SearchBox:GetText())
 	local skillUpOnly = C_TradeSkillUI.GetOnlyShowSkillUpRecipes()
 	local firstCraftOnly = C_TradeSkillUI.GetOnlyShowFirstCraftRecipes()
 	for _, recipeInfo in ipairs(list) do
 		if (search == "" or recipeInfo.searchName:find(search, 1, true))
-			and not (skillUpOnly and not recipeInfo.canSkillUp)
+			and not (skillUpOnly and recipeInfo.relativeDifficulty == Enum.TradeskillRelativeDifficulty.Trivial)
 			and not (firstCraftOnly and not recipeInfo.firstCraft) then
 			entries[#entries + 1] = recipeInfo
 		end
