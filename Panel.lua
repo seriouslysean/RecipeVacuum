@@ -49,6 +49,11 @@ local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
 local RANK_BAR_FILL_INSET = 12
+-- Blizzard_Professions/Camelot/Blizzard_ProfessionsCrafting.lua:10: the window's own bar starts 110 px in from its page, which sits
+-- about 5 px in from the window's frame, so it starts clear of the portrait (docs/client-notes.md, "Panel"). Ours starts at the same
+-- distance from the frame and ends at the list's own inset.
+local RANK_BAR_LEFT = 110 + FRAME_INSET
+local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -59,28 +64,36 @@ local WAIT_SECONDS = 1 -- at most: the client may still be loading names and fac
 -- Frames made ahead of need, out of combat, a few a frame (docs/client-notes.md, "Panel"), so a profession only fills frames that exist.
 local POOL_ROWS = 60
 local POOL_HEADINGS = 8
--- The details below the list, in the window's recipe schematic as Blizzard_ProfessionsTemplates/Blizzard_ProfessionsRecipeSchematicForm.xml
--- lays it out (the :NN references below are that file's) (docs/client-notes.md, "Panel"). Unscaled: the form's own 28 px margins leave 214 px of the panel's 270.
-local DETAIL_SIDE = 28 -- the output icon's left offset (:36); the reagents line up with it
-local OUTPUT_TOP = 33 -- the output icon's offset below the form's top (:36)
+-- The details below the list: a box drawn tight around its content, with the made item's icon hanging off its top left corner as the
+-- window's portrait hangs off the window's (docs/client-notes.md, "Panel"). Unscaled; the :NN references are Blizzard_ProfessionsTemplates/
+-- Blizzard_ProfessionsRecipeSchematicForm.xml and Blizzard_ProfessionsTemplates.xml where they say so.
+local DETAIL_SIDE = 7 -- the reagents' left edge and the right margin; the same as the Show Map button's inset
 local DETAIL_GAP = 2 -- between the list and the details, as the window's list and recipe pane (Blizzard_ProfessionsCrafting.xml:164)
 local OUTPUT_SIZE = 47 -- ProfessionsOutputButtonTemplate (Blizzard_ProfessionsTemplates.xml:282)
+local OUTPUT_RING = 68 -- its icon border, centered on the button (Blizzard_ItemButton/Mainline/ItemButtonTemplate.xml:43-48)
+local OUTPUT_RING_MARGIN = (OUTPUT_RING - OUTPUT_SIZE) / 2 -- the ring reaches this far past the button
+-- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
+-- takes the same share of its size.
+local PORTRAIT_SIZE, PORTRAIT_LEFT, PORTRAIT_RISE = 62, 5, 7
+local RING_LEFT = OUTPUT_RING * PORTRAIT_LEFT / PORTRAIT_SIZE
+local RING_RISE = OUTPUT_RING * PORTRAIT_RISE / PORTRAIT_SIZE
+local OUTPUT_LEFT = OUTPUT_RING_MARGIN - RING_LEFT -- the button's offset in the box: the ring hangs out, the button sits in
+local OUTPUT_TOP = OUTPUT_RING_MARGIN - RING_RISE
+local OUTPUT_LEVEL = 400 -- the portrait container's frame level (SharedUIPanelTemplates.xml:574), so the ring draws over the box's border as the portrait does
 local OUTPUT_TEXT_GAP = 14 -- the name's gap right of the output icon (:193)
 local OUTPUT_TEXT_RISE = 17 -- and its rise above the icon's middle (:193)
 local OUTPUT_SUB_GAP = 5 -- the required skill under the name (:214)
-local REAGENTS_GAP = 26 -- the label's gap under the icon: 5 from the layout (:680) + 1 for the empty description (:1468) + 20 (:1283)
-local REAGENTS_LABEL_HEIGHT = 20 -- ProfessionsReagentContainerTemplate's label (Blizzard_ProfessionsTemplates.xml:305)
+local REAGENTS_GAP = 4 -- the label's gap under the icon's ring
+local REAGENTS_LABEL_HEIGHT = 14 -- GameFontNormalSmall's line, and the gap after it:
+local REAGENTS_LABEL_GAP = 4
 local REAGENT_SIZE = 39 -- ProfessionsButtonTemplate (Blizzard_ProfessionsTemplates.xml:42)
-local REAGENT_SLOT = 50 -- ProfessionsReagentSlotBaseTemplate's height (Blizzard_ProfessionsRecipeReagentSlotBase.xml:7)
-local REAGENT_SPACING = 5 -- slot spacing (Blizzard_ProfessionsRecipeSchematicForm.lua:1299)
-local REAGENT_LEFT = 1 -- the grid's offset in its container (Blizzard_Professions.lua:1397)
-local REAGENT_TEXT_GAP = 7 -- the slot's name starts 46 px in, the button is 39 (Blizzard_ProfessionsRecipeReagentSlotBase.xml:22)
+local REAGENT_PITCH = 45 -- one row to the next, as the window's recipe pane shows its reagents
+local REAGENT_TEXT_GAP = 7 -- the name's gap after the icon (Blizzard_ProfessionsRecipeReagentSlotBase.xml:22)
 local SECTION_GAP = 8
 local BUTTON_INSET = 7 -- the window's Create button sits 7 px from its page's bottom (Blizzard_ProfessionsCrafting.lua:1036); same from the sides
 local SOURCE_HEIGHT = 22
 local PLACE_INDENT = 10 -- the opened places sit this far in
 local SOURCE_GAP = 2
-local PLAIN_HEIGHT = 16
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
 
 local panel, listArea, scroll, child, empty, rankBar, detail
@@ -88,7 +101,7 @@ local placedKey
 local SelectRecipe -- defined with the details; a row tap selects through it
 local selected -- the recipe whose details show: set by a tap, kept until another is tapped, the profession changes or it leaves the list
 local detailSignature
-local reagentRows, sourceButtons, plainTexts = {}, {}, {}
+local reagentRows, sourceButtons = {}, {}
 local mapButton -- one Show Map button for every source with a place
 local mapOpen -- the list of places under it is open; a press toggles it, focus never does
 local shownDiscovery
@@ -142,7 +155,7 @@ local function SyncNav()
 	navPending = false
 	ClearNav()
 	if not (panel and panel:IsShown() and detail:IsShown()) then return end
-	local into = mapButton and mapButton:IsShown() and mapButton or detail.Output
+	local into = mapButton and mapButton:IsShown() and mapButton:IsEnabled() and mapButton or detail.Output
 	local first, chosen, rowCount = nil, nil, 0
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		local item = items[index]
@@ -466,7 +479,7 @@ local function MakeReagentRow()
 	button:SetScript("OnLeave", GameTooltip_Hide)
 	button.Text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
 	button.Text:SetPoint("LEFT", button, "RIGHT", REAGENT_TEXT_GAP, 0)
-	button.Text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_SIDE - REAGENT_LEFT - REAGENT_SIZE - REAGENT_TEXT_GAP)
+	button.Text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_SIDE - REAGENT_SIZE - REAGENT_TEXT_GAP)
 	button.Text:SetJustifyH("LEFT")
 	return button
 end
@@ -509,29 +522,30 @@ local function MakeMapButton()
 			FillDetail()
 		end
 	end)
+	-- A disabled button still shows its tooltip: the sources are the reason it is disabled.
+	button:SetMotionScriptsWhileDisabled(true)
+	-- Every source, one line each: "who, type" left and its place right (none for a source with no place). The hint only when a press pins.
 	button:SetScript("OnEnter", function(self)
-		if not self.single then return end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip_SetTitle(GameTooltip, self.single.place)
-		GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
+		for _, source in ipairs(self.sources) do
+			GameTooltip:AddDoubleLine(source.label, source.place or "", HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
+				NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+		end
+		if self.single then
+			GameTooltip_AddBlankLineToTooltip(GameTooltip)
+			GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
+		end
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", GameTooltip_Hide)
 	return button
 end
 
-local function MakePlainText()
-	local text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-	text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_SIDE)
-	text:SetJustifyH("LEFT")
-	text:SetHeight(PLAIN_HEIGHT)
-	return text
-end
-
--- What the details show: the made item, the basic reagents with what the character holds, and every source.
+-- What the details show: the made item, the basic reagents with what the character holds, and every source (those with a place
+-- first, the player's zone first among them).
 local function DetailData(recipeInfo)
 	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeInfo.recipeID, false)
-	local data = { schematic = schematic, reagents = {}, plain = {}, places = {} }
+	local data = { schematic = schematic, reagents = {}, plain = {}, places = {}, sources = {} }
 	local targets, rowOf = {}, {}
 	for _, row in ipairs(ns.SourceRows(recipeInfo)) do
 		if row.target then
@@ -543,6 +557,9 @@ local function DetailData(recipeInfo)
 	end
 	ns.SortTargets(targets) -- the player's zone first
 	for _, target in ipairs(targets) do data.places[#data.places + 1] = rowOf[target] end
+	for _, list in ipairs({ data.places, data.plain }) do
+		for _, source in ipairs(list) do data.sources[#data.sources + 1] = source end
+	end
 	local parts = { recipeInfo.recipeID }
 	for _, slot in ipairs(schematic and schematic.reagentSlotSchematics or {}) do
 		local reagent = slot.reagentType == Enum.CraftingReagentType.Basic and slot.reagents[1]
@@ -593,21 +610,20 @@ FillDetail = function()
 	end
 	-- The window's schematic background for this profession (Blizzard_ProfessionsCrafting.lua:1032).
 	detail.Background:SetAtlas(Professions.GetProfessionBackgroundAtlas(professionInfo) or "Professions-background-summarylist", TextureKitConstants.IgnoreAtlasSize)
-	-- Top-down from the icon, as the schematic form flows; Show Map is last, at the bottom of the box.
-	local top = OUTPUT_TOP + OUTPUT_SIZE
+	-- Top-down from the icon's ring; Show Map is last, at the bottom of the box. The box is exactly this tall.
+	local top = OUTPUT_TOP + OUTPUT_SIZE + OUTPUT_RING_MARGIN
 
 	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
 	if #data.reagents > 0 then
 		top = top + REAGENTS_GAP
 		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -top)
-		top = top + REAGENTS_LABEL_HEIGHT
+		top = top + REAGENTS_LABEL_HEIGHT + REAGENTS_LABEL_GAP
 	end
 	for index, entry in ipairs(data.reagents) do
 		local button = Pooled(reagentRows, index, MakeReagentRow)
 		button.itemID = entry.itemID
-		-- The button is centered in its slot, as the slot template places it (Blizzard_ProfessionsRecipeReagentSlotBase.xml:33).
-		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE + REAGENT_LEFT, -(top + (REAGENT_SLOT - REAGENT_SIZE) / 2))
+		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -top)
 		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
 		local quality = C_Item.GetItemQualityByID(entry.itemID)
 		if quality then button:SetSlotQuality(quality) else button.IconBorder:Hide() end
@@ -616,27 +632,22 @@ FillDetail = function()
 		button:Show()
 		button.Text:Show()
 		missing = missing or not entry.name
-		top = top + REAGENT_SLOT + REAGENT_SPACING
+		top = top + REAGENT_PITCH
 	end
 	for index = #data.reagents + 1, #reagentRows do
 		reagentRows[index]:Hide()
 		reagentRows[index].Text:Hide()
 	end
+	if #data.reagents > 0 then top = top - (REAGENT_PITCH - REAGENT_SIZE) end -- no gap after the last row
 
-	if #data.plain + #data.places > 0 then top = top + SECTION_GAP end
-	for index, source in ipairs(data.plain) do
-		local text = Pooled(plainTexts, index, MakePlainText)
-		text:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -top)
-		text:SetText(source.label)
-		text:Show()
-		top = top + PLAIN_HEIGHT + SOURCE_GAP
-	end
-	for index = #data.plain + 1, #plainTexts do plainTexts[index]:Hide() end
-
+	-- The sources are the button's tooltip, not lines in the box. With none to pin it stays, disabled, so the tooltip still tells them.
 	mapButton = mapButton or MakeMapButton()
 	local several = #data.places > 1
-	mapButton:SetShown(#data.places > 0)
-	if #data.places > 0 then mapButton.single = not several and data.places[1] or nil end
+	mapButton:SetShown(#data.sources > 0)
+	mapButton:SetEnabled(#data.places > 0)
+	mapButton.sources = data.sources
+	mapButton.single = #data.places == 1 and data.places[1] or nil
+	if #data.sources > 0 then top = top + SECTION_GAP end
 	-- Opened, the places stack above the button, so it stays where it is when pressed.
 	local shown = several and mapOpen and #data.places or 0
 	for index = 1, shown do
@@ -648,7 +659,7 @@ FillDetail = function()
 		top = top + SOURCE_HEIGHT + SOURCE_GAP
 	end
 	for index = shown + 1, #sourceButtons do sourceButtons[index]:Hide() end
-	if #data.places > 0 then top = top + SOURCE_HEIGHT end
+	if #data.sources > 0 then top = top + SOURCE_HEIGHT end
 
 	detail:SetHeight(top + BUTTON_INSET)
 	detail:Show()
@@ -802,17 +813,19 @@ local function CreatePanel()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -LIST_TOP_DEFAULT)
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
-	-- The window's own skill bar template (Blizzard_ProfessionsCrafting.xml:197), at its height and strata and in the band above
-	-- the list. The template's width is its art's, so its parts are widened as its overrideWidth path does (Blizzard_ProfessionsRankBar.lua:105-112).
+	-- The window's own skill bar template (Blizzard_ProfessionsCrafting.xml:197), at its height and in the band above
+	-- the list, right of the portrait. The template's width is its art's, so its parts are widened as its overrideWidth path does (Blizzard_ProfessionsRankBar.lua:105-112).
 	rankBar = CreateFrame("Frame", nil, panel, "ProfessionsRankBarTemplate")
 	rankBar.ownerManagesEvents = true -- it shows discovery here, not the window's skill, so the skill events do not drive it
-	rankBar:SetFrameStrata("HIGH")
+	-- The template's own strata is BACKGROUND, under the frame's art. The panel's strata, with the level the bar was made at (one
+	-- above the panel's), keeps it over the frame and under the portrait container (level 400, SharedUIPanelTemplates.xml:574).
+	rankBar:SetFrameStrata(panel:GetFrameStrata())
 	rankBar.ExpansionDropdownButton:Hide() -- its menu picks the window's expansion
-	rankBar:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -CONTENT_TOP)
-	rankBar:SetWidth(PANEL_INNER_WIDTH)
-	rankBar.Background:SetWidth(PANEL_INNER_WIDTH)
-	rankBar.Border:SetWidth(PANEL_INNER_WIDTH)
-	rankBar.Fill:SetWidth(PANEL_INNER_WIDTH - RANK_BAR_FILL_INSET)
+	rankBar:SetPoint("TOPLEFT", panel, "TOPLEFT", RANK_BAR_LEFT, -CONTENT_TOP)
+	rankBar:SetWidth(RANK_BAR_WIDTH)
+	rankBar.Background:SetWidth(RANK_BAR_WIDTH)
+	rankBar.Border:SetWidth(RANK_BAR_WIDTH)
+	rankBar.Fill:SetWidth(RANK_BAR_WIDTH - RANK_BAR_FILL_INSET)
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -828,14 +841,15 @@ local function CreatePanel()
 	detail.Background:SetAllPoints()
 	detail:Hide()
 	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
-	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -OUTPUT_TOP)
+	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", OUTPUT_LEFT, -OUTPUT_TOP)
+	detail.Output:SetFrameLevel(OUTPUT_LEVEL)
 	detail.Output:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if detail.itemID then GameTooltip:SetItemByID(detail.itemID) else GameTooltip:SetSpellByID(detail.recipeID) end
 		GameTooltip:Show()
 	end)
 	detail.Output:SetScript("OnLeave", GameTooltip_Hide)
-	local textWidth = PANEL_INNER_WIDTH - 2 * DETAIL_SIDE - OUTPUT_SIZE - OUTPUT_TEXT_GAP
+	local textWidth = PANEL_INNER_WIDTH - OUTPUT_LEFT - OUTPUT_SIZE - OUTPUT_TEXT_GAP - DETAIL_SIDE
 	detail.Name = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
 	detail.Name:SetPoint("LEFT", detail.Output, "RIGHT", OUTPUT_TEXT_GAP, OUTPUT_TEXT_RISE)
 	detail.Name:SetWidth(textWidth)
