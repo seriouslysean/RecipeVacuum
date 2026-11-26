@@ -6,7 +6,7 @@ globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER
 max_line_length = false
 ignore = { "21./self", "212" }
 read_globals = {
-	"NUM_BAG_SLOTS", "C_Container", "IsAnyBagOpen",
+	"NUM_BAG_SLOTS", "C_Container", "IsAnyBagOpen", "C_Bank",
 	"SetTextureWithAddressModeOptions",
 	"RunNextFrame", "WowStyle1FilterDropdownStateEnabled", "WowStyle1FilterDropdownStateOver", "WowStyle1FilterDropdownStateDown", "WowStyle1FilterDropdownStateDownOver", "SMART_NAV_INPUT_DIRECTION", "SmartNavigation_AddJumpNavigationOverride", "SmartNavigation_ClearJumpNavigationOverridesInDirection", "TextureKitConstants", "PlaySound", "SOUNDKIT", "ITEM_MIN_SKILL", "MAP_PIN", "CUSTOMER_CRAFTING_ORDERS_BROWSE_NO_RESULTS", "TRADESKILL_REAGENT_COUNT", "PROFESSIONS_REAGENT_CONTAINER_LABEL", "RED_FONT_COLOR", "InCombatLockdown", "GetUIPanel", "DIFFICULT_DIFFICULTY_COLOR", "FAIR_DIFFICULTY_COLOR", "EASY_DIFFICULTY_COLOR", "TRIVIAL_DIFFICULTY_COLOR", "GameTooltip_AddBlankLineToTooltip",
 	"CaseAccentInsensitiveParse", "Spell", "CUSTOM_GAMEPLAY_SETTINGS_ORDER", "GetBindingName", "CreateKeybindingEntryInitializer", "C_KeyBindings", "TRANSMOG_SOURCE_4", "GetRealZoneText", "CreateVector2D", "GetMinimapZoneText", "GetSubZoneText", "GetZoneText", "GetInstanceInfo", "C_MapExplorationInfo", "ADDONS", "Ambiguate", "BATTLE_PET_SOURCE_1", "BATTLE_PET_SOURCE_2", "BATTLE_PET_SOURCE_3", "BNET_CLIENT_WOW",

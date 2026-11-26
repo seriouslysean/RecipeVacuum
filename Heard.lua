@@ -162,6 +162,24 @@ local function ReadBags()
 	end
 end
 
+-- The bank's contents, read while it is open: its tabs as the window lists them (Camelot/BankFrame.lua, GetNumPagesForBankType), or its
+-- single container on a client without tabs.
+local function ReadBank()
+	local containers = {}
+	if C_Bank and C_Bank.FetchPurchasedBankTabData and Enum.BankType then
+		for _, bankType in ipairs({ Enum.BankType.Character, Enum.BankType.Account }) do
+			for _, tab in ipairs(bankType and C_Bank.FetchPurchasedBankTabData(bankType) or {}) do containers[#containers + 1] = tab.ID end
+		end
+	end
+	if #containers == 0 and Enum.BagIndex and Enum.BagIndex.Characterbanktab then containers[1] = Enum.BagIndex.Characterbanktab end
+	for _, bag in ipairs(containers) do
+		for slot = 1, C_Container.GetContainerNumSlots(bag) do
+			local itemID = C_Container.GetContainerItemID(bag, slot)
+			if itemID then NoteSeenItem(itemID) end
+		end
+	end
+end
+
 -- Blizzard's tooltip data hook (Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua:199) runs after the tooltip is built;
 -- this only reads the item ID and never touches the tooltip.
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(_, data)
@@ -184,6 +202,7 @@ for event in pairs(WINDOW_CLOSED) do
 	frame:RegisterEvent(event)
 end
 frame:RegisterEvent("BAG_CLOSED")
+frame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
@@ -201,6 +220,12 @@ frame:SetScript("OnEvent", function(_, event, message)
 	end
 	if WINDOW_OPENED[event] then
 		openWindows[WINDOW_OPENED[event]] = true
+		-- The bank's contents count as seen, as the bags do.
+		if event == "BANKFRAME_OPENED" then ReadBank() end
+		return
+	end
+	if event == "PLAYERBANKSLOTS_CHANGED" then
+		if openWindows.bank then ReadBank() end
 		return
 	end
 	if WINDOW_CLOSED[event] then
