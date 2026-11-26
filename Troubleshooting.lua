@@ -877,19 +877,21 @@ local function LayoutRecord(parts)
 	return record
 end
 
-table.insert(troubleshooting, { "layout", "Record Blizzard's profession window and our panel layout", function()
+-- One record of the window and our panel beside it; nil with the reason when the two are not both on screen with a recipe selected.
+local function RecordLayout()
 	local parts = ns.DevPanelParts()
 	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
 	if not (page and page:IsVisible() and parts.panel and parts.panel:IsShown() and parts.detail:IsShown()) then
-		return ns.Log("Open a profession with a recipe selected in Blizzard's list and ours, then run it again.")
+		return nil, "Open a profession with a recipe selected in Blizzard's list and ours, then run it again."
 	end
 	local profession = Professions.GetProfessionInfo()
 	local ok, record = pcall(LayoutRecord, parts)
 	if not ok then
-		return ns.Log("Layout failed: " .. tostring(record))
+		return nil, "Layout failed: " .. tostring(record)
 	end
 	record.profession, record.professionID, record.time = profession.professionName or "?", profession.professionID, GetServerTime()
 	record.build = select(2, GetBuildInfo())
+	record.version = C_AddOns.GetAddOnMetadata(addonName, "Version")
 	record.windowScale, record.panelScale = ProfessionsFrame:GetEffectiveScale(), parts.panel:GetEffectiveScale()
 	ns.db.devLayout = ns.db.devLayout or {}
 	ns.db.devLayout[date("%Y-%m-%d %H:%M:%S ") .. record.profession] = record
@@ -898,8 +900,27 @@ table.insert(troubleshooting, { "layout", "Record Blizzard's profession window a
 	table.sort(keys)
 	for index = 1, #keys - LAYOUT_KEEP do ns.db.devLayout[keys[index]] = nil end
 	Append(("LAYOUT recorded %d measures for %s"):format(#record.pairs, record.profession))
+	return record
+end
+
+table.insert(troubleshooting, { "layout", "Record Blizzard's profession window and our panel layout", function()
+	local record, reason = RecordLayout()
+	if not record then return ns.Log(reason) end
 	ns.Log(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
 end, quiet = true })
+
+-- The same record, taken by itself whenever the panel draws a different view: another profession, recipe or build (owner,
+-- 2026-11-26: the layout is part of the working build's logging, not a step for the player). Half a second after the
+-- details draw, so the frames have settled; never in combat.
+local lastLayoutKey
+function ns.OnPanelDrawn(professionID, recipeID)
+	local key = ("%s:%s:%s"):format(tostring(professionID), tostring(recipeID), tostring(C_AddOns.GetAddOnMetadata(addonName, "Version")))
+	if key == lastLayoutKey or not recipeID then return end
+	C_Timer.After(0.5, function()
+		if key == lastLayoutKey or InCombatLockdown() then return end
+		if RecordLayout() then lastLayoutKey = key end
+	end)
+end
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Test sharing without a second player", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }

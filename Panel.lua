@@ -888,6 +888,9 @@ FillDetail = function()
 	detail:Show()
 	PlaceList()
 	UpdatePlaceMenu() -- the list floats: it never takes height from the details
+	--@debug@
+	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected.recipeID) end
+	--@end-debug@
 	if missing then
 		itemWatch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 	else
