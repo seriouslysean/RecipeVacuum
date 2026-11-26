@@ -98,29 +98,48 @@ local function ReadShownProfession()
 	end
 end
 
--- A recipe item in the bags was seen by the player: Self Found, not where it came from (docs/data.md, "Come across").
--- Bag reads are allowed in combat. An item whose data is still loading is not an answer: it is read again on the next bag event.
-local bagItemsDone = {} -- [itemID] = true once read this session, a recipe or not
+-- A recipe item the player sees, in the bags or on any item tooltip, is met at Self Found: not where it came from
+-- (docs/data.md, "Come across"). An item whose data is still loading is not an answer: it is read again on the next sighting.
+local itemsDone = {} -- [itemID] = true once read this session, a recipe or not
 
+local function NoteSeenItem(itemID)
+	if itemsDone[itemID] then
+		return
+	end
+	if not ns.IsRecipeItem(itemID) then
+		itemsDone[itemID] = true
+		return
+	end
+	local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID] or ns.GetTaughtRecipe(itemID)
+	if recipeID ~= nil then
+		itemsDone[itemID] = true
+		if recipeID then
+			Note("recipes", recipeID, LEVEL.SELF)
+		end
+	end
+end
+
+-- Bag reads are allowed in combat.
 local function ReadBags()
 	local lastBag = NUM_BAG_SLOTS + (Enum.BagIndex and Enum.BagIndex.ReagentBag and 1 or 0)
 	for bag = 0, lastBag do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) do
 			local itemID = C_Container.GetContainerItemID(bag, slot)
-			if itemID and not bagItemsDone[itemID] and ns.IsRecipeItem(itemID) then
-				local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID] or ns.GetTaughtRecipe(itemID)
-				if recipeID ~= nil then
-					bagItemsDone[itemID] = true
-					if recipeID then
-						Note("recipes", recipeID, LEVEL.SELF)
-					end
-				end
-			elseif itemID then
-				bagItemsDone[itemID] = true
+			if itemID then
+				NoteSeenItem(itemID)
 			end
 		end
 	end
 end
+
+-- Blizzard's tooltip data hook (Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua:199) runs after the tooltip is built;
+-- this only reads the item ID and never touches the tooltip.
+TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(_, data)
+	local itemID = ns.db and data and data.id
+	if itemID and not issecretvalue(itemID) then
+		NoteSeenItem(itemID)
+	end
+end)
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")

@@ -30,6 +30,7 @@ describe("simulation", function()
 	local messages = {}
 	local clock = 1000
 	local rollLinks = {}
+	local tooltipPostCalls
 	local loot = {}
 	local fishing = false
 	local quest = {}
@@ -52,7 +53,7 @@ describe("simulation", function()
 		function CopyTable(t) local c = {} for k, v in pairs(t) do c[k] = v end return c end
 		function strsplit(sep, s) local out = {} for part in (s .. sep):gmatch("(.-)%" .. sep) do out[#out + 1] = part end return unpack(out) end
 		issecretvalue = function() return false end
-		Enum = { ItemClass = { Recipe = 9 }, LootSlotType = { Item = 1 }, Profession = { Tailoring = TAILORING },
+		Enum = { TooltipDataType = { Item = 0 }, ItemClass = { Recipe = 9 }, LootSlotType = { Item = 1 }, Profession = { Tailoring = TAILORING },
 		  ItemRecipeSubclass = { Tailoring = TAILORING_PATTERN },
 		  TooltipDataLineType = {}, TooltipDataUsageRequirementType = {} }
 		C_TradeSkillUI = { GetTradeSkillLineForRecipe = function() return 1 end, GetRecipeInfo = function() return nil end }
@@ -72,6 +73,8 @@ describe("simulation", function()
 		  GetItemIDByGUID = function(guid) return guid == "Item-1-0-ABC" and 10456 or nil end,
 		  GetItemNameByID = function(id) return itemNames[id] end,
 		  RequestLoadItemDataByID = function() end }
+		tooltipPostCalls = {}
+		TooltipDataProcessor = { AddTooltipPostCall = function(kind, fn) tooltipPostCalls[kind] = fn end }
 		C_Spell = { GetSpellName = function() return "Fishing" end }
 		C_QuestLog = { GetTitleForQuestID = function(id) return "Quest Title " .. id end }
 		UnitFactionGroup = function() return "Alliance", "Alliance" end
@@ -763,6 +766,23 @@ describe("simulation", function()
 			for _ in pairs(h.db.met.items) do items = items + 1 end
 			for id in pairs(h.db.met.recipes) do if seen[id] == nil then recipes = recipes + 1 end end
 			assert(recipes == 2 and items == 2, "a non-recipe item in the bags records nothing")
+		end)
+		-- Fails if hovering a recipe item does not list its recipe at Self Found, or hovering a non-recipe item or a tooltip without an item ID records anything.
+		it("hovering a recipe item lists it at Self Found", function()
+			h.scanned[2002] = 6002
+			local hover = tooltipPostCalls[Enum.TooltipDataType.Item]
+			local prior = CopyTable(h.db.met.recipes)
+			hover({}, { id = 777 })
+			hover({}, { id = 5 })
+			hover({}, {})
+			hover({}, nil)
+			local changed = 0
+			for id, level in pairs(h.db.met.recipes) do if prior[id] ~= level then changed = changed + 1 end end
+			assert(changed == 0, "hovering a non-recipe item or a tooltip without an item ID records nothing")
+			hover({}, { id = 2002 })
+			local hovered = { recipeID = 6002 }
+			h.SummarizeSources(hovered)
+			assert(h.db.met.recipes[6002] == 1 and h.IsListed(hovered), "hovering a recipe item lists it at Self Found")
 		end)
 	end)
 
