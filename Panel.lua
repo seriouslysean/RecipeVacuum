@@ -213,7 +213,6 @@ end
 
 local function CreateRow()
 	local row = CreateFrame("Button", nil, child, ROW_TEMPLATE)
-	row.Count:Hide()
 	row.SkillUps:Hide()
 
 	-- The skill the list is ordered by comes first: it is what the list is about.
@@ -243,6 +242,7 @@ local function CreateRow()
 	row:SetScript("OnEnter", function(self)
 		if not self.recipe then return end
 		self.Label:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
+		self.Count:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 		for slot = 1, self.markCount do
 			ns.SetMarkStrength(marks[slot], true)
 		end
@@ -261,7 +261,10 @@ local function CreateRow()
 		GameTooltip:Show()
 	end)
 	row:SetScript("OnLeave", function(self)
-		if self.recipe then self.Label:SetVertexColor(self.color:GetRGB()) end
+		if self.recipe then
+			self.Label:SetVertexColor(self.color:GetRGB())
+			self.Count:SetVertexColor(self.color:GetRGB())
+		end
 		for slot = 1, self.markCount or 0 do
 			ns.SetMarkStrength(marks[slot], false)
 		end
@@ -317,6 +320,29 @@ local function NameColor(recipeInfo)
 	return HIGHLIGHT_FONT_COLOR
 end
 
+-- How many the bags and bank could make, as Blizzard's rows show it in brackets (Blizzard_ProfessionsRecipeList.lua, SetCraftableCount).
+-- The client counts only learned recipes, so an unlearned one is counted from its basic reagents. A reagent list never changes, so it is
+-- read once per recipe.
+local recipeNeeds = {}
+local function CraftableCount(recipeID)
+	local needs = recipeNeeds[recipeID]
+	if not needs then
+		needs = {}
+		local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
+		for _, slot in ipairs(schematic and schematic.reagentSlotSchematics or {}) do
+			local reagent = slot.reagentType == Enum.CraftingReagentType.Basic and slot.reagents[1]
+			if reagent and reagent.itemID then needs[#needs + 1] = { reagent.itemID, slot.quantityRequired } end
+		end
+		recipeNeeds[recipeID] = needs
+	end
+	if #needs == 0 then return 0 end
+	local count = math.huge
+	for _, need in ipairs(needs) do
+		count = math.min(count, math.floor(C_Item.GetItemCount(need[1], true) / need[2]))
+	end
+	return count
+end
+
 -- Everything a row shows that does not move it, so a skill rise or new source updates a row without a rebuild.
 local function ShowRow(row, recipeInfo)
 	row.recipe = recipeInfo
@@ -324,7 +350,13 @@ local function ShowRow(row, recipeInfo)
 	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
 	row.Label:SetText(recipeInfo.name)
 	row.color = NameColor(recipeInfo)
-	if not row:IsMouseMotionFocus() then row.Label:SetVertexColor(row.color:GetRGB()) end
+	if not row:IsMouseMotionFocus() then
+		row.Label:SetVertexColor(row.color:GetRGB())
+		row.Count:SetVertexColor(row.color:GetRGB())
+	end
+	local count = CraftableCount(recipeInfo.recipeID)
+	row.Count:SetShown(count > 0)
+	if count > 0 then row.Count:SetFormattedText(" [%d] ", count) end
 	row.Skill:SetText(ns.SkillOf(recipeInfo))
 	row.markCount = ns.GetMarks(recipeInfo, row.markNames)
 	for slot, mark in ipairs(row.marks) do
@@ -335,8 +367,11 @@ local function ShowRow(row, recipeInfo)
 			ns.SetMarkStrength(mark, false)
 		end
 	end
-	-- The name stops where the marks begin.
-	row.Label:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
+	-- The name stops where the count and the marks begin, as Blizzard's row trims its label for the count.
+	local room = row.marks[math.max(row.markCount, 1)].Texture:GetLeft()
+	room = room and room - ROW_PAD - row.Label:GetLeft() - (count > 0 and row.Count:GetStringWidth() or 0)
+	row.Label:SetWidth(0)
+	row.Label:SetWidth(room and math.min(room, row.Label:GetStringWidth()) or row.Label:GetStringWidth())
 end
 
 local function ShowHeading(heading, item)
@@ -1137,7 +1172,8 @@ end
 -- The events that change what the window lists: its own list update (also sent by a filter change), the data
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
 local eventFrame = CreateFrame("Frame")
-for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED" }) do
+for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
+	"BAG_UPDATE_DELAYED" }) do -- bags change the counts; the same content refreshes rows in place
 	eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event)
