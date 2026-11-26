@@ -880,6 +880,8 @@ local function DetailData(recipeInfo)
 		if reagent and reagent.itemID then
 			local entry = { itemID = reagent.itemID, need = slot.quantityRequired, have = C_Item.GetItemCount(reagent.itemID, true) }
 			entry.name = C_Item.GetItemNameByID(reagent.itemID)
+			-- The client answers only for items it has loaded, and loads one only when asked; its answer is GET_ITEM_INFO_RECEIVED.
+			if not entry.name then C_Item.RequestLoadItemDataByID(reagent.itemID) end
 			data.reagents[#data.reagents + 1] = entry
 			parts[#parts + 1] = ("%d:%d:%d:%s"):format(entry.itemID, entry.have, entry.need, entry.name or "")
 		end

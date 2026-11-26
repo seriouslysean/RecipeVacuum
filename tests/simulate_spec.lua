@@ -838,6 +838,7 @@ describe("simulation", function()
 			C_Item.GetItemNameByID = C_Item.GetItemNameByID or function(id) return "Reagent " .. id end
 			C_Item.GetItemIconByID = C_Item.GetItemIconByID or function() return 1 end
 			C_Item.GetItemQualityByID = C_Item.GetItemQualityByID or function() return 1 end
+			C_Item.RequestLoadItemDataByID = C_Item.RequestLoadItemDataByID or function() end
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
 			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
 			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion", [107] = "Plans: High" }
