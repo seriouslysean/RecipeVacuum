@@ -48,7 +48,7 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
-local RANK_BAR_FILL_INSET = 12
+local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
 local PORTRAIT_SIZE, PORTRAIT_LEFT = 62, 5
@@ -525,14 +525,14 @@ local function PlaceList()
 	end
 end
 
--- Discovery as the window's own skill bar shows a skill: found of every recipe the character could still learn here.
+-- Discovery as the Collections journal shows what is collected: found of every recipe the character could still learn here.
 local function UpdateDiscovery(found, total)
 	local key = ("%s:%d:%d"):format(professionInfo.professionID, found, total)
 	if key == shownDiscovery then return end
 	shownDiscovery = key
-	rankBar:Update({ profession = professionInfo.profession, professionName = professionInfo.professionName,
-		skillLevel = found, maxSkillLevel = total, skillModifier = 0 })
-	rankBar.Rank.Text:SetText(L["%d / %d discovered"]:format(found, total))
+	rankBar:SetMinMaxValues(0, math.max(total, 1))
+	rankBar:SetValue(found)
+	rankBar.text:SetText(L["%d / %d discovered"]:format(found, total))
 end
 
 -- The first frame of a pool of one kind, made when needed; later ones are reused for another recipe.
@@ -1042,19 +1042,11 @@ local function CreatePanel()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -LIST_TOP_DEFAULT)
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
-	-- The window's own skill bar template (Blizzard_ProfessionsCrafting.xml:197), at its height and in the band above
-	-- the list, right of the portrait. The template's width is its art's, so its parts are widened as its overrideWidth path does (Blizzard_ProfessionsRankBar.lua:105-112).
-	rankBar = CreateFrame("Frame", nil, panel, "ProfessionsRankBarTemplate")
-	rankBar.ownerManagesEvents = true -- it shows discovery here, not the window's skill, so the skill events do not drive it
-	-- The template's own strata is BACKGROUND, under the frame's art. The panel's strata, with the level the bar was made at (one
-	-- above the panel's), keeps it over the frame and under the portrait container (level 400, SharedUIPanelTemplates.xml:574).
-	rankBar:SetFrameStrata(panel:GetFrameStrata())
-	rankBar.ExpansionDropdownButton:Hide() -- its menu picks the window's expansion
-	rankBar:SetPoint("TOPLEFT", panel, "TOPLEFT", RANK_BAR_LEFT, -CONTENT_TOP)
-	rankBar:SetWidth(RANK_BAR_WIDTH)
-	rankBar.Background:SetWidth(RANK_BAR_WIDTH)
-	rankBar.Border:SetWidth(RANK_BAR_WIDTH)
-	rankBar.Fill:SetWidth(RANK_BAR_WIDTH - RANK_BAR_FILL_INSET)
+	-- The Collections journal's own "collected of total" bar (Blizzard_Collections/Shared/Blizzard_CollectionTemplates.xml:4) at its own 196 px:
+	-- the window's rank bar is 453 px of art and distorts when narrowed. Centered right of the portrait, on the rank bar's line.
+	rankBar = CreateFrame("StatusBar", nil, panel, "CollectionsProgressBarTemplate")
+	rankBar:ClearAllPoints()
+	rankBar:SetPoint("CENTER", panel, "TOPLEFT", RANK_BAR_LEFT + RANK_BAR_WIDTH / 2, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
