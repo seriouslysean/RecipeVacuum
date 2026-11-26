@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 34
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 35
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -13,7 +13,7 @@ lib.title = "Jig Boltgrip's Toolkit"
 local L
 do
 	local AceLocale = LibStub("AceLocale-3.0", true)
-	local english = AceLocale and AceLocale:NewLocale("JigBoltgripToolkit", "enUS", true, true) or {}
+	local english = AceLocale and AceLocale:NewLocale("JigBoltgripToolkit", "enUS", true) or {}
 	for _, text in ipairs({
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
