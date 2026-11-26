@@ -9,14 +9,13 @@ local PANEL_WIDTH = 270 -- about 230 px are free beside the tab column at 1280x8
 local PANEL_GAP = 2 -- space between the tab column and the panel
 -- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
 local TAB_TOP_OFFSET = 60
-local TITLE_HEIGHT = 40 -- fallback band height until the crafting page's list can be read
+local TITLE_HEIGHT = 34 -- the title and the count under it, and no more: the list gets the rest
 local TITLE_GAP = 4
 local CONTENT_PAD = 4
 -- Blizzard_ProfessionsRecipeList.xml:61-66 (ProfessionsRecipeListTemplate.ScrollBox): the list's left inset, the
 -- column right of it that the scroll bar fills, the gap above it (search row) and the gap below it.
 local LIST_LEFT = 8
 local SCROLLBAR_WIDTH = 20
-local LIST_TOP_INSET = 35
 local LIST_BOTTOM_INSET = 5
 -- Blizzard_ProfessionsRecipeList.lua: view spacing, indent and pad; the element extents (20 per recipe, 20 + 5 per category).
 local ROW_HEIGHT = 20
@@ -298,15 +297,17 @@ end
 -- the title band, beside Blizzard's rank bar and search row (docs/client-notes.md, "Panel").
 local function PlaceList()
 	local theirs = ProfessionsFrame.CraftingPage.RecipeList
-	local panelTop, panelBottom, listTop, listBottom = panel:GetTop(), panel:GetBottom(), theirs:GetTop(), theirs:GetBottom()
-	if not (panelTop and panelBottom and listTop and listBottom) then return end
-	local top = panelTop - listTop + LIST_TOP_INSET
+	local panelBottom, listBottom = panel:GetBottom(), theirs:GetBottom()
+	if not (panelBottom and listBottom) then return end
+	-- A compact title band on top; only the bottom lines up with Blizzard's list, since matching its top left
+	-- a band of empty space where the window has its rank bar and search row.
+	local top = EdgeSize(INSET_EDGES.top) + TITLE_HEIGHT
 	local bottom = listBottom - panelBottom + LIST_BOTTOM_INSET
 	if top == placedTop and bottom == placedBottom then return end
 	placedTop, placedBottom = top, bottom
 	scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", LIST_LEFT, -top)
 	scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, bottom)
-	titleBand:SetHeight(math.max(top - EdgeSize(INSET_EDGES.top), 1))
+	titleBand:SetHeight(TITLE_HEIGHT)
 	-- The title and the count under it, as one block centered in the band.
 	local block = title:GetStringHeight() + TITLE_GAP + countText:GetStringHeight()
 	title:SetPoint("CENTER", titleBand, "CENTER", 0, (block - title:GetStringHeight()) / 2)
