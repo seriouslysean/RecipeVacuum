@@ -32,6 +32,14 @@ function ns.GetNPC(npcID)
 	return npcID and (ns.db.npcs[npcID] or ns.included.npcs[npcID])
 end
 
+local OTHER_FACTION = { Alliance = "Horde", Horde = "Alliance" }
+
+-- An NPC of the other faction: this character cannot buy from or train with them, so they are no source for it.
+function ns.IsOtherFactionNPC(observation)
+	local npc = ns.GetNPC(observation.npc)
+	return npc and npc.faction ~= nil and npc.faction == OTHER_FACTION[UnitFactionGroup("player")]
+end
+
 local function GetObject(objectID)
 	return ns.db.objects[objectID] or ns.included.objects[objectID]
 end
@@ -177,11 +185,11 @@ end
 local function AppendLayer(list, layer, recipeInfo, itemIDs)
 	if not layer then return end
 	for _, observation in ipairs(layer.recipes[recipeInfo.recipeID] or {}) do
-		AppendOnce(list, observation)
+		if not ns.IsOtherFactionNPC(observation) then AppendOnce(list, observation) end
 	end
 	for _, itemID in ipairs(itemIDs or {}) do
 		for _, observation in ipairs(layer.items[itemID] or {}) do
-			AppendOnce(list, observation)
+			if not ns.IsOtherFactionNPC(observation) then AppendOnce(list, observation) end
 		end
 	end
 end

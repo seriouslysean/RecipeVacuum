@@ -603,6 +603,15 @@ describe("simulation", function()
 			instance = sharedCreature.instance } }
 		assert(#b.GetSources({ recipeID = 99 }) == #s, "own and shared find of one source listed once")
 	end)
+	-- Fails if the other faction's vendor or trainer is offered as a source (Deck, 2026-11-26: an Alliance character was shown Undercity's).
+	it("the other faction's NPCs are no source", function()
+		b.db.recipeItems[98] = nil
+		b.db.npcs[4577] = { name = "Millie Gregorian", faction = "Horde", positions = {} }
+		b.db.npcs[5174] = { name = "Springspindle Fizzlegear", faction = "Alliance", positions = {} }
+		b.db.found.recipes[98] = { { kind = "vendor", npc = 4577, seen = now }, { kind = "vendor", npc = 5174, seen = now } }
+		local sources = b.GetSources({ recipeID = 98 })
+		assert(#sources == 1 and sources[1].npc == 5174, "only this faction's vendor")
+	end)
 	-- A received recipe item links to the recipe its tooltip data names once loaded. Fails if a link is made early, from anything but that ID, or for an item that teaches nothing.
 	local RED_LINEN_BAG = 501
 	local cached = {}

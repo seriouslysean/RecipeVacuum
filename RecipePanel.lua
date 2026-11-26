@@ -2,14 +2,6 @@ local _, ns = ...
 
 -- Map pins for recipe sources. Recipe Vacuum writes nothing into Blizzard's frames and opens none of its windows: a pin is the user waypoint, super-tracked (docs/client-notes.md, "Gamepad").
 
--- The other faction's NPCs stay in the source list but get no map target.
-local OTHER_FACTION = { Alliance = "Horde", Horde = "Alliance" }
-
-function ns.IsOtherFactionNPC(observation)
-	local npc = ns.GetNPC(observation.npc)
-	return npc and npc.faction ~= nil and npc.faction == OTHER_FACTION[UnitFactionGroup("player")]
-end
-
 -- One source's pin, or nil when it has no place this character can be sent to.
 function ns.SourceTarget(observation)
 	local mapID, x, y = ns.SourcePosition(observation)
