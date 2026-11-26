@@ -213,11 +213,10 @@ end
 
 -- Run after Blizzard's page rebuilds, and by the panel once it exists (its hook runs after this one on the first Init).
 function ns.UpdateRankMark()
-	local parent = ns.PanelRankParent()
-	if not parent then return end
 	local page = ProfessionsFrame.CraftingPage
 	if not mark then
-		mark = CreateFrame("Button", nil, parent)
+		-- On the crafting page, not our panel: the panel hides when it has nothing to list, and the mark sits on the window beside Blizzard's bar.
+		mark = CreateFrame("Button", nil, page)
 		mark:SetSize(MARK_SIZE, MARK_SIZE)
 		mark:SetFrameStrata("HIGH") -- drawn over the window it is positioned on, though it is ours
 		local icon = mark:CreateTexture(nil, "ARTWORK")

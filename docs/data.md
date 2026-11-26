@@ -102,6 +102,15 @@ The panel groups the found recipes by rank band of their required skill (`ns.Ban
 
 The panel's discovery bar is found over total for the open skill line (`ns.GetListedRecipes`, `Unlearned.lua`). Found is the recipes the show rule lists, ignoring the search and filters. Total is every unlearned candidate of the skill line before the show rule: not the other faction's, nothing of another expansion's. The bar says how much of what the character could still learn has been found, and the panel keeps no list of the rest.
 
+The total is a spoiler for a player who has not chosen public data (owner, 2026-11-26), so it follows the source level (`sourceLevel`):
+
+| Level | Bar text | Fill | Tooltip |
+|---|---|---|---|
+| Self Found, Friends | "%d discovered" | none, the empty frame | the recipes found that can still be learned |
+| Public | "%d / %d discovered" | found over total | found out of all that can still be learned |
+
+The bar changes when the setting does. With nothing found and no search or filter, the panel itself is hidden (docs/client-notes.md, "Panel").
+
 ## Skill-up colors
 
 A row's skill number is colored by the skill-up the recipe would give at the character's current skill, as Blizzard's recipe list colors a learned one: orange (`DIFFICULT_DIFFICULTY_COLOR`, optimal) below the yellow point, yellow (`FAIR_DIFFICULTY_COLOR`) from it, green (`EASY_DIFFICULTY_COLOR`) from the green point, grey (`TRIVIAL_DIFFICULTY_COLOR`) from the grey point (owner, 2026-11-26: "That seems fair"). The color objects and the enum pairing are Blizzard's (`Blizzard_ProfessionsRecipeList.lua:1-5`; `TRIVIAL_DIFFICULTY_COLOR` is named in `FontStyles.xml:350`). The name keeps its own rule (white to learn now, grey when the skill is too low) and a row too high for the character stays dim, number included. A recipe with no thresholds keeps the white number.

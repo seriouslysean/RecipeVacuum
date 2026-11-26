@@ -7,6 +7,7 @@ ns.sourcesVersion = 0
 function ns.SourcesChanged()
 	ns.sourcesVersion = ns.sourcesVersion + 1
 	ns.ClearUnlearnedCache()
+	if ns.RequestPanel then ns.RequestPanel() end -- the panel hides itself when empty and must hear of a find
 end
 
 ns.sourceOrder = { "trainer", "vendor", "quest", "drop" }

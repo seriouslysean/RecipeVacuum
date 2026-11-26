@@ -10,10 +10,11 @@ L["Intake complete! %d recipes from %s!"] = true
 L["Map pin set! %s marked on your map!"] = true
 
 -- Panel (Panel.lua)
-L["Nothing left to learn."] = true
 L["Skill %d to %d"] = true
 L["[%d]"] = true
 L["%d / %d discovered"] = true
+L["%d discovered"] = true
+L["Recipes you have found and can still learn in this profession."] = true
 L["Recipes found out of all the ones you can still learn in this profession."] = true
 L["Reagents"] = true
 L["Press to mark this place on your map."] = true

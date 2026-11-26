@@ -747,6 +747,7 @@ describe("simulation", function()
 	describe("panel", function()
 		local pns, queue, buttons, traces, init, Fake, inLine
 		local made = {} -- every stand-in frame, in creation order
+		local strings = {} -- every stand-in font string
 		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
 		local function Names()
 			local names = {}
@@ -779,7 +780,7 @@ describe("simulation", function()
 				if key == "SetTextColor" then return function(o, red, green, blue) o.textColor = { red, green, blue } end end
 				if key == "GetText" then return function(o) return rawget(o, "text") or "" end end
 				if key == "SetScript" or key == "HookScript" then return function(o, name, fn) local scripts = rawget(o, "scripts") or {}; o.scripts = scripts; scripts[name] = fn end end
-				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" or key == "GetFontString" then return function(o) return Fake(o) end end
+				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" or key == "GetFontString" then return function(o) local f = Fake(o); strings[#strings + 1] = f; return f end end
 				if key == "GetStringHeight" then return function() return 0 end end
 				if key == "GetFrameLevel" then return function() return 1 end end
 				return function() end
@@ -859,11 +860,11 @@ describe("simulation", function()
 			load("Unlearned.lua", pns)
 			pns.GetRecipeFaction = function() return false end -- read from tooltip data
 			pns.GetRecipeLock = function() return false end
-			pns.UpdateRankMark = function() end -- Ranks.lua is not loaded here
 			pns.SourceRows, pns.SortTargets = function() return {} end, function() end -- nor RecipePanel.lua
 			pns.db.found.recipes[101] = { { kind = "trainer", count = 1, skill = 30 } }
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
+			CUSTOMER_CRAFTING_ORDERS_BROWSE_NO_RESULTS = "No recipes found"
 			pns.Trace = function(text, ...) traces[#traces + 1] = text:format(...) end
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
@@ -1031,8 +1032,8 @@ describe("simulation", function()
 				end
 				CreateFrame = function(...) return Measured(standIn(...)) end
 				for _, frame in ipairs(made) do Measured(frame) end
-				local panel, detail = pns.PanelRankParent(), nil
-				for _, frame in ipairs(made) do if rawget(frame, "ReagentsLabel") then detail = frame end end
+				local function Find(key) for _, frame in ipairs(made) do if rawget(frame, key) then return frame end end end
+				local panel, detail = Find("CloseButton"), Find("ReagentsLabel")
 				panel.GetTop, panel.GetBottom = function() return 800 end, function() return 100 end
 				local list = ProfessionsFrame.CraftingPage.RecipeList
 				list.GetTop, list.GetBottom = function() return 728 end, function() return 150 end -- 72 below the panel's top, 50 above its bottom
@@ -1063,6 +1064,65 @@ describe("simulation", function()
 				assert(height >= 91.5 + 25.5 + 2 * 45 + 39 + 20, "3 reagents fit without scrolling: " .. height) -- label 33 below the header
 			end)
 			schematic.reagentSlotSchematics = {}
+			assert(ok, err)
+		end)
+		-- Fails if the panel stays up with nothing found and nothing narrowing the list, hides while a search matches nothing (the message
+		-- shows instead), or stays hidden once a find or a search brings it back.
+		it("hides when nothing found is left and nothing narrows the list, and returns with a find or a search", function()
+			local panel, empty
+			for _, frame in ipairs(made) do if rawget(frame, "CloseButton") then panel = frame end end
+			for _, text in ipairs(strings) do if text.text == "No recipes found" then empty = text end end
+			local box = ProfessionsFrame.CraftingPage.RecipeList.SearchBox
+			local foundBefore, metBefore = pns.db.found.recipes, pns.db.met.recipes
+			local function Settle() pns.ClearUnlearnedCache(); pns.RequestPanel(); Flush() end
+			local function Search(text) box:SetText(text); box.scripts.OnTextChanged(box, true); Flush() end
+			local ok, err = pcall(function()
+				assert(panel and empty, "the panel and its message exist")
+				pns.db.found.recipes, pns.db.met.recipes = { [101] = { { kind = "trainer", count = 1, skill = 30 } } }, {}
+				init(300)
+				Settle()
+				assert(panel:IsShown() and #Names() == 1, "shown with a find")
+				pns.db.found.recipes = {}
+				Settle()
+				assert(not panel:IsShown(), "hidden with nothing found and no search")
+				Search("sourced")
+				assert(panel:IsShown() and empty:IsShown(), "shown with the message while a search matches nothing")
+				Search("")
+				assert(not panel:IsShown(), "hidden again once the search is cleared")
+				pns.db.found.recipes = { [101] = { { kind = "trainer", count = 1, skill = 30 } } }
+				Settle()
+				assert(panel:IsShown() and #Names() == 1 and not empty:IsShown(), "shown again after a find")
+				Search("zzz")
+				assert(panel:IsShown() and empty:IsShown(), "a search matching nothing among finds shows the message")
+			end)
+			Search("")
+			pns.db.found.recipes, pns.db.met.recipes = foundBefore, metBefore
+			Settle()
+			assert(ok, err)
+		end)
+		-- Fails if the bar shows a total or a fill below Public: the total spoils what is left for a player who chose no public data.
+		it("the discovery bar shows the total and the fill only at Public", function()
+			local bar
+			for _, frame in ipairs(made) do if rawget(frame, "Fill") and rawget(frame, "text") then bar = frame end end
+			local foundBefore, metBefore, levelBefore = pns.db.found.recipes, pns.db.met.recipes, pns.db.sourceLevel
+			local ok, err = pcall(function()
+				pns.db.found.recipes = { [101] = { { kind = "trainer", count = 1, skill = 30 } } }
+				pns.db.met.recipes = { [102] = pns.LEVEL.FRIENDS, [103] = pns.LEVEL.PUBLIC }
+				-- Six unlearned candidates in the skill line; 101 is known, 102 heard from friends, 103 in public chat.
+				local cases = {
+					{ level = pns.LEVEL.SELF, text = "1 discovered", fill = false },
+					{ level = pns.LEVEL.FRIENDS, text = "2 discovered", fill = false },
+					{ level = pns.LEVEL.PUBLIC, text = "3 / 6 discovered", fill = true },
+				}
+				for _, case in ipairs(cases) do
+					pns.db.sourceLevel = case.level
+					pns.ClearUnlearnedCache(); pns.RequestPanel(); Flush()
+					assert(bar.text.text == case.text, ("level %d says %q"):format(case.level, bar.text.text))
+					assert((bar.Fill.shown == true) == case.fill, ("level %d fill shown: %s"):format(case.level, tostring(bar.Fill.shown)))
+				end
+			end)
+			pns.db.found.recipes, pns.db.met.recipes, pns.db.sourceLevel = foundBefore, metBefore, levelBefore
+			pns.ClearUnlearnedCache(); pns.RequestPanel(); Flush()
 			assert(ok, err)
 		end)
 		-- Fails if a recipe of another expansion's skill line shows, however found: 518 Blacksmithing rows came from the client's whole list.

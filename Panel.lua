@@ -135,6 +135,10 @@ local slots = {} -- the frame of each item once built
 local toggled = {} -- [professionID .. ":" .. band] = open, for the session only: the player's own choices
 local professionInfo
 local wanted = false -- a character's own crafting page is open
+-- Nothing found is left to learn and no search or filter narrows the list: the panel stays hidden (docs/client-notes.md, "Panel"). True until the
+-- first update decides, so opening never shows the panel and takes it back.
+local bare = true
+local UpdateVisibility -- defined with the window's events; the update shows or hides the panel through it
 local requested = false
 local waitUntil -- when the wait for the client's data ends, for the open profession
 local waitQueued = false
@@ -562,7 +566,8 @@ local function BuildStep(buildGeneration)
 	end
 end
 
--- The window's own filters, read where they can apply to a recipe not yet learned (docs/client-notes.md, "Panel").
+-- The window's own filters, read where they can apply to a recipe not yet learned (docs/client-notes.md, "Panel"). The third value says
+-- a search or filter is on, which keeps the panel up with its message when nothing matches.
 local function CollectRecipes(list)
 	local found = {}
 	-- "Have materials" and "Show unlearned" are left out: nothing here is makeable, and Forever turns Show
@@ -578,7 +583,7 @@ local function CollectRecipes(list)
 			found[#found + 1] = recipeInfo
 		end
 	end
-	return found, search
+	return found, search, search ~= "" or skillUpOnly or firstCraftOnly
 end
 
 -- The list as items with their tops, and a signature of what it shows: the recipes in order, which bands are open
@@ -665,11 +670,23 @@ local function ScrollIntoView(row, frame)
 end
 ns.ScrollRowIntoView = ScrollIntoView
 
--- Discovery, as a challenge's progress: found of every recipe the character could still learn here.
+-- Discovery, as a challenge's progress: found of every recipe the character could still learn here. The total, and the fill that
+-- encodes it, show only at Public: below it the player has not chosen public data, and the total would spoil what is left
+-- (docs/data.md, "Discovery").
+local function ShowsTotal()
+	return ns.db.sourceLevel >= ns.LEVEL.PUBLIC
+end
+
 local function UpdateDiscovery(found, total)
-	local key = ("%s:%d:%d"):format(professionInfo.professionID, found, total)
+	local withTotal = ShowsTotal()
+	local key = ("%s:%d:%d:%s"):format(professionInfo.professionID, found, total, tostring(withTotal))
 	if key == shownDiscovery then return end
 	shownDiscovery = key
+	if not withTotal then
+		rankBar.Fill:Hide() -- the empty frame and the count
+		rankBar.text:SetText(L["%d discovered"]:format(found))
+		return
+	end
 	-- The fill's width is the share found, as the skill bar's mask shows its share.
 	local share = total > 0 and math.min(found / total, 1) or 0
 	rankBar.Fill:SetShown(share > 0)
@@ -1082,8 +1099,8 @@ end
 
 local function Update()
 	requested = false
-	if not (panel and panel:IsShown() and professionInfo) then return end
-	PlaceList()
+	-- Runs while the panel is hidden too: a find, a learned recipe or a search can bring it back.
+	if not (panel and wanted and professionInfo) then return end
 	local list, complete, total = ns.GetListedRecipes(professionInfo)
 	-- Not ready: the client's list update comes back through the events below. Until then the last profession's rows and count
 	-- must not stay on screen to be chosen.
@@ -1106,8 +1123,17 @@ local function Update()
 			return
 		end
 	end
+	local found, search, narrowed = CollectRecipes(list)
+	-- Decided before anything shows, so the panel never opens and takes itself back.
+	bare = #list == 0 and not narrowed
+	UpdateVisibility()
+	if bare then
+		shownSignature = nil -- its rows are built again when something is found
+		return
+	end
+	if not panel:IsShown() then return end -- another window holds the center
+	PlaceList()
 	UpdateDiscovery(#list, total)
-	local found, search = CollectRecipes(list)
 	ReconcileSelection(found)
 	local newItems, signature, rowCount, headingCount, height = LayOut(found, search)
 	-- A recipe is always chosen while the list has one, as the window opens on one: the last one chosen in this profession,
@@ -1308,7 +1334,8 @@ local function CreatePanel()
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
 		ns.OwnTooltip(self)
-		GameTooltip_AddNormalLine(GameTooltip, L["Recipes found out of all the ones you can still learn in this profession."])
+		GameTooltip_AddNormalLine(GameTooltip, ShowsTotal() and L["Recipes found out of all the ones you can still learn in this profession."]
+			or L["Recipes you have found and can still learn in this profession."])
 		GameTooltip:Show()
 	end)
 	rankBar:SetScript("OnLeave", GameTooltip_Hide)
@@ -1364,7 +1391,7 @@ local function CreatePanel()
 
 	empty = listArea:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	empty:SetPoint("TOP", scroll, "TOP", 0, -ROW_HEIGHT)
-	empty:SetText(L["Nothing left to learn."])
+	empty:SetText(CUSTOMER_CRAFTING_ORDERS_BROWSE_NO_RESULTS) -- the game's "No recipes found", shown while a search or filter matches nothing
 	empty:Hide()
 
 	panel:HookScript("OnHide", PanelHidden)
@@ -1377,17 +1404,17 @@ local function CreatePanel()
 	return panel
 end
 
--- The rank mark's parent (Ranks.lua), nil until the panel exists.
-function ns.PanelRankParent()
-	return panel
+-- A find, or the data level changing, can change what the panel lists (called from ns.SourcesChanged).
+function ns.RequestPanel()
+	Request()
 end
 
 -- Another window opened beside Professions takes the center slot; the panel steps aside for it. Read after
 -- Blizzard has laid its windows out. The Gamepad UI shows one window at a time, so this never triggers there.
-local function UpdateVisibility()
+function UpdateVisibility()
 	if not panel then return end
 	local center = GetUIPanel("center")
-	panel:SetShown(wanted and not (center and center ~= ProfessionsFrame))
+	panel:SetShown(wanted and not bare and not (center and center ~= ProfessionsFrame))
 end
 
 -- Read-only post-hook: the window's own crafting page tells which profession is open. It runs once per
@@ -1396,7 +1423,6 @@ local function OnInit(_, info)
 	if not panel then
 		panel = CreatePanel()
 		Prewarm()
-		ns.UpdateRankMark() -- Ranks.lua's own hook ran before the panel existed
 	end
 	local changed = not (professionInfo and professionInfo.professionID == info.professionID)
 	professionInfo = info
@@ -1442,6 +1468,7 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	-- The overview page has no profession to list.
 	page:HookScript("OnHide", function()
 		wanted = false
+		bare = true -- decided again when a crafting page opens
 		UpdateVisibility()
 	end)
 end)
