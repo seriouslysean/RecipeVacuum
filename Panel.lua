@@ -79,8 +79,11 @@ local ICON_SIZE = PORTRAIT_SIZE
 local ICON_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local RING_ATLAS, RING_ELEMENT, RING_FROM, RING_TO = "UI-Frame-PortraitMetal-CornerTopLeft", 95, 5, 71
 local RING_SIZE = RING_TO - RING_FROM
-local RING_LEFT = 13 - RING_FROM -- the ring's offset past the box's left, as the frame's corner piece less the art's own margin
-local RING_RISE = 16 - RING_FROM
+local RING_LEFT = 13 - RING_FROM + LINE_IN_LEFT -- the ring's offset past the box's left, as the frame's corner piece less the art's own margin
+-- The window's frame line is its edge; the pane frame's line sits inside the box's edge, so the ring moves by that much more to
+-- hang off the line as the portrait does (measured against the window's portrait on the Deck).
+local LINE_IN_LEFT, LINE_IN_TOP = 2, 5
+local RING_RISE = 16 - RING_FROM - LINE_IN_TOP
 local ICON_LEVEL = 600 -- above the list's whole tree and every frame of ours, so the ring draws over both boxes' borders
 -- The pane's output icon sits 33 below its top and the name's top lines up with it, 14 right of the icon, the required skill 5 under it
 -- (Blizzard_ProfessionsRecipeSchematicForm.lua:464,:469; .xml:193,214).
@@ -1026,7 +1029,7 @@ local function CreatePanel()
 	-- focuses it and its tooltip shows.
 	detail.Output = CreateFrame("Button", nil, detail)
 	detail.Output:SetSize(ICON_SIZE, ICON_SIZE)
-	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", -PORTRAIT_LEFT, PORTRAIT_RISE)
+	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", -PORTRAIT_LEFT - LINE_IN_LEFT, PORTRAIT_RISE - LINE_IN_TOP)
 	detail.Output:SetFrameLevel(ICON_LEVEL)
 	detail.Output.Icon = detail.Output:CreateTexture(nil, "ARTWORK")
 	detail.Output.Icon:SetAllPoints()
