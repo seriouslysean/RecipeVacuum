@@ -180,6 +180,15 @@ local function ReadBank()
 	end
 end
 
+-- Auction house search results: every item a search lists is seen, as the window shows it
+-- (Blizzard_AuctionHouseUI/Shared/Blizzard_AuctionHouseBrowseResultsFrame.lua, UpdateBrowseResults: each result's itemKey).
+local function ReadBrowseResults(results)
+	for _, result in ipairs(results or {}) do
+		local itemID = result.itemKey and result.itemKey.itemID
+		if itemID then NoteSeenItem(itemID) end
+	end
+end
+
 -- Blizzard's tooltip data hook (Blizzard_SharedXMLGame/Tooltip/TooltipDataHandler.lua:199) runs after the tooltip is built;
 -- this only reads the item ID and never touches the tooltip.
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(_, data)
@@ -203,6 +212,8 @@ for event in pairs(WINDOW_CLOSED) do
 end
 frame:RegisterEvent("BAG_CLOSED")
 frame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
+frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
+frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_ADDED")
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
@@ -222,6 +233,14 @@ frame:SetScript("OnEvent", function(_, event, message)
 		openWindows[WINDOW_OPENED[event]] = true
 		-- The bank's contents count as seen, as the bags do.
 		if event == "BANKFRAME_OPENED" then ReadBank() end
+		return
+	end
+	if event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" then
+		ReadBrowseResults(C_AuctionHouse.GetBrowseResults())
+		return
+	end
+	if event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
+		ReadBrowseResults(message) -- the newly added results
 		return
 	end
 	if event == "PLAYERBANKSLOTS_CHANGED" then

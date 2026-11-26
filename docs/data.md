@@ -88,6 +88,7 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 |---|---|
 | A recipe item in the character's own bags, read when they change and on entering the world | Self Found |
 | A recipe item in the character's bank, read when the bank opens and when its slots change (owner, Deck, 2026-11-26: recipes left in the bank were not counted) | Self Found |
+| A recipe item listed in an auction house search, read as the results arrive (`AUCTION_HOUSE_BROWSE_RESULTS_UPDATED` and `_ADDED`; owner, Deck, 2026-11-26: searching and closing the auction house did not count) | Self Found |
 | A recipe item on any item tooltip the player hovers (bags, bank, auction house, vendor, chat link, trade, comparison) | Self Found |
 | A recipe item or recipe link in any chat: party, raid, instance, guild, officer, say, yell, a numbered channel, a whisper (Battle.net too) or a loot line | Self Found |
 | A profession of another player the player opens: a linked one or a guild member's | Self Found |
