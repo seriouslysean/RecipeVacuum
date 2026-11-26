@@ -37,12 +37,12 @@ else
 	taughtNote = current.taughtNote or "Kept from the previous seed."
 end
 
--- The made-item read: grows across runs, since each character reads only the professions it has. Pairs
--- this read did not see are kept; pairs it read win, so a changed pair shows below as a change.
+-- The made-item read: grows across runs, since each character reads only the professions it has. An item
+-- two professions make keeps the lowest recipe ID, the game read's own rule, so the read order never matters.
 local made, readMade = {}, db.devMade or {}
 for itemID, recipeID in pairs(current.made or {}) do made[itemID] = recipeID end
 local readProfessions = {}
-for itemID, recipeID in pairs(readMade) do made[itemID] = recipeID end
+for itemID, recipeID in pairs(readMade) do made[itemID] = math.min(made[itemID] or recipeID, recipeID) end
 for professionID in pairs(db.devMadeDone and db.devMadeDone.missing or {}) do
 	readProfessions[#readProfessions + 1] = professionID
 end
@@ -69,8 +69,10 @@ end
 
 local function Count(t) local n = 0 for _ in pairs(t) do n = n + 1 end return n end
 local taughtAdded, taughtProblems = Differences("taught item", taught, current.taught or {})
--- Only what this read saw is compared; the rest of the old table is kept as it is.
-local madeAdded, madeProblems = Differences("made item", readMade, current.made or {})
+-- Only what this read saw is compared, after the merge; the rest of the old table is kept as it is.
+local mergedRead = {}
+for itemID in pairs(readMade) do mergedRead[itemID] = made[itemID] end
+local madeAdded, madeProblems = Differences("made item", mergedRead, current.made or {})
 for index = #madeProblems, 1, -1 do
 	if madeProblems[index]:find("is no longer read", 1, true) then table.remove(madeProblems, index) end
 end
