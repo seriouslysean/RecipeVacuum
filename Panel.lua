@@ -48,6 +48,8 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
+local BAR_ART_HEIGHT = 13 -- the bar's own height; the border art is taller
+local BAR_BORDER_WIDTH, BAR_BORDER_HEIGHT = 205, 29
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
@@ -56,10 +58,8 @@ local PORTRAIT_SIZE, PORTRAIT_LEFT = 62, 5
 -- band between them (docs/client-notes.md, "Panel").
 local RANK_BAR_CLEARANCE = 4
 local RANK_BAR_LEFT = PORTRAIT_SIZE - PORTRAIT_LEFT + RANK_BAR_CLEARANCE
--- The rank mark (Ranks.lua) sits right of the bar, so the bar gives up its width and the gap.
-local RANK_MARK_SIZE = 20
-local RANK_MARK_GAP = 4
-local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET - RANK_BAR_CLEARANCE - RANK_MARK_GAP - RANK_MARK_SIZE
+local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET - RANK_BAR_CLEARANCE
+local BAR_WIDTH = 196 -- the template's own width, centered in that band
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -175,12 +175,6 @@ local function SyncNav()
 	navPending = false
 	ClearNav()
 	if not (panel and panel:IsShown() and detail:IsShown()) then return end
-	-- The rank mark is above the list: up from the first item reaches it, down from it returns.
-	local mark = ns.rankMark
-	if mark and mark:IsShown() and slots[1] then
-		SetNav(slots[1], SMART_NAV_INPUT_DIRECTION.UP, mark)
-		SetNav(mark, SMART_NAV_INPUT_DIRECTION.DOWN, slots[1])
-	end
 	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
 	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
 	local first, chosen, rowCount = nil, nil, 0
@@ -219,8 +213,6 @@ local function SyncNav()
 	end
 	ns.Trace("UI nav override set: %d rows to the details, %d controls back", rowCount, count)
 end
-
-ns.SyncPanelNav = SyncNav
 
 -- ANCHOR_RIGHT would clamp the tooltip over the panel at the screen's edge; with no room on the right it goes to the left
 -- of the panel, level with the hovered frame (docs/client-notes.md, "Panel").
@@ -1068,8 +1060,23 @@ local function CreatePanel()
 
 	-- The Collections journal's own "collected of total" bar (Blizzard_Collections/Shared/Blizzard_CollectionTemplates.xml:4) at its own 196 px:
 	-- the window's rank bar is 453 px of art and distorts when narrowed. Centered right of the portrait, on the rank bar's line.
-	rankBar = CreateFrame("StatusBar", nil, panel, "CollectionsProgressBarTemplate")
-	rankBar:ClearAllPoints()
+	-- Built from the template's parts (Blizzard_CollectionTemplates.xml:4-35): its addon loads on demand, and loading it from here risks taint.
+	rankBar = CreateFrame("StatusBar", nil, panel)
+	rankBar:SetSize(BAR_WIDTH, BAR_ART_HEIGHT)
+	rankBar:SetStatusBarTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar")
+	rankBar:SetStatusBarColor(0.03125, 0.85, 0)
+	rankBar.Fill = rankBar:GetStatusBarTexture()
+	rankBar.Background = rankBar:CreateTexture(nil, "BACKGROUND")
+	rankBar.Background:SetColorTexture(0, 0, 0)
+	rankBar.Background:SetPoint("TOPLEFT", 0, -1)
+	rankBar.Background:SetPoint("BOTTOMRIGHT", 0, 1)
+	rankBar.Border = rankBar:CreateTexture(nil, "OVERLAY")
+	rankBar.Border:SetTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-BarBorder")
+	rankBar.Border:SetSize(BAR_BORDER_WIDTH, BAR_BORDER_HEIGHT)
+	rankBar.Border:SetPoint("LEFT", -5, 0)
+	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
+	rankBar.text:SetHeight(9)
+	rankBar.text:SetPoint("CENTER", 0, 1)
 	rankBar:SetPoint("CENTER", panel, "TOPLEFT", RANK_BAR_LEFT + RANK_BAR_WIDTH / 2, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
@@ -1158,9 +1165,9 @@ local function CreatePanel()
 	return panel
 end
 
--- Where the rank mark goes: Ranks.lua owns the button, the panel owns the layout. Nil until the panel exists.
-function ns.PanelRankSlot()
-	return panel, rankBar, RANK_MARK_SIZE, RANK_MARK_GAP
+-- The rank mark's parent (Ranks.lua), nil until the panel exists.
+function ns.PanelRankParent()
+	return panel
 end
 
 -- Another window opened beside Professions takes the center slot; the panel steps aside for it. Read after
