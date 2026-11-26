@@ -158,6 +158,8 @@ local requested = false
 local waitUntil -- when the wait for the client's data ends, for the open profession
 local waitQueued = false
 local generation = 0 -- a newer build ends the steps of an older one
+-- A profession's first draw: what shows while its list is not ready (holdBack), and where the list starts (pickOffset).
+local opening = {}
 local shownSignature, builtProfession
 local nextItem, buildMs, buildSteps, recipeCount, bandCount
 
@@ -572,6 +574,20 @@ local function Reveal()
 	scroll:SetAlpha(1)
 	SyncNav()
 	ns.Trace("UI panel visible after %d rows, %.1f ms", math.min((nextItem or 1) - 1, #items), buildMs)
+end
+
+-- Where the list starts for the chosen recipe: its row in the middle of the view, though the rows down to it are not built yet.
+function opening.pickOffset()
+	local room = scroll:GetHeight()
+	if not selected or not room or room <= 0 then return 0 end
+	for _, item in ipairs(items) do
+		if item.recipe and item.recipe.recipeID == selected.recipeID then
+			local offset = math.max(0, math.min(item.top - (room - ROW_HEIGHT) / 2, child:GetHeight() - room))
+			ns.Trace("UI list opens at %d for recipe %d", offset, selected.recipeID)
+			return offset
+		end
+	end
+	return 0
 end
 
 -- True once the items to the end of the view below the visible one are built. An unmeasured view waits for the whole list.
@@ -1199,6 +1215,20 @@ local function RefreshStep(token, index, last)
 	if index <= last then RunNextFrame(function() RefreshStep(token, index, last) end) end
 end
 
+-- The list of a profession just switched to is not ready: nothing of the last profession stays up to be read or chosen.
+function opening.holdBack(reason)
+	local professionID = professionInfo.professionID
+	if builtProfession == professionID or opening.held == professionID then return end
+	opening.held = professionID
+	scroll:SetAlpha(0) -- shown again when the new list is complete (Reveal)
+	empty:Hide()
+	shownDiscovery = nil
+	rankBar.Fill:Hide()
+	rankBar.text:SetText("")
+	FillDetail() -- no recipe is chosen yet, so the details close
+	ns.Trace("UI profession %d held back, %s: previous list, count and details cleared", professionInfo.professionID, reason)
+end
+
 local function Update()
 	requested = false
 	-- Runs while the panel is hidden too: a find, a learned recipe or a search can bring it back.
@@ -1207,7 +1237,8 @@ local function Update()
 	-- Not ready: the client's list update comes back through the events below. Until then the last profession's rows and count
 	-- must not stay on screen to be chosen.
 	if not list then
-		scroll:SetAlpha(0) -- shown again when the new list is complete (Reveal)
+		scroll:SetAlpha(0)
+		opening.holdBack("list not ready")
 		shownSignature = nil
 		return
 	end
@@ -1217,7 +1248,7 @@ local function Update()
 		waitUntil = waitUntil or (GetTime() + WAIT_SECONDS)
 		local left = waitUntil - GetTime()
 		if left > 0 then
-			if builtProfession ~= professionInfo.professionID then scroll:SetAlpha(0) end
+			opening.holdBack("names still loading")
 			if not waitQueued then
 				waitQueued = true
 				C_Timer.After(left, function() waitQueued = false; Request() end)
@@ -1273,7 +1304,8 @@ local function Update()
 	scroll.revealed = false
 	if builtProfession ~= professionInfo.professionID then
 		builtProfession = professionInfo.professionID
-		scroll:SetVerticalScroll(0)
+		opening.held = nil
+		scroll:SetVerticalScroll(opening.pickOffset())
 	end
 	for index = rowCount + 1, #rows do rows[index]:Hide() end
 	for index = headingCount + 1, #headings do headings[index]:Hide() end
@@ -1686,9 +1718,10 @@ local function OnInit(_, info)
 	professionInfo = info
 	if changed then
 		waitUntil = nil
-		selected = nil -- the details empty with the profession
-		detailSignature = nil -- and take its background
-		FillDetail()
+		-- The details stay up until the new list picks its recipe or holds the panel back (opening.holdBack), so they do not close and reopen.
+		selected = nil
+		detailSignature = nil
+		ns.Trace("UI profession changed to %d, details kept until its list arrives", info.professionID)
 	end
 	-- Only this character's own professions have recipes to learn.
 	wanted = Professions.InLocalCraftingMode()
