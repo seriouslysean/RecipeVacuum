@@ -36,7 +36,7 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | CallbackHandler-1.0 | MINOR 8 | Ace3 |
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
 | AceComm-3.0 | MINOR 14 | Ace3 |
-| AceLocale-3.0 | MINOR 2 | Ace3 Release-r981 |
+| AceLocale-3.0 | MINOR 6 | Ace3 commit 075bafb (master; newer than the last release tag, r981, and what other addons such as Scrap ship, so it is the copy that runs) |
 | JigBoltgripToolkit-1.0 | MINOR 35 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
