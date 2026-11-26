@@ -563,10 +563,27 @@ local function ShowHeading(heading, item)
 	heading:UpdateCollapsedState(not item.open)
 end
 
-local function Finish()
+-- Shows the list once every item that intersects the view, and one view below it, is placed; the rest is built behind it
+-- (docs/client-notes.md, "Panel"). Nothing visible is half-placed, and the nav jumps cover the rows built so far.
+local function Reveal()
+	if scroll.revealed then return end
+	scroll.revealed = true
 	empty:SetShown(#items == 0)
-	scroll:SetAlpha(1) -- the whole list at once
+	scroll:SetAlpha(1)
 	SyncNav()
+	ns.Trace("UI panel visible after %d rows, %.1f ms", math.min((nextItem or 1) - 1, #items), buildMs)
+end
+
+-- True once the items to the end of the view below the visible one are built. An unmeasured view waits for the whole list.
+local function VisiblePartBuilt()
+	local height = scroll:GetHeight()
+	if not height or height <= 0 then return false end
+	return items[nextItem].top >= scroll:GetVerticalScroll() + 2 * height
+end
+
+local function Finish()
+	Reveal()
+	SyncNav() -- the rows built after the list showed
 	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
 	--@debug@
 	local parts = {}
@@ -629,6 +646,7 @@ local function BuildStep(buildGeneration)
 	--@end-debug@
 	buildSteps = buildSteps + 1
 	if nextItem <= #items then
+		if not scroll.revealed and VisiblePartBuilt() then Reveal() end
 		RunNextFrame(function() BuildStep(buildGeneration) end)
 	else
 		Finish()
@@ -1189,7 +1207,7 @@ local function Update()
 	-- Not ready: the client's list update comes back through the events below. Until then the last profession's rows and count
 	-- must not stay on screen to be chosen.
 	if not list then
-		scroll:SetAlpha(0) -- shown again when the new list is complete (Finish)
+		scroll:SetAlpha(0) -- shown again when the new list is complete (Reveal)
 		shownSignature = nil
 		return
 	end
@@ -1251,7 +1269,8 @@ local function Update()
 	wipe(lapMs)
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
-	scroll:SetAlpha(0) -- shown by Finish, once every frame is placed
+	scroll:SetAlpha(0) -- shown by Reveal, once the frames in view are placed
+	scroll.revealed = false
 	if builtProfession ~= professionInfo.professionID then
 		builtProfession = professionInfo.professionID
 		scroll:SetVerticalScroll(0)
