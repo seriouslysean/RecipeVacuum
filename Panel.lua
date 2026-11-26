@@ -476,15 +476,17 @@ local function PlaceList()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -top)
 	detail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, boxBottom)
 	detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, boxBottom)
-	-- The list's background runs down to the box, so the gap the ring hangs into reads as list, not as a strip of bare page.
-	listArea.Background:ClearAllPoints()
-	listArea.Background:SetPoint("TOPLEFT")
+	-- The list's background is always drawn at the list's full height and cut off where the details begin: squeezed into a shorter
+	-- list, its dark bottom fade showed as a bar above the box. It runs into the gap the ring hangs into, down to the box.
+	listArea.BackgroundFrame:SetHeight(panelTop - panelBottom - top - bottom)
+	listArea.Clip:ClearAllPoints()
+	listArea.Clip:SetPoint("TOPLEFT")
 	if detailHeight > 0 then
 		listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
-		listArea.Background:SetPoint("BOTTOMRIGHT", 0, -DETAIL_GAP)
+		listArea.Clip:SetPoint("BOTTOMRIGHT", 0, -DETAIL_GAP)
 	else
 		listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
-		listArea.Background:SetPoint("BOTTOMRIGHT")
+		listArea.Clip:SetPoint("BOTTOMRIGHT")
 	end
 end
 
@@ -992,7 +994,14 @@ local function CreatePanel()
 
 	-- The list area as the window's recipe list draws it under Camelot: the summary list atlas, no border (Blizzard_ProfessionsRecipeList.xml:10).
 	listArea = CreateFrame("Frame", nil, panel)
-	listArea.Background = listArea:CreateTexture(nil, "BACKGROUND")
+	listArea.Clip = CreateFrame("Frame", nil, listArea)
+	listArea.Clip:SetClipsChildren(true)
+	listArea.Clip:SetFrameLevel(listArea:GetFrameLevel()) -- under the list's rows, which sit a level above
+	listArea.BackgroundFrame = CreateFrame("Frame", nil, listArea.Clip)
+	listArea.BackgroundFrame:SetPoint("TOPLEFT")
+	listArea.BackgroundFrame:SetPoint("TOPRIGHT")
+	listArea.BackgroundFrame:SetHeight(1)
+	listArea.Background = listArea.BackgroundFrame:CreateTexture(nil, "BACKGROUND")
 	listArea.Background:SetAtlas("Professions-background-summarylist")
 	listArea.Background:SetAllPoints()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -LIST_TOP_DEFAULT)
