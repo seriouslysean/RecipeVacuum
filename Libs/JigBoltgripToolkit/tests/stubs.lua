@@ -96,7 +96,7 @@ function client.Fire(event, ...)
 				-- fails here and never in the game. Those are listed apart, not counted as errors, so no
 				-- addon changes its code for the stand-ins.
 				local limit = problem:find("compare %a+ with table") or problem:find("compare table with")
-					or problem:find("arithmetic on .-%(a table value%)")
+					or problem:find("arithmetic on .-table value") -- with or without a field name (LuaJIT)
 				table.insert(limit and client.standInLimits or client.errors, problem)
 			end
 		end
