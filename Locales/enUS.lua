@@ -9,6 +9,10 @@ L["Intake complete! %d recipe from %s!"] = true
 L["Intake complete! %d recipes from %s!"] = true
 L["Map pin set! %s marked on your map!"] = true
 
+-- Panel (Panel.lua)
+L["Unlearned Recipes"] = true
+L["Nothing left to learn."] = true
+
 -- Options (Settings.lua)
 L["Recipe Sources"] = true
 L["Tracks only recipes you see for yourself."] = true

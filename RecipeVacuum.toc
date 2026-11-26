@@ -29,5 +29,6 @@ Heard.lua
 Unlearned.lua
 RecipePanel.lua
 Ranks.lua
+Panel.lua
 
 Troubleshooting.lua

@@ -14,6 +14,10 @@ With the Gamepad UI (Steam Deck), Blizzard's own code refuses to run on anything
 
 What is no longer done: unlearned rows in the recipe list, source marks on rows, the source line, item row and Show Map button in the recipe pane, the Recipe Vacuum section of the filter menu, the first-run help tip, and any call that refreshes Blizzard's list. Unlearned recipes will live in Recipe Vacuum's own panel beside the window, fed by `ns.GetUnlearnedRecipes`.
 
+## Panel
+
+Prototype, not yet seen on the Steam Deck. `Panel.lua` anchors to `ProfessionsFrame.ProfessionsOverviewTab` (top right, 60 px up to the window's top), the first of the profession tabs in the right-hand column (Camelot `Blizzard_ProfessionsFrame.xml`; all tabs share one x). Measured on the Deck at 1280x800: about 230 px free right of that column before the quest tracker. The list is `UIPanelScrollFrameTemplate` with a pool of our own Buttons, as Field Guide Forever's list (`UI/List.lua`); SmartNavigation only calls `SetVerticalScroll` on a plain scroll frame. To check on the Deck: d-pad reaches the panel and back, scrolls, and no "Interface action failed" or `ADDON_ACTION_FORBIDDEN`.
+
 ## Profession window
 
 - The client leaves unlearned recipes out of `C_TradeSkillUI.GetFilteredRecipeIDs()` even with Show Unlearned on, so the addon works them out itself from `C_TradeSkillUI.GetAllRecipeIDs()`.
