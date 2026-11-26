@@ -5,6 +5,7 @@ ignore:
   - AGENTS.md
   - CLAUDE.md
   - docs
+  - scripts
   - tests
   - tools
   - Libs/JigBoltgripToolkit/tests

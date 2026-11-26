@@ -203,7 +203,8 @@ end
 local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("*a")
 check("the embedded kit has no XML", listing == "")
 local toolkitCheckout = addonDir .. "/../JigBoltgripToolkit"
-for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua" }) do
+for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua", "tests/module-check.sh",
+	"tests/agents-opening.md" }) do
 	local theirs = Read(toolkitCheckout .. "/" .. file)
 	if theirs then
 		check("the embedded " .. file .. " is the toolkit's", Read(kitDir .. "/" .. file) == theirs)
@@ -211,6 +212,14 @@ for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conf
 		print("SKIP the embedded " .. file .. " against the toolkit: no checkout beside the addon")
 	end
 end
+
+-- The repository's agent notes open with the toolkit's section, word for word, so every module's
+-- agents meet the same rules first: the first "##" section of AGENTS.md is tests/agents-opening.md.
+local opening = assert(Read(kitDir .. "/tests/agents-opening.md"), "no tests/agents-opening.md in the kit")
+local agents = Read(addonDir .. "/AGENTS.md") or ""
+local firstSection = agents:match("\n(## .-)\n## ") or agents:match("\n(## .*)$") or ""
+check("AGENTS.md opens with the toolkit's section", firstSection:gsub("%s+$", "") == opening:gsub("%s+$", ""),
+	"its first ## section must be the kit's tests/agents-opening.md")
 
 -- 3. Load the addon on the kit's stand-ins and read what it hands the kit.
 local client = dofile(kitDir .. "/tests/stubs.lua")
