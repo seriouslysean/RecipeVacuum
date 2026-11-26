@@ -11,4 +11,4 @@ permissions:
 
 jobs:
   test:
-    uses: seriouslysean/JigBoltgripToolkit/.github/workflows/module-ci.yml@5a0435cf7c492155d48586b488809bcfa0967e98
+    uses: seriouslysean/JigBoltgripToolkit/.github/workflows/module-ci.yml@628ea3cb60d5c306f32fa37b13478789bbd2c08b

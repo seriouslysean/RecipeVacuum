@@ -33,13 +33,20 @@ syntax() {
 	for file in $(ours); do luajit -bl "$file" >/dev/null || return 1; done
 }
 
-# The release build: the packager drops --@debug@ blocks, so every file must still compile without them.
+# The release build: the addon as packaged, with --@debug@ blocks dropped, so every shipped file must
+# still compile and the specs run against it. The TOC and its XML come as they are, since specs load the
+# addon through the TOC; the specs themselves never ship, so they are copied unchanged.
 stripped=$(mktemp -d)
 trap 'rm -rf "$stripped"' EXIT
 release_build() {
 	local file
 	cp -R Libs .busted "$stripped/" || return 1
+	for file in $(git ls-files '*.toc' '*.xml' 'tests/*' | grep -v '^Libs/'); do
+		mkdir -p "$stripped/$(dirname "$file")"
+		cp "$file" "$stripped/$file" || return 1
+	done
 	for file in $(ours); do
+		[[ $file == tests/* ]] && continue
 		mkdir -p "$stripped/$(dirname "$file")"
 		awk '/--@debug@/{skip=1} !skip{print} /--@end-debug@/{skip=0}' "$file" >"$stripped/$file"
 		luajit -bl "$stripped/$file" >/dev/null || return 1
