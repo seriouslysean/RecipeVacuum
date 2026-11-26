@@ -25,7 +25,7 @@ Every toolkit addon meets one checklist before a release, the [quality bar](http
 | `Core.lua` | Saved data, schema number, ordered migrations |
 | `Data/Seed.lua` | Seed data read from the game client; generated, never edited by hand |
 | `Data/Included.lua` | Reviewed finds shipped with the addon (empty for now) |
-| `tools/seed.lua` | Generates `Data/Seed.lua` from the item scan and the made-item read (repository only) |
+| `tools/seed.lua` | Generates `Data/Seed.lua` from the item scan (repository only) |
 | `Voice.lua` | Every chat line the addon says, with the voice rules |
 | `Sources.lua` | Source types, lookups across data layers, tooltips, row marks |
 | `Record.lua` | Records trainers, vendors, loot and quest rewards |

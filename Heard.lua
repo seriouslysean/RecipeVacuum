@@ -54,12 +54,6 @@ local function OnChat(event, message)
 				Note("items", itemID, level)
 				ns.db.pendingItems[itemID] = ns.db.pendingItems[itemID] or {} -- linked by ns.LinkPending
 			end
-		else
-			-- A made item's recipe exists, though not yet where to learn it.
-			local madeBy = ns.GetMadeRecipe(linkedID)
-			if madeBy then
-				Note("recipes", madeBy, level)
-			end
 		end
 	end
 	-- Where a profession link was seen decides how near the linked player counts; session only.

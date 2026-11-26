@@ -191,12 +191,6 @@ function ns.GetSources(recipeInfo)
 	return #list > 0 and list or nil
 end
 
--- The recipe that makes an item: this session's scan first, then the seed (docs/data.md, "Come across").
-function ns.GetMadeRecipe(itemID)
-	local made = ns.scannedMade and ns.scannedMade[itemID]
-	return made or (ns.seed and ns.seed.made and ns.seed.made[itemID]) or nil
-end
-
 -- Every source recorded for one item, across the visible layers.
 function ns.GetItemSources(itemID)
 	local list = {}
