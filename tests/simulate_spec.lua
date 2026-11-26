@@ -778,7 +778,7 @@ describe("simulation", function()
 				if key == "SetText" then return function(o, v) o.text = v end end
 				if key == "GetText" then return function(o) return rawget(o, "text") or "" end end
 				if key == "SetScript" or key == "HookScript" then return function(o, name, fn) local scripts = rawget(o, "scripts") or {}; o.scripts = scripts; scripts[name] = fn end end
-				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" then return function(o) return Fake(o) end end
+				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" or key == "GetFontString" then return function(o) return Fake(o) end end
 				if key == "GetStringHeight" then return function() return 0 end end
 				if key == "GetFrameLevel" then return function() return 1 end end
 				return function() end
@@ -825,8 +825,19 @@ describe("simulation", function()
 			ProfessionsFrame.CraftingPage.RecipeList = Fake(ProfessionsFrame.CraftingPage)
 			ProfessionsFrame.CraftingPage.RecipeList.SearchBox = Fake()
 			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end,
-				GetProfessionBackgroundAtlas = function() end }
+				SetupOutputIconCommon = function() end, GetProfessionBackgroundAtlas = function() end }
 			TextureKitConstants = { IgnoreAtlasSize = 1 }
+			-- The details: every list opens with a recipe chosen, so every panel spec draws them.
+			PlaySound, SOUNDKIT = function() end, { UI_90_BLACKSMITHING_TREEITEMCLICK = 1 }
+			ITEM_MIN_SKILL, TRADESKILL_REAGENT_COUNT, PROFESSIONS_REAGENT_CONTAINER_LABEL = "%s %d", "%d/%d", "Reagents:"
+			RED_FONT_COLOR, GameTooltip_Hide = HIGHLIGHT_FONT_COLOR, function() end
+			Enum.CraftingReagentType = { Basic = 1 }
+			WowStyle1FilterDropdownStateEnabled = "classic"
+			C_Item = C_Item or {}
+			C_Item.GetItemCount = C_Item.GetItemCount or function() return 0 end
+			C_Item.GetItemNameByID = C_Item.GetItemNameByID or function(id) return "Reagent " .. id end
+			C_Item.GetItemIconByID = C_Item.GetItemIconByID or function() return 1 end
+			C_Item.GetItemQualityByID = C_Item.GetItemQualityByID or function() return 1 end
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
 			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
 			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion", [107] = "Plans: High" }
@@ -843,6 +854,7 @@ describe("simulation", function()
 			pns.GetRecipeFaction = function() return false end -- read from tooltip data
 			pns.GetRecipeLock = function() return false end
 			pns.UpdateRankMark = function() end -- Ranks.lua is not loaded here
+			pns.SourceRows, pns.SortTargets = function() return {} end, function() end -- nor RecipePanel.lua
 			pns.db.found.recipes[101] = { { kind = "trainer", count = 1, skill = 30 } }
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC

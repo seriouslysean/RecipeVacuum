@@ -1004,8 +1004,12 @@ FillDetail = function()
 	end
 end
 
+-- The last recipe chosen in each profession this session, brought back when the window opens on it again.
+local lastPick = {}
+
 SelectRecipe = function(recipeInfo)
 	selected = recipeInfo
+	if professionInfo then lastPick[professionInfo.professionID] = recipeInfo.recipeID end
 	ClosePlaces()
 	ns.Trace("UI recipe selected: %d", recipeInfo.recipeID)
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
@@ -1054,8 +1058,20 @@ local function Update()
 	UpdateDiscovery(#list, total)
 	local found, search = CollectRecipes(list)
 	ReconcileSelection(found)
-	FillDetail()
 	local newItems, signature, rowCount, headingCount, height = LayOut(found, search)
+	-- A recipe is always chosen while the list has one, as the window opens on one: the last one chosen in this profession,
+	-- else the first in the list. The details then never open or close under the cursor.
+	if not selected then
+		local first, last
+		for _, item in ipairs(newItems) do
+			if item.recipe then
+				first = first or item.recipe
+				if item.recipe.recipeID == lastPick[professionInfo.professionID] then last = item.recipe end
+			end
+		end
+		selected = last or first
+	end
+	FillDetail()
 	local built = nextItem or 1
 	items = newItems
 	if signature == shownSignature then
