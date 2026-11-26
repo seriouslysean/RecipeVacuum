@@ -5,18 +5,26 @@ local L = ns.L
 -- Built as Field Guide Forever's list is (UI/List.lua): a Blizzard scroll frame and one real Button per row, so the Gamepad UI can focus rows and scroll them.
 -- Rows and headings are Blizzard's own recipe list templates, so they look as its list does (docs/client-notes.md, "Panel").
 
-local PANEL_WIDTH = 270 -- about 230 px are free beside the tab column at 1280x800; the quest tracker may be overlapped a little
-local PANEL_GAP = 2 -- space between the tab column and the panel
--- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
-local TAB_TOP_OFFSET = 60
-local TITLE_HEIGHT = 34 -- the title and the count under it, and no more: the list gets the rest
-local TITLE_GAP = 4
-local CONTENT_PAD = 4
+-- Blizzard_ProfessionsCrafting.xml:138-139: the window's recipe list sits 5 px in from its frame's left and bottom.
+-- Here that inset is on both sides, so the portrait frame's border does not eat the list's width (docs/client-notes.md, "Panel").
+local FRAME_INSET = 5
+local LIST_WIDTH = 242 -- usable width of the list between its left inset and the scroll bar column
 -- Blizzard_ProfessionsRecipeList.xml:61-66 (ProfessionsRecipeListTemplate.ScrollBox): the list's left inset, the
--- column right of it that the scroll bar fills, the gap above it (search row) and the gap below it.
+-- column right of it that the scroll bar fills and the gap below it.
 local LIST_LEFT = 8
 local SCROLLBAR_WIDTH = 20
 local LIST_BOTTOM_INSET = 5
+local PANEL_WIDTH = LIST_WIDTH + LIST_LEFT + SCROLLBAR_WIDTH + 2 * FRAME_INSET -- about 230 px are free beside the tab column at 1280x800; the quest tracker may be overlapped a little
+-- NineSliceLayouts.lua:20 (PortraitFrameTemplate): the top left and bottom left corners stand this far outside the frame, so
+-- the panel keeps that much extra from the tab column and the corner never covers a tab.
+local CORNER_OVERHANG = 13
+local PANEL_GAP = 2 + CORNER_OVERHANG -- space between the tab column and the panel
+-- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
+local TAB_TOP_OFFSET = 60
+-- SharedUIPanelTemplates.xml:629 (PortraitFrameTexturedBaseTemplate.Bg): the frame's art starts 21 px down, under its title strip.
+local TITLE_STRIP_HEIGHT = 21
+local COUNT_GAP = 2
+local COUNT_BAND_HEIGHT = 16 -- one line of GameFontDisableSmall and its gap; the list area starts under it
 -- Blizzard_ProfessionsRecipeList.lua: view spacing, indent and pad; the element extents (20 per recipe, 20 + 5 per category).
 local ROW_HEIGHT = 20
 local HEADING_HEIGHT = 25
@@ -37,16 +45,9 @@ local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
 local BUILD_BUDGET_MS = 4
 local ROWS_PER_STEP = 40
 local RETRY_SECONDS = 1 -- once: the client may still be loading names and factions after the window opens
--- The inset template's border atlases (Blizzard_SharedXML NineSliceLayouts.lua, InsetFrameTemplate) give its content margins.
-local INSET_EDGES = {
-	left = { atlas = "!UI-Frame-InnerLeftTile", key = "width" },
-	right = { atlas = "!UI-Frame-InnerRightTile", key = "width" },
-	top = { atlas = "_UI-Frame-InnerTopTile", key = "height" },
-	bottom = { atlas = "_UI-Frame-InnerBotTile", key = "height" },
-}
 
-local panel, scroll, child, empty, countText, titleBand, title
-local placedTop, placedBottom
+local panel, listArea, scroll, child, empty, countText
+local placedBottom
 local rows, headings = {}, {}
 local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
 local slots = {} -- the frame of each item once built
@@ -126,11 +127,6 @@ local function CreateRow()
 	end)
 	rows[#rows + 1] = row
 	return row
-end
-
-local function EdgeSize(edge)
-	local info = C_Texture.GetAtlasInfo(edge.atlas)
-	return info and info[edge.key] or 0
 end
 
 local Request -- defined below; a heading click asks for a rebuild through it
@@ -292,25 +288,17 @@ local function LayOut(found, search)
 	return newItems, table.concat(parts, ","), rowCount, headingCount, top + LIST_PAD
 end
 
--- The list sits where the crafting page's own list does: same top for the first heading, same bottom. Read when
--- shown (the window can be a different size) and only re-anchored when the offsets change. The space above it is
--- the title band, beside Blizzard's rank bar and search row (docs/client-notes.md, "Panel").
+-- The list area ends where the crafting page's own list does, read when shown (the window can be a different size)
+-- and only re-anchored when the offset changes. Above it are the title strip and the count line, beside Blizzard's
+-- rank bar and search row (docs/client-notes.md, "Panel").
 local function PlaceList()
 	local theirs = ProfessionsFrame.CraftingPage.RecipeList
 	local panelBottom, listBottom = panel:GetBottom(), theirs:GetBottom()
 	if not (panelBottom and listBottom) then return end
-	-- A compact title band on top; only the bottom lines up with Blizzard's list, since matching its top left
-	-- a band of empty space where the window has its rank bar and search row.
-	local top = EdgeSize(INSET_EDGES.top) + TITLE_HEIGHT
-	local bottom = listBottom - panelBottom + LIST_BOTTOM_INSET
-	if top == placedTop and bottom == placedBottom then return end
-	placedTop, placedBottom = top, bottom
-	scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", LIST_LEFT, -top)
-	scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, bottom)
-	titleBand:SetHeight(TITLE_HEIGHT)
-	-- The title and the count under it, as one block centered in the band.
-	local block = title:GetStringHeight() + TITLE_GAP + countText:GetStringHeight()
-	title:SetPoint("CENTER", titleBand, "CENTER", 0, (block - title:GetStringHeight()) / 2)
+	local bottom = math.max(listBottom - panelBottom, FRAME_INSET)
+	if bottom == placedBottom then return end
+	placedBottom = bottom
+	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
 end
 
 local function Update()
@@ -360,37 +348,41 @@ end
 
 local function CreatePanel()
 	local window = ProfessionsFrame
-	-- Under the window, so it shows and hides with it and the Gamepad UI treats it as part of it.
-	panel = CreateFrame("Frame", nil, window, "InsetFrameTemplate")
+	-- Under the window, so it shows and hides with it and the Gamepad UI treats it as part of it. The window itself
+	-- is a PortraitFrameTemplate (Blizzard_ProfessionsFrameBase.xml:5), so the panel has the same border and title strip.
+	panel = CreateFrame("Frame", nil, window, "PortraitFrameTemplate")
 	panel:SetWidth(PANEL_WIDTH)
 	panel:SetPoint("TOPLEFT", window.ProfessionsOverviewTab, "TOPRIGHT", PANEL_GAP, TAB_TOP_OFFSET)
 	panel:Hide()
-
-	local left, right = EdgeSize(INSET_EDGES.left) + CONTENT_PAD, EdgeSize(INSET_EDGES.right) + CONTENT_PAD
-	local top = EdgeSize(INSET_EDGES.top)
-
-	-- The band above the list: the panel's top edge down to the list's first heading.
-	titleBand = CreateFrame("Frame", nil, panel)
-	titleBand:SetPoint("TOPLEFT", panel, "TOPLEFT", left, -top)
-	titleBand:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -right, -top)
-	titleBand:SetHeight(TITLE_HEIGHT)
-
-	-- The name and, smaller and dim like a model number, the version; a working build has no version to show.
-	title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	title:SetPoint("CENTER", titleBand, "CENTER")
-	title:SetText(ns.title)
+	-- The panel follows the Professions window and never closes on its own.
+	panel.CloseButton:Hide()
+	panel:SetTitleOffsets(nil, -FRAME_INSET)
+	-- The name and, dim like a model number, the version; a working build has no version to show. The template's
+	-- title is one string, so the version is a color escape in it rather than a second font string.
 	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
-	local model = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	model:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", TITLE_GAP, 0)
-	model:SetText(version and not version:find("@", 1, true) and version or L["dev"])
+	version = version and not version:find("@", 1, true) and version or L["dev"]
+	panel:SetTitle(ns.title .. " " .. DISABLED_FONT_COLOR:WrapTextInColorCode(version))
+	-- One place for the icon: the TOC's IconTexture, which the addon list shows too.
+	panel:SetPortraitToAsset(C_AddOns.GetAddOnMetadata(addonName, "IconTexture"))
+
+	-- The list area as Blizzard's recipe list draws it: the summary list atlas behind, the inset border around
+	-- (Blizzard_ProfessionsRecipeList.xml:10, :23-30). The inset template's own marble is hidden under the atlas.
+	listArea = CreateFrame("Frame", nil, panel, "InsetFrameTemplate")
+	listArea.Bg:Hide()
+	listArea.Background = listArea:CreateTexture(nil, "BACKGROUND")
+	listArea.Background:SetAtlas("Professions-background-summarylist")
+	listArea.Background:SetAllPoints()
+	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -(TITLE_STRIP_HEIGHT + COUNT_BAND_HEIGHT))
+	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
+
 	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	countText:SetPoint("TOP", title, "BOTTOM", 0, -TITLE_GAP)
+	countText:SetPoint("TOP", panel, "TOP", 0, -(TITLE_STRIP_HEIGHT + COUNT_GAP))
 
 	-- A plain scroll frame (a ScrollBox would hold our data in Blizzard's secure code) with Blizzard's minimal
 	-- scroll bar, the one its recipe list uses: the thumb is sized to the share of the list in view.
-	scroll = CreateFrame("ScrollFrame", nil, panel, "ScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", LIST_LEFT, -(top + TITLE_HEIGHT))
-	scroll:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
+	scroll = CreateFrame("ScrollFrame", nil, listArea, "ScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", listArea, "TOPLEFT", LIST_LEFT, 0)
+	scroll:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
 	-- Placed as the recipe list places its bar, right of the list (Blizzard_ProfessionsRecipeList.xml), and hidden
 	-- while the whole list fits.
 	scroll.ScrollBar:ClearAllPoints()
@@ -398,17 +390,17 @@ local function CreatePanel()
 	scroll.ScrollBar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 0, 0)
 	scroll.ScrollBar:SetHideIfUnscrollable(true)
 	child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(PANEL_WIDTH - LIST_LEFT - SCROLLBAR_WIDTH, 1)
+	child:SetSize(LIST_WIDTH, 1)
 	scroll:SetScrollChild(child)
 
-	empty = panel:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+	empty = listArea:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	empty:SetPoint("TOP", scroll, "TOP", 0, -ROW_HEIGHT)
 	empty:SetText(L["Nothing left to learn."])
 	empty:Hide()
 
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
-		placedTop = nil -- the window may have changed size
+		placedBottom = nil -- the window may have changed size
 		Request()
 	end)
 	return panel

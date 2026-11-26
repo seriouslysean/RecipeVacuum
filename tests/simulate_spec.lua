@@ -777,6 +777,9 @@ describe("simulation", function()
 				ProfessionsRecipeListRecipeTemplate = { "Label", "Count", "SkillUps", "LockedIcon" },
 				ProfessionsRecipeListCategoryTemplate = { "RankBar" },
 				ScrollFrameTemplate = { "ScrollBar" },
+				-- Blizzard_SharedXML SharedUIPanelTemplates.xml: the portrait frame's close button, the inset frame's marble.
+				PortraitFrameTemplate = { "CloseButton" },
+				InsetFrameTemplate = { "Bg" },
 			}
 			CreateFrame = function(kind, _, parent, template)
 				local f = Fake(parent)
@@ -788,6 +791,7 @@ describe("simulation", function()
 			RunNextFrame = function(fn) queue[#queue + 1] = fn end
 			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
 			local color = { GetRGB = function() return 1, 1, 1 end }
+			color.WrapTextInColorCode = function(_, text) return text end
 			HIGHLIGHT_FONT_COLOR, DISABLED_FONT_COLOR = color, color
 			CaseAccentInsensitiveParse = function(text) return text:lower() end
 			GetUIPanel = function() return nil end

@@ -6,7 +6,7 @@
 ## Version: @project-version@
 ## X-License: GPL-3.0
 ## SavedVariables: RecipeVacuumDB
-## IconTexture: Interface\GossipFrame\VendorGossipIcon
+## IconTexture: Interface\Icons\INV_Gizmo_01
 
 Libs\LibStub\LibStub.lua
 Libs\AceLocale-3.0\AceLocale-3.0.lua
