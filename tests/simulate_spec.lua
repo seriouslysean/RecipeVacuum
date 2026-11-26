@@ -746,6 +746,7 @@ describe("simulation", function()
 	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
 	describe("panel", function()
 		local pns, queue, buttons, traces, init, Fake, inLine
+		local made = {} -- every stand-in frame, in creation order
 		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
 		local function Names()
 			local names = {}
@@ -790,9 +791,11 @@ describe("simulation", function()
 				ScrollFrameTemplate = { "ScrollBar" },
 				-- Blizzard_SharedXML SharedUIPanelTemplates.xml: the portrait frame's close button, background and top streaks.
 				PortraitFrameTemplate = { "CloseButton", "Bg", "TopTileStreaks" },
+				ProfessionsButtonTemplate = { "Icon", "IconBorder" }, -- Blizzard_ProfessionsTemplates.xml:42
 			}
 			CreateFrame = function(kind, _, parent, template)
 				local f = Fake(parent)
+				made[#made + 1] = f
 				if kind == "Button" then f.shown = true; buttons[#buttons + 1] = f end
 				for _, key in ipairs(parts[template] or {}) do f[key] = Fake(f) end
 				if rawget(f, "ButtonText") then f.ButtonText.GetStringWidth = function() return 0 end end
@@ -950,6 +953,55 @@ describe("simulation", function()
 				Flush()
 			end
 			assert(Builds() == builds, "an event with unchanged content does not rebuild")
+		end)
+		-- Fails if a recipe with many reagents grows the details until the list has fewer than 6 rows of room: the list is what the panel is for.
+		it("many reagents leave the list its rows and scroll inside the details", function()
+			local schematic = {} -- these stand-ins stay for the specs after: the selection and its details stay too
+			local ok, err = pcall(function()
+				PlaySound, SOUNDKIT = function() end, { UI_90_BLACKSMITHING_TREEITEMCLICK = 1 }
+				ITEM_MIN_SKILL, TRADESKILL_REAGENT_COUNT, PROFESSIONS_REAGENT_CONTAINER_LABEL = "%s %d", "%d/%d", "Reagents:"
+				RED_FONT_COLOR, TextureKitConstants, GameTooltip_Hide = HIGHLIGHT_FONT_COLOR, { IgnoreAtlasSize = 1 }, function() end
+				Enum.CraftingReagentType = { Basic = 1 }
+				WowStyle1FilterDropdownStateEnabled = "classic"
+				C_Item = { GetItemCount = function() return 0 end, GetItemNameByID = function(id) return "Reagent " .. id end,
+					GetItemIconByID = function() return 1 end, GetItemQualityByID = function() return 1 end }
+				Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end,
+					SetupOutputIconCommon = function() end, GetProfessionBackgroundAtlas = function() end }
+				pns.SourceRows, pns.SortTargets = function() return {} end, function() end
+				C_TradeSkillUI.GetRecipeSchematic = function() return schematic end
+				local standIn = CreateFrame
+				local function Measured(frame)
+					frame.GetFontString = function() return Fake(frame) end
+					frame.GetHeight, frame.GetVerticalScroll = function() return 0 end, function() return 0 end -- the list keeps the selected row in view
+					return frame
+				end
+				CreateFrame = function(...) return Measured(standIn(...)) end
+				for _, frame in ipairs(made) do Measured(frame) end
+				local panel, detail = pns.PanelRankParent(), nil
+				for _, frame in ipairs(made) do if rawget(frame, "ReagentsLabel") then detail = frame end end
+				panel.GetTop, panel.GetBottom = function() return 800 end, function() return 100 end
+				local list = ProfessionsFrame.CraftingPage.RecipeList
+				list.GetTop, list.GetBottom = function() return 728 end, function() return 150 end -- 72 below the panel's top, 50 above its bottom
+				detail.SetHeight = function(self, height) self.height = height end
+				pns.ClearUnlearnedCache()
+				init(300)
+				Flush()
+				local row
+				for _, button in ipairs(buttons) do if button:IsShown() and rawget(button, "recipe") then row = row or button end end
+				local function Pick(reagents)
+					schematic.reagentSlotSchematics = {}
+					for id = 1, reagents do schematic.reagentSlotSchematics[id] = { reagentType = 1, quantityRequired = 1, reagents = { { itemID = id } } } end
+					detail.recipeID = nil
+					row.scripts.OnClick(row, "LeftButton")
+				end
+				local room = 800 - 100 - 72 - 50
+				Pick(8)
+				assert(room - detail.height >= 6 * 21, "8 reagents leave the list " .. room - detail.height .. " high")
+				Pick(2)
+				assert(detail.height > 150 and detail.height < room - 6 * 21, "2 reagents fit without scrolling: " .. detail.height)
+			end)
+			schematic.reagentSlotSchematics = {}
+			assert(ok, err)
 		end)
 		-- Fails if a recipe of another expansion's skill line shows, however found: 518 Blacksmithing rows came from the client's whole list.
 		it("a recipe outside the open skill line never shows", function()

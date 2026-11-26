@@ -108,8 +108,17 @@ local BUTTON_BOTTOM = 7
 local SOURCE_HEIGHT = 28 -- the window's Create button, measured
 local STRIP_HEIGHT = 38
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
+-- The list always keeps this many recipe rows of room, measured as the list lays them out (one open heading and its pads);
+-- past it the details stop growing and their reagents scroll (docs/client-notes.md, "Panel").
+local LIST_MIN_ROWS = 6
+local LIST_MIN_HEIGHT = LIST_PAD + HEADING_HEIGHT + ROW_SPACING + TOP_PAD + ROW_SPACING
+	+ LIST_MIN_ROWS * (ROW_HEIGHT + ROW_SPACING) + LIST_BOTTOM_INSET
+local REAGENTS_VIEW_TOP = REAGENTS_TOP + REAGENT_ICON_BELOW_LABEL -- the scrolling reagents start at the first icon
+local DETAIL_SCROLL_RIGHT = FRAME_INSET -- the reagents' scroll bar clears the box's border
 
 local panel, listArea, scroll, child, empty, rankBar, detail
+local reagentScroll, reagentChild -- the reagent rows scroll inside the details when the list would be squeezed
+local detailContent -- the details' height when nothing is cut; they are never taller than the list allows
 local placedKey
 local stripShown -- the details leave the strip under their box for Show Map
 local SelectRecipe -- defined with the details; a row tap selects through it
@@ -203,6 +212,24 @@ local function SyncNav()
 	end
 	local back = chosen or first
 	if not back then return end
+	-- Reagents walk in order and end at Show Map: a reagent scrolled out of view is farther than something on screen, so left to
+	-- itself the d-pad would leave the details.
+	previous = detail.Output
+	for _, button in ipairs(reagentRows) do
+		if button:IsShown() then
+			SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, button)
+			SetNav(button, SMART_NAV_INPUT_DIRECTION.UP, previous)
+			previous = button
+		end
+	end
+	if previous ~= detail.Output then
+		if into ~= detail.Output then
+			SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, into)
+			SetNav(into, SMART_NAV_INPUT_DIRECTION.UP, previous)
+		else
+			SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous)
+		end
+	end
 	local controls = { detail.Output, mapButton, mapMore }
 	for _, list in ipairs({ reagentRows, sourceButtons }) do
 		for _, button in ipairs(list) do controls[#controls + 1] = button end
@@ -239,6 +266,25 @@ function ns.OwnTooltip(owner)
 	else
 		GameTooltip:SetPoint("TOPLEFT", owner, "TOPLEFT", panel:GetRight() - owner:GetLeft(), 0)
 	end
+end
+
+-- A plain scroll frame (a ScrollBox would hold our data in Blizzard's secure code) with Blizzard's minimal scroll bar as its
+-- recipe list places it: right of the frame, thumb sized to the share in view, hidden while all fits. The bar's column is only
+-- reserved while it shows, so `place(frame, barShown)` anchors the far corner; the child follows the frame's width.
+local function CreateSlimScroll(parent, place)
+	local frame = CreateFrame("ScrollFrame", nil, parent, "ScrollFrameTemplate")
+	frame.ScrollBar:ClearAllPoints()
+	frame.ScrollBar:SetPoint("TOPLEFT", frame, "TOPRIGHT", 0, 0)
+	frame.ScrollBar:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", 0, 0)
+	frame.ScrollBar:SetHideIfUnscrollable(true)
+	local content = CreateFrame("Frame", nil, frame)
+	content:SetSize(1, 1)
+	frame:SetScrollChild(content)
+	frame.ScrollBar:HookScript("OnShow", function() place(frame, true) end)
+	frame.ScrollBar:HookScript("OnHide", function() place(frame, false) end)
+	frame:HookScript("OnSizeChanged", function(_, width) content:SetWidth(width) end)
+	place(frame, frame.ScrollBar:IsShown())
+	return frame, content
 end
 
 local function CreateRow()
@@ -533,14 +579,20 @@ local function PlaceList()
 	local theirs = ProfessionsFrame.CraftingPage.RecipeList
 	local panelTop, panelBottom = panel:GetTop(), panel:GetBottom()
 	local listTop, listBottom = theirs:GetTop(), theirs:GetBottom()
-	if not (panelTop and panelBottom and listTop and listBottom) then return end
+	if not (panelTop and panelBottom and listTop and listBottom) then
+		if detail:IsShown() and detailContent then detail:SetHeight(detailContent) end -- not laid out yet: nothing to cut for
+		return
+	end
 	local top = math.max(panelTop - listTop, CONTENT_TOP)
 	local bottom = math.max(listBottom - panelBottom, FRAME_INSET)
-	local detailHeight = detail:IsShown() and detail:GetHeight() or 0
 	local boxBottom = bottom + (stripShown and STRIP_HEIGHT - FRAME_INSET or 0)
-	local key = ("%s:%s:%s:%s"):format(top, bottom, detailHeight, boxBottom)
+	local content = detail:IsShown() and detailContent or 0
+	local key = ("%s:%s:%s:%s"):format(top, bottom, content, boxBottom)
 	if key == placedKey then return end
 	placedKey = key
+	-- What the list keeps is taken first; the details get the rest, and their reagents scroll when it is less than they need.
+	local detailHeight = math.max(math.min(content, panelTop - panelBottom - top - boxBottom - DETAIL_GAP - LIST_MIN_HEIGHT), 0)
+	if content > 0 then detail:SetHeight(detailHeight) end
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -top)
 	detail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, boxBottom)
 	detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, boxBottom)
@@ -577,14 +629,14 @@ local function Pooled(pool, index, make)
 end
 
 local function MakeReagentRow()
-	local button = CreateFrame("ItemButton", nil, detail, "ProfessionsButtonTemplate")
+	local button = CreateFrame("ItemButton", nil, reagentChild, "ProfessionsButtonTemplate")
 	button:SetScript("OnEnter", function(self)
 		ns.OwnTooltip(self)
 		GameTooltip:SetItemByID(self.itemID)
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", GameTooltip_Hide)
-	button.Text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
+	button.Text = reagentChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
 	button.Text:SetPoint("LEFT", button, "RIGHT", REAGENT_TEXT_GAP, 0)
 	button.Text:SetSize(REAGENT_NAME_WIDTH, REAGENT_NAME_HEIGHT) -- Blizzard's slot name box, so long names wrap as the pane's do
 	button.Text:SetJustifyH("LEFT")
@@ -846,6 +898,7 @@ FillDetail = function()
 	detailSignature = signature
 	local schematic = data.schematic
 	local itemID = schematic and schematic.outputItemID
+	local changedRecipe = detail.recipeID ~= selected.recipeID
 	detail.itemID = itemID
 	detail.recipeID = selected.recipeID
 	Professions.SetupOutputIconCommon(detail.Output, schematic and schematic.quantityMin or 1, schematic and schematic.quantityMax or 1,
@@ -866,15 +919,17 @@ FillDetail = function()
 
 	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
+	reagentScroll:SetShown(#data.reagents > 0)
 	if #data.reagents > 0 then
 		top = REAGENTS_TOP -- fixed, as the window's pane keeps it whatever the text above holds
 		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", REAGENTS_LEFT, -top)
-		top = top + REAGENT_ICON_BELOW_LABEL
 	end
+	if changedRecipe then reagentScroll:SetVerticalScroll(0) end
+	local y = 0 -- within the scroll child
 	for index, entry in ipairs(data.reagents) do
 		local button = Pooled(reagentRows, index, MakeReagentRow)
 		button.itemID = entry.itemID
-		button:SetPoint("TOPLEFT", detail, "TOPLEFT", REAGENT_LEFT, -top)
+		button:SetPoint("TOPLEFT", reagentChild, "TOPLEFT", REAGENT_LEFT, -y)
 		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
 		local quality = C_Item.GetItemQualityByID(entry.itemID)
 		if quality then button:SetSlotQuality(quality) else button.IconBorder:Hide() end
@@ -883,13 +938,17 @@ FillDetail = function()
 		button:Show()
 		button.Text:Show()
 		missing = missing or not entry.name
-		top = top + REAGENT_PITCH
+		y = y + REAGENT_PITCH
 	end
 	for index = #data.reagents + 1, #reagentRows do
 		reagentRows[index]:Hide()
 		reagentRows[index].Text:Hide()
 	end
-	if #data.reagents > 0 then top = top - REAGENT_PITCH + REAGENT_SIZE end -- the last icon's bottom
+	if #data.reagents > 0 then
+		local reagentsHeight = y - REAGENT_PITCH + REAGENT_SIZE -- to the last icon's bottom
+		reagentChild:SetHeight(reagentsHeight)
+		top = REAGENTS_VIEW_TOP + reagentsHeight
+	end
 
 	-- The sources are the button's tooltip, not lines in the box. With none to pin it stays, disabled, so the tooltip still tells them.
 	mapButton = mapButton or MakeMapButton()
@@ -904,7 +963,7 @@ FillDetail = function()
 	mapMore.places = data.places
 	stripShown = #data.sources > 0
 
-	detail:SetHeight(top + DETAIL_BOTTOM)
+	detailContent = top + DETAIL_BOTTOM
 	detail:Show()
 	PlaceList()
 	UpdatePlaceMenu() -- the list floats: it never takes height from the details
@@ -1192,31 +1251,19 @@ local function CreatePanel()
 	detail.ReagentsLabel:SetText(PROFESSIONS_REAGENT_CONTAINER_LABEL)
 	detail.ReagentsLabel:SetHeight(REAGENTS_LABEL_HEIGHT)
 	detail.ReagentsLabel:SetJustifyH("LEFT")
+	-- The reagents scroll inside the box under their label when the list's room would squeeze the box (FillDetail, PlaceList).
+	reagentScroll, reagentChild = CreateSlimScroll(detail, function(frame, barShown)
+		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
+	end)
+	reagentScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -REAGENTS_VIEW_TOP)
 	itemWatch = CreateFrame("Frame")
 	itemWatch:SetScript("OnEvent", function() detailSignature = nil; FillDetail() end)
 
-	-- A plain scroll frame (a ScrollBox would hold our data in Blizzard's secure code) with Blizzard's minimal
-	-- scroll bar, the one its recipe list uses: the thumb is sized to the share of the list in view.
-	scroll = CreateFrame("ScrollFrame", nil, listArea, "ScrollFrameTemplate")
+	scroll, child = CreateSlimScroll(listArea, function(frame, barShown)
+		frame:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", barShown and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
+	end)
 	scroll:SetPoint("TOPLEFT", listArea, "TOPLEFT", LIST_LEFT, 0)
-	-- Placed as the recipe list places its bar, right of the list (Blizzard_ProfessionsRecipeList.xml), and hidden
-	-- while the whole list fits.
-	scroll.ScrollBar:ClearAllPoints()
-	scroll.ScrollBar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 0, 0)
-	scroll.ScrollBar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 0, 0)
-	scroll.ScrollBar:SetHideIfUnscrollable(true)
-	child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(LIST_WIDTH, 1)
-	scroll:SetScrollChild(child)
-	-- The scroll bar's column is only reserved while the bar shows; hidden, the rows use the full width. The bar sets
-	-- its own shown state, so the frame follows it (rows are anchored to the child, which follows the frame).
-	local function PlaceScroll()
-		scroll:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", scroll.ScrollBar:IsShown() and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
-	end
-	scroll.ScrollBar:HookScript("OnShow", PlaceScroll)
-	scroll.ScrollBar:HookScript("OnHide", PlaceScroll)
-	scroll:HookScript("OnSizeChanged", function(_, width) child:SetWidth(width) end)
-	PlaceScroll()
+	child:SetWidth(LIST_WIDTH)
 
 	empty = listArea:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	empty:SetPoint("TOP", scroll, "TOP", 0, -ROW_HEIGHT)
