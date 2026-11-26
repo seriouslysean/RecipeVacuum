@@ -617,11 +617,12 @@ end
 
 -- Keeps a row inside the list's view. The d-pad's jumps land on rows scrolled out of view without scrolling to them, and the
 -- list's end moves up once when the details open; both would leave the cursor on a row nobody can see.
-local function ScrollIntoView(row)
-	local top, bottom = scroll:GetTop(), scroll:GetBottom()
+local function ScrollIntoView(row, frame)
+	frame = frame or scroll
+	local top, bottom = frame:GetTop(), frame:GetBottom()
 	local rowTop, rowBottom = row:GetTop(), row:GetBottom()
 	if not (top and bottom and rowTop and rowBottom) then return end
-	local offset = scroll:GetVerticalScroll()
+	local offset = frame:GetVerticalScroll()
 	if rowTop > top then
 		offset = offset - (rowTop - top)
 	elseif rowBottom < bottom then
@@ -629,7 +630,7 @@ local function ScrollIntoView(row)
 	else
 		return
 	end
-	scroll:SetVerticalScroll(math.max(0, math.min(offset, scroll:GetVerticalScrollRange())))
+	frame:SetVerticalScroll(math.max(0, math.min(offset, frame:GetVerticalScrollRange())))
 end
 ns.ScrollRowIntoView = ScrollIntoView
 
@@ -654,6 +655,7 @@ end
 local function MakeReagentRow()
 	local button = CreateFrame("ItemButton", nil, reagentChild, "ProfessionsButtonTemplate")
 	button:SetScript("OnEnter", function(self)
+		ns.ScrollRowIntoView(self, reagentScroll) -- a reagent the d-pad reaches is scrolled into view, as a list row is
 		ns.OwnTooltip(self)
 		GameTooltip:SetItemByID(self.itemID)
 		GameTooltip:Show()
@@ -891,7 +893,13 @@ local function DetailData(recipeInfo)
 			local entry = { itemID = reagent.itemID, need = slot.quantityRequired, have = C_Item.GetItemCount(reagent.itemID, true) }
 			entry.name = C_Item.GetItemNameByID(reagent.itemID)
 			-- The client answers only for items it has loaded, and loads one only when asked; its answer is GET_ITEM_INFO_RECEIVED.
-			if not entry.name then C_Item.RequestLoadItemDataByID(reagent.itemID) end
+			if not entry.name then
+				-- The game's own wait for an item's data (ItemMixin): draw the details again once its name is known.
+				Item:CreateFromItemID(reagent.itemID):ContinueOnItemLoad(function()
+					detailSignature = nil
+					FillDetail()
+				end)
+			end
 			data.reagents[#data.reagents + 1] = entry
 			parts[#parts + 1] = ("%d:%d:%d:%s"):format(entry.itemID, entry.have, entry.need, entry.name or "")
 		end
