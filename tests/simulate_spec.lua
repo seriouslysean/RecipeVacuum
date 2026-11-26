@@ -776,6 +776,7 @@ describe("simulation", function()
 				if key == "Show" or key == "Hide" then return function(o) o.shown = key == "Show" end end
 				if key == "SetShown" then return function(o, v) o.shown = v end end
 				if key == "SetText" then return function(o, v) o.text = v end end
+				if key == "SetTextColor" then return function(o, red, green, blue) o.textColor = { red, green, blue } end end
 				if key == "GetText" then return function(o) return rawget(o, "text") or "" end end
 				if key == "SetScript" or key == "HookScript" then return function(o, name, fn) local scripts = rawget(o, "scripts") or {}; o.scripts = scripts; scripts[name] = fn end end
 				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" or key == "GetFontString" then return function(o) return Fake(o) end end
@@ -808,7 +809,11 @@ describe("simulation", function()
 			Enum.UITextureSliceMode = { Stretched = 0, Tiled = 1 } -- UITextureConstantsDocumentation.lua
 			local color = { GetRGB = function() return 1, 1, 1 end }
 			color.WrapTextInColorCode = function(_, text) return text end
-			HIGHLIGHT_FONT_COLOR, DISABLED_FONT_COLOR = color, color
+			-- Distinct colors, so a spec can tell what a row's number was given.
+			local function Color(red, green, blue) return { GetRGB = function() return red, green, blue end, WrapTextInColorCode = color.WrapTextInColorCode } end
+			HIGHLIGHT_FONT_COLOR, DISABLED_FONT_COLOR = color, Color(0.5, 0.5, 0.5)
+			DIFFICULT_DIFFICULTY_COLOR, FAIR_DIFFICULTY_COLOR = Color(1, 0.5, 0.25), Color(1, 1, 0)
+			EASY_DIFFICULTY_COLOR, TRIVIAL_DIFFICULTY_COLOR = Color(0.25, 0.75, 0.25), Color(0.5, 0.5, 0.5)
 			CaseAccentInsensitiveParse = function(text) return text:lower() end
 			GetUIPanel = function() return nil end
 			InCombatLockdown = function() return false end
@@ -953,6 +958,39 @@ describe("simulation", function()
 				assert(table.concat(Names(), ",") == table.concat(case.shown, ","), "skill " .. case.skill .. " shows " .. table.concat(Names(), ","))
 				assert(table.concat(Bands(), ",") == table.concat(case.bands, ","), "skill " .. case.skill .. " has bands " .. table.concat(Bands(), ","))
 			end
+		end)
+		-- Fails if a learnable row's number gets the wrong skill-up color below the yellow point, at it, at the green point (the midpoint, rounded
+		-- down) or at the grey point, if a recipe with no thresholds is colored, or if a row too high for the character is colored.
+		it("a row's number takes the skill-up color at the character's skill", function()
+			local orange, yellow, green, grey, white, dim =
+				{ 1, 0.5, 0.25 }, { 1, 1, 0 }, { 0.25, 0.75, 0.25 }, { 0.5, 0.5, 0.5 }, { 1, 1, 1 }, { 0.5, 0.5, 0.5 }
+			-- Recipe 101 is learned at 30 and turns yellow at 45, green at floor((45 + 60) / 2) = 52 and grey at 60; 102 has no thresholds.
+			pns.seed.trivialLow, pns.seed.trivialHigh = { [101] = 45 }, { [101] = 60 }
+			local cases = {
+				{ skill = 44, recipe = 101, color = orange }, { skill = 45, recipe = 101, color = yellow },
+				{ skill = 51, recipe = 101, color = yellow }, { skill = 52, recipe = 101, color = green },
+				{ skill = 59, recipe = 101, color = green }, { skill = 60, recipe = 101, color = grey },
+				{ skill = 300, recipe = 101, color = grey }, { skill = 80, recipe = 102, color = white },
+				{ skill = 20, recipe = 101, color = dim },
+			}
+			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
+			local ok, err = pcall(function()
+				for _, case in ipairs(cases) do
+					pns.ClearUnlearnedCache()
+					init(case.skill)
+					Flush()
+					local number
+					for _, button in ipairs(buttons) do
+						local recipe = rawget(button, "recipe")
+						if button:IsShown() and recipe and recipe.recipeID == case.recipe then number = button.Skill end
+					end
+					assert(number and number.textColor, "recipe " .. case.recipe .. " has no row at skill " .. case.skill)
+					local got = table.concat(number.textColor, ",")
+					assert(got == table.concat(case.color, ","), ("recipe %d at skill %d: color %s, wanted %s"):format(case.recipe, case.skill, got, table.concat(case.color, ",")))
+				end
+			end)
+			pns.seed.trivialLow, pns.seed.trivialHigh = nil, nil
+			assert(ok, err)
 		end)
 		-- Fails if events or Init calls with the same content rebuild the list: the owner's log showed "UI panel shown" every 2 to 30 seconds with
 		-- no input, which re-anchored the rows under the gamepad cursor. A skill rise inside a band and a refreshed cache change no content.

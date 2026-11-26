@@ -439,6 +439,9 @@ local function ShowRow(row, recipeInfo)
 	row.Count:SetShown(count > 0)
 	if count > 0 then row.Count:SetFormattedText(" [%d] ", count) end
 	row.Skill:SetText(ns.SkillOf(recipeInfo))
+	-- The number shows the skill-up the recipe would give once learned; a recipe too high for the character stays dim like its name.
+	local skillColor = row.color ~= DISABLED_FONT_COLOR and ns.SkillUpColor(recipeInfo.recipeID, professionInfo and professionInfo.skillLevel or 0)
+	row.Skill:SetTextColor((skillColor or row.color):GetRGB())
 	row.markCount = ns.GetMarks(recipeInfo, row.markNames)
 	for slot, mark in ipairs(row.marks) do
 		local name = row.markNames[slot]

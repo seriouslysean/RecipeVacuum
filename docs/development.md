@@ -71,7 +71,7 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 `Data/Seed.lua` comes from the game, not from us. For each new game build, before a release:
 
 1. In game on a checkout build, open any profession, run `/recipevacuum scan`, then `/reload`. This reads which recipe each recipe item teaches (`taught`).
-2. `luajit tools/seed.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua> Data/Seed.lua`. The script also fetches Blizzard's `ItemSparse` table for the seed's build from wago.tools (needs the network) and writes `learnSkill[recipeID]`, the lowest `RequiredSkillRank` of the recipe items that teach it, and `rankSpell[skillLine][step]` from its `SpellEffect` table (docs/data.md, "Rank spells"). A saved file without a scan keeps `taught` and still refreshes `learnSkill` and `rankSpell`.
+2. `luajit tools/seed.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua> Data/Seed.lua`. The script also fetches Blizzard's `ItemSparse` table for the seed's build from wago.tools (needs the network) and writes `learnSkill[recipeID]`, the lowest `RequiredSkillRank` of the recipe items that teach it, and `rankSpell[skillLine][step]` from its `SpellEffect` table (docs/data.md, "Rank spells"), and `trivialLow` and `trivialHigh` from its `SkillLineAbility` table (docs/data.md, "Skill-up colors"). A saved file without a scan keeps `taught` and still refreshes `learnSkill` and `rankSpell`.
 3. The script adds new pairs by itself. If a read would remove a pair or change one, it writes nothing and lists the differences; check them in game, then run it again with `--accept`.
 4. Commit the file with the release.
 

@@ -40,6 +40,36 @@ function ns.SkillOf(recipeInfo)
 	return recipeInfo.requiredSkill or recipeInfo.maxTrivialLevel
 end
 
+-- Blizzard's colors for a recipe's difficulty at a skill, as its own list reads them (Blizzard_ProfessionsRecipeList.lua:1-5); Trivial is
+-- TRIVIAL_DIFFICULTY_COLOR, which the list leaves uncolored but FontStyles.xml:350 names.
+local DifficultyColors = {
+	[Enum.TradeskillRelativeDifficulty.Optimal] = DIFFICULT_DIFFICULTY_COLOR,
+	[Enum.TradeskillRelativeDifficulty.Medium] = FAIR_DIFFICULTY_COLOR,
+	[Enum.TradeskillRelativeDifficulty.Easy] = EASY_DIFFICULTY_COLOR,
+	[Enum.TradeskillRelativeDifficulty.Trivial] = TRIVIAL_DIFFICULTY_COLOR,
+}
+
+-- The color of the skill-up a recipe would give at this skill, or nil where the seed has no thresholds. The client gives a relative
+-- difficulty only for learned recipes, so it is worked out from the seeded yellow (Low) and grey (High) points: yellow from Low, green
+-- from their midpoint, grey from High (docs/data.md, "Skill-up colors"). Two table lookups, so it is cheap per row.
+function ns.SkillUpColor(recipeID, skill)
+	local seed = ns.seed
+	local high = seed and seed.trivialHigh and seed.trivialHigh[recipeID]
+	local low = high and seed.trivialLow[recipeID]
+	if not low then
+		return nil
+	end
+	local difficulty = Enum.TradeskillRelativeDifficulty
+	if skill >= high then
+		return DifficultyColors[difficulty.Trivial]
+	elseif skill >= math.floor((low + high) / 2) then
+		return DifficultyColors[difficulty.Easy]
+	elseif skill >= low then
+		return DifficultyColors[difficulty.Medium]
+	end
+	return DifficultyColors[difficulty.Optimal]
+end
+
 local function SortRecipes(left, right)
 	local leftSkill, rightSkill = ns.SkillOf(left), ns.SkillOf(right)
 	if leftSkill ~= rightSkill then
