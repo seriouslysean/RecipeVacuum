@@ -168,6 +168,37 @@ for _, name in ipairs(savedNames) do
 	check(("%s is read in one file and kept on the namespace"):format(name), #readers <= 1, table.concat(readers, ", "))
 end
 
+-- Translations: every key a language file sets is one the English file has, with the same format
+-- arguments, so a translated line can neither go unused nor break a :format call. A file not yet in the
+-- TOC is checked the same way (docs/translations.md).
+local function Specifiers(text)
+	local found = {}
+	for spec in text:gmatch("%%%d*%$?[%-%d%.]*([%a%%])") do
+		if spec ~= "%" then found[#found + 1] = spec end
+	end
+	table.sort(found)
+	return table.concat(found)
+end
+local localeDir = addonDir .. "/Locales"
+local english = {}
+for key in (Read(localeDir .. "/enUS.lua") or ""):gmatch('\nL%["(.-)"%]%s*=%s*true') do english[key] = true end
+for path in assert(io.popen('ls "' .. localeDir .. '"/*.lua 2>/dev/null')):lines() do
+	local locale = path:match("([^/]+)%.lua$")
+	if locale ~= "enUS" then
+		local unknown, mismatched = {}, {}
+		for line in assert(Read(path)):gmatch("[^\n]+") do
+			local key, value = line:match('^L%["(.-)"%]%s*=%s*"(.*)"%s*$')
+			if key and not english[key] then
+				unknown[#unknown + 1] = key
+			elseif key and Specifiers(key) ~= Specifiers(value) then
+				mismatched[#mismatched + 1] = key
+			end
+		end
+		check(locale .. ": every key is an English key", #unknown == 0, table.concat(unknown, " | "))
+		check(locale .. ": each line keeps its format arguments", #mismatched == 0, table.concat(mismatched, " | "))
+	end
+end
+
 -- 2. The embedded library: no XML, and the same file as the toolkit's own checkout when one sits beside the addon.
 local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("*a")
 check("the embedded kit has no XML", listing == "")
@@ -260,7 +291,7 @@ function RULES.plain(text)
 		if words > SENTENCE_WORDS then return ("has a sentence of %d words"):format(words) end
 	end
 end
--- A card's text as SourceCards writes it, so a caller cannot change it after (Astra review).
+-- A card's sentence in the shape every module's cards share, so the cards read alike across modules.
 local CARD_SHAPES = { "^Tracks only .+ you see for yourself%.$", "^Also tracks what your party, guild and friends find%.$",
 	"^Also tracks .+%.$" }
 function RULES.card(text)
@@ -268,7 +299,7 @@ function RULES.card(text)
 	for _, shape in ipairs(CARD_SHAPES) do
 		if body:find(shape) then return end
 	end
-	return "is not a sentence SourceCards writes"
+	return "is not in the cards' sentence shape"
 end
 function RULES.note(text)
 	if #text > NOTE_LIMIT then return ("is %d characters, over %d"):format(#text, NOTE_LIMIT) end

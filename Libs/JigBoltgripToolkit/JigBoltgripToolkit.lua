@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 38
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 39
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -20,8 +20,7 @@ do
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
 		"Links", "Copy link", "Website", "CurseForge",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
-		"Tracks only %s you see for yourself.", "Also tracks what your party, guild and friends find.",
-		"Also tracks %s.",
+		"Also tracks what your party, guild and friends find.", "Boltgrip's %s %s.",
 	}) do
 		english[text] = true
 	end
@@ -69,7 +68,6 @@ local MARK = "|TInterface\\WorldMap\\GEAR_64GREY:0|t" -- the world map's gear, a
 -- A blank the gear's size (Blizzard's inline spacer), so rows under a marked line start where its text
 -- does, as a tooltip's lines sit under its heading.
 local ALIGN = "|TInterface\\Common\\spacer:0|t "
-local PREFIX = "Boltgrip's"
 -- The family's own line color: a teal that matches none of the game's chat colors.
 local LINE_COLOR = { r = 0x5B / 255, g = 0xD9 / 255, b = 0xDE / 255 }
 local NAME_LINE_MIX = 0.25 -- share of the line color in a device's name, so the names sit together
@@ -101,7 +99,7 @@ end
 function lib:Say(module, noise, report)
 	assert(type(noise) == "string" and noise ~= "" and type(report) == "string" and report ~= "",
 		("%s: a voiced line needs a noise and a report (docs/standards.md, \"Voice\")"):format(tostring(module.title)))
-	AddLine(("%s %s %s %s. %s"):format(MARK, PREFIX, DeviceName(module), noise, report))
+	AddLine(("%s %s %s"):format(MARK, L["Boltgrip's %s %s."]:format(DeviceName(module), noise), report))
 end
 
 -- A plain line with the mark: an error's text, a development command's answer.
@@ -698,25 +696,24 @@ local function OrderedSections(sections)
 	return ordered
 end
 
--- Sources cards are the kit's, words included, so every module reads the same; spec's fields are in
--- docs/standards.md, "Options".
+-- Sources cards are the kit's: names, icons, openings and the friends line, so every module reads the
+-- same. The module gives its own whole sentences, since a sentence built around a slotted word cannot be
+-- translated well; spec's fields are in docs/standards.md, "Options".
 lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 local SOURCE_CARDS = {
 	{ name = L["Self Found"], icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = L["Short range."],
-		text = function(spec)
-			return L["Tracks only %s you see for yourself."]:format(spec.what)
-		end },
+		text = function(spec) return spec.self end },
 	{ name = FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = L["Medium range."],
 		text = function(spec) return spec.friends and L["Also tracks what your party, guild and friends find."] end },
 	{ name = L["Public"], icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = L["Long range."],
-		text = function(spec) return spec.public and L["Also tracks %s."]:format(spec.public) end },
+		text = function(spec) return spec.public end },
 }
 
 -- Cards from here are marked, so BuildOptions can refuse cards built by hand.
 lib.sourceCardSets = lib.sourceCardSets or setmetatable({}, { __mode = "k" })
 
 function lib:SourceCards(spec)
-	assert(type(spec.what) == "string", "SourceCards needs spec.what, the game thing the module tracks")
+	assert(type(spec.self) == "string", "SourceCards needs spec.self, the module's sentence for what it tracks alone")
 	local cards = {}
 	self.sourceCardSets[cards] = true
 	for level, card in ipairs(SOURCE_CARDS) do

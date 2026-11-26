@@ -10,8 +10,8 @@ L["Intake complete! %d recipes from %s!"] = true
 
 -- Options (Settings.lua)
 L["Recipe Sources"] = true
-L["recipes"] = true -- what the sources cards track
-L["recipes people link in chat"] = true
+L["Tracks only recipes you see for yourself."] = true
+L["Also tracks recipes people link in chat."] = true
 L["Share My Finds"] = true
 L["Send what you find to party, guild and friends who use Recipe Vacuum."] = true
 L["Sends your trainers, vendors, quests and drops to friends who use Recipe Vacuum. Nothing else is sent."] = true

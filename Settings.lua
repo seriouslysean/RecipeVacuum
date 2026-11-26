@@ -22,7 +22,8 @@ function ns.InitSettings()
 		{ heading = L["Recipe Sources"], place = "sources", rows = {
 			{ kind = "cards", key = "sourceLevel", label = L["Recipe Sources"], default = LEVEL.FRIENDS,
 				-- The kit words the cards; Recipe Vacuum names what it tracks (the toolkit's docs/standards.md, "Options").
-				values = toolkit:SourceCards({ what = L["recipes"], friends = true, public = L["recipes people link in chat"] }),
+				values = toolkit:SourceCards({ self = L["Tracks only recipes you see for yourself."], friends = true,
+					public = L["Also tracks recipes people link in chat."] }),
 				onChange = function()
 					ns.SharingSettingsChanged()
 					ns.SourcesChanged()
