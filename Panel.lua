@@ -48,9 +48,8 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
--- The Collections bar is 13 high with 29 of border art; stretched to the height of the window's skill bar beside it.
-local BAR_ART_HEIGHT = 18
-local BAR_BORDER_OVERHANG, BAR_BORDER_HEIGHT = 205 - 196, 29 * 18 / 13 -- the border art is 9 px wider and 16 taller than its bar
+local BAR_FILL_INSET = 12 -- the fill is 12 px narrower than the bar (Blizzard_ProfessionsRankBar.xml: 441 of 453)
+local BAR_CAP = 14 -- the rounded end of the bar's art, kept unstretched when sliced
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
@@ -59,7 +58,7 @@ local PORTRAIT_SIZE, PORTRAIT_LEFT = 62, 5
 -- while clearing the portrait ring on the left by RANK_BAR_CLEARANCE (docs/client-notes.md, "Panel").
 local RANK_BAR_CLEARANCE = 4
 local RANK_BAR_LEFT = PORTRAIT_SIZE - PORTRAIT_LEFT + RANK_BAR_CLEARANCE
-local BAR_WIDTH = math.min(196, PANEL_WIDTH - 2 * RANK_BAR_LEFT) -- 196 is the template's own width
+local BAR_WIDTH = PANEL_WIDTH - 2 * RANK_BAR_LEFT
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -546,9 +545,8 @@ local function UpdateDiscovery(found, total)
 	local key = ("%s:%d:%d"):format(professionInfo.professionID, found, total)
 	if key == shownDiscovery then return end
 	shownDiscovery = key
-	rankBar:SetMinMaxValues(0, math.max(total, 1))
-	rankBar:SetValue(found)
-	rankBar.text:SetText(L["%d / %d discovered"]:format(found, total))
+	rankBar:Update({ profession = 0, professionName = "", skillLevel = found, maxSkillLevel = total, skillModifier = 0 })
+	rankBar.Rank.Text:SetText(L["%d / %d discovered"]:format(found, total))
 end
 
 -- The first frame of a pool of one kind, made when needed; later ones are reused for another recipe.
@@ -1058,25 +1056,20 @@ local function CreatePanel()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -LIST_TOP_DEFAULT)
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
-	-- The Collections journal's own "collected of total" bar (Blizzard_Collections/Shared/Blizzard_CollectionTemplates.xml:4) at its own 196 px:
-	-- the window's rank bar is 453 px of art and distorts when narrowed. Centered on the panel, on the rank bar's line.
-	-- Built from the template's parts (Blizzard_CollectionTemplates.xml:4-35): its addon loads on demand, and loading it from here risks taint.
-	rankBar = CreateFrame("StatusBar", nil, panel)
-	rankBar:SetSize(BAR_WIDTH, BAR_ART_HEIGHT)
-	rankBar:SetStatusBarTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar")
-	rankBar:SetStatusBarColor(0.03125, 0.85, 0)
-	rankBar.Fill = rankBar:GetStatusBarTexture()
-	rankBar.Background = rankBar:CreateTexture(nil, "BACKGROUND")
-	rankBar.Background:SetColorTexture(0, 0, 0)
-	rankBar.Background:SetPoint("TOPLEFT", 0, -1)
-	rankBar.Background:SetPoint("BOTTOMRIGHT", 0, 1)
-	rankBar.Border = rankBar:CreateTexture(nil, "OVERLAY")
-	rankBar.Border:SetTexture("Interface\\PaperDollInfoFrame\\UI-Character-Skills-BarBorder")
-	rankBar.Border:SetSize(BAR_WIDTH + BAR_BORDER_OVERHANG, BAR_BORDER_HEIGHT)
-	rankBar.Border:SetPoint("LEFT", -5, 0)
-	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "TextStatusBarText")
-	rankBar.text:SetHeight(9)
-	rankBar.text:SetPoint("CENTER", 0, 1)
+	-- The window's own skill bar (ProfessionsRankBarTemplate, Blizzard_ProfessionsRankBar.xml) in its default blue fill, so it matches
+	-- the window's bar and still reads as a different thing. Its art is one 451 px image; sliced, its ends keep their size at our width
+	-- and only the middle stretches. Its own Update draws the fill; profession 0 has no fill of its own, so Update picks DefaultBlue.
+	rankBar = CreateFrame("Frame", nil, panel, "ProfessionsRankBarTemplate")
+	rankBar.ownerManagesEvents = true -- it shows discovery, not the window's skill, so the skill events must not drive it
+	rankBar:SetFrameStrata(panel:GetFrameStrata()) -- the template's BACKGROUND strata sits under the frame's art
+	rankBar.ExpansionDropdownButton:Hide() -- its menu picks the window's expansion
+	rankBar:SetWidth(BAR_WIDTH)
+	for _, art in ipairs({ rankBar.Background, rankBar.Border }) do
+		art:SetWidth(BAR_WIDTH)
+		art:SetTextureSliceMargins(BAR_CAP, 0, BAR_CAP, 0)
+		art:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
+	end
+	rankBar.Fill:SetWidth(BAR_WIDTH - BAR_FILL_INSET)
 	rankBar:SetPoint("CENTER", panel, "TOP", 0, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)

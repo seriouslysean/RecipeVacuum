@@ -789,6 +789,7 @@ describe("simulation", function()
 				ScrollFrameTemplate = { "ScrollBar" },
 				-- Blizzard_SharedXML SharedUIPanelTemplates.xml: the portrait frame's close button, background and top streaks.
 				PortraitFrameTemplate = { "CloseButton", "Bg", "TopTileStreaks" },
+				ProfessionsRankBarTemplate = { "Background", "Border", "Fill", "ExpansionDropdownButton", "Rank" },
 			}
 			CreateFrame = function(kind, _, parent, template)
 				local f = Fake(parent)
