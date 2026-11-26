@@ -60,6 +60,8 @@ Hidden addon messages only, through AceComm and ChatThrottleLib.
 2. A peer that is behind whispers a request for everything after its revision.
 3. The owner replies with one batch, capped near 4 kB encoded; the receiver asks again until it reaches the tip.
 
+Received rows are parsed and checked field by field, never run as code: another addon (2021) ran received text through `loadstring`, which let any sender run code in the receiver's game. A row that fails its checks is dropped on its own and the rest of the batch is kept; a batch that cannot be read at all is skipped. Either way the cursor moves past it, since the same batch would fail the same way every time it was asked for.
+
 Rows carry IDs; each client reads item, recipe and quest names in its own language. NPC and object names are sent, since the client has no lookup by ID. Keys: `k` kind, `r` recipe, `i` item; source `n` npc, `o` object, `ci` container, `fi` fishing zone, `z` roll zone, `q` quest; `nm`, `on` names, `nf` NPC faction; `m`, `x`, `y` place; on drops only `a` subzone area ID, `di` dungeon or raid instance ID, `cn` times seen; `f` faction, `s` seen, `b` build; details `sk`, `c`, `p`, `l`, `sp`, `ch`, `fn`, `gi`. Every received row is validated before it is saved, and received data is never executed.
 
 Who gets a whisper is decided before sending: a friend who is online, and for a Battle.net friend a character in this game, on this realm and of this faction. Nothing is hidden from chat. If a whisper still fails (a friend logging off at that moment), the game prints "No player named '%s' is currently playing."; the addon reads that line so the name is not whispered again until it has been offline.
@@ -74,7 +76,7 @@ The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core
 | Friends (2), the default | Also the shared layer, and what party, raid, guild and whispers bring | What Share My Finds sends |
 | Public (3) | Also what public chat brings | What Share My Finds sends |
 
-Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The first-run question (`Heard.lua`) and the options page set the same setting.
+Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The first-run tip (`Heard.lua`) names the current level and points to the options page, which sets it.
 
 ## Come across
 
@@ -144,3 +146,4 @@ The mark shows when the open profession's cap has a source with a place; the oth
 | 7 | The Full Color Source Icons option is removed |
 | 8 | The two source modes become three levels (`sourceLevel`); an earlier Self Found choice is kept |
 | 9 | Sending becomes its own option (`shareFinds`), off for anyone at Self Found |
+| 10 | Trainer rank records are dropped, to be recorded again with the skill-step check |

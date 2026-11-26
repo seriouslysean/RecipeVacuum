@@ -72,8 +72,9 @@ local function Save(bucket, id, kind, npc, details)
 	details.faction = npc.faction
 	local changed = isNew
 	if kind == "drop" then
-		observation.count = (observation.count or 0) + 1 -- each loot window is one more time seen
-		changed = true
+		-- Each loot window is one more time seen. A repeat alone is not a new revision: farming would
+		-- add one per kill, and every reply walks them; the count goes out with the next real change.
+		observation.count = (observation.count or 0) + 1
 	end
 	for _, field in ipairs(DETAIL_FIELDS) do
 		if details[field] ~= nil and observation[field] ~= details[field] then

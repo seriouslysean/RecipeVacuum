@@ -2,7 +2,7 @@
 
 A WoW Forever addon. It lists the recipes a character hasn't learned inside Blizzard's own profession window and shows where each one comes from: trainer, vendor, quest or drop. First module of Jig Boltgrip's Toolkit.
 
-Client: WoW Forever 1.60.1 (build 71037, Interface 16001), the modern client with Forever's `Camelot` overrides. Blizzard's UI source for this client: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
+Client: WoW Forever 1.60.1 (Interface 16001; measured on builds 71037 to 71139), the modern client with Forever's `Camelot` overrides. Blizzard's UI source for this client: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
 
 ## Rules
 
@@ -29,7 +29,7 @@ Every toolkit addon meets one checklist before a release, the [quality bar](http
 | `Voice.lua` | Every chat line the addon says, with the voice rules |
 | `Sources.lua` | Source types, lookups across data layers, tooltips, row marks |
 | `Record.lua` | Records trainers, vendors, loot and quest rewards |
-| `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions; the first-run level question |
+| `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions; the first-run tip |
 | `Finds.lua` | Revisions, wire rows, validation, merge, export |
 | `Sharing.lua` | Automatic sharing with guild, group and friends (AceComm) |
 | `Unlearned.lua` | Adds unlearned recipes to Blizzard's recipe list |

@@ -15,14 +15,14 @@ ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeV
 One script runs every check; run it before every commit:
 
 ```sh
-tools/check.sh <wow-ui-source checkout> <a schema 1 save> <a current save>
+tools/check.sh <wow-ui-source checkout> [an old save] [a current save]
 ```
 
-It checks, in order: Lua 5.1 syntax (through LuaJIT; the `luac` on a current machine is a newer Lua and accepts syntax the client rejects), `luacheck`, that every file still compiles with the `--@debug@` blocks removed, then the scroll, upgrade and simulation tests, the scroll and simulation tests on the stripped build too. An argument left out skips its test and says so.
+It checks, in order: Lua 5.1 syntax (through LuaJIT; the `luac` on a current machine is a newer Lua and accepts syntax the client rejects), `luacheck`, that every file still compiles with the `--@debug@` blocks removed, then the scroll, upgrade and simulation tests, the scroll and simulation tests on the stripped build too. Every test runs; a missing UI source fails the run.
 
-- The simulations need a real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`), which stays out of the repository.
+- The upgrade and simulation tests run on the made-up saved files in `tests/fixtures` (schema 2 and the current schema). A real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`) can be given instead, to try the code on real data; real saves stay out of the repository.
 - `tests/scroll.lua` runs the addon's list code against Blizzard's real ScrollBox and tree data provider, from a checkout of [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source) at the commit `.github/workflows/ci.yml` pins.
-- CI (`.github/workflows/ci.yml`) runs the same script on every push and pull request, without the two save-file tests.
+- CI (`.github/workflows/ci.yml`) runs the same script on every push and pull request.
 - `luacheck` reports any global the code reads that is not listed in `.luacheckrc` (`read_globals`), so a misspelled API name fails the check. Add a name there when the code starts using a new one.
 - `.editorconfig` sets indentation and line endings for every editor.
 
@@ -65,7 +65,7 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 3. The script adds new pairs by itself. If a read would remove a pair or change one, it writes nothing and lists the differences; check them in game, then run it again with `--accept`.
 4. Commit the file with the release.
 
-A scan cut short loses pairs: one scan answered for 630 of 2,974 items (2026-11-23).
+A scan cut short loses pairs; the seed header's counts show how many items gave no answer.
 
 The generated header in `Data/Seed.lua` is two lines: the generator and the taught note. The table is `taught[recipe itemID] = recipeID`: which recipe each recipe item teaches, as each recipe item's tooltip names it (read by `ns.GetTaughtRecipe` in `Sources.lua`). It is the game's data: nothing in the file comes from players and nothing in it is copied into saved variables. The table only grows unasked.
 
@@ -82,7 +82,6 @@ Recorded from the Astra review of 2026-11-25 (RecipeVacuum a763a62..434c27a); no
 | Gap | Who can reach it today | What would make it worth fixing |
 |---|---|---|
 | AceComm buffers a multipart message before Recipe Vacuum checks the sender or its size; the 64 KiB expanded limit is checked after decompression | Any player who can send addon messages to our prefixes | A measured memory or frame cost from it, or a report |
-| Every repeat drop adds a revision row until reload, and each reply scans from the start | A long farming session | The working build's "merge shared finds" or reply timing showing a cost |
 | Options card rows on Blizzard's pooled settings list may leave hidden buttons when switching between toolkit pages | Switching between two toolkit addons' pages many times | A measured growth in game |
 | Kit calls from versions between MINOR 19 and 29 are not kept | No one: those versions were never released | Not applicable; from the first release the kit keeps every call under `-1.0` (toolkit standards) |
 | The "blocked from an action" popup when learning a recipe from the bags (`cairn:h57tf`) | Seen once | It happening again: the log then names the function |

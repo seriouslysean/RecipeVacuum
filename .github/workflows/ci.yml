@@ -1,6 +1,5 @@
-# Runs the repository's own check script on every push and pull request.
-# The upgrade and simulation tests need a real saved-variables file, which is not in the
-# repository, so they are skipped here and run locally (docs/development.md).
+# Runs the repository's own check script on every push and pull request. The upgrade and
+# simulation tests run on the made-up saved files in tests/fixtures.
 name: ci
 
 on:

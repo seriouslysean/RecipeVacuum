@@ -363,7 +363,10 @@ do
     lf.script(lf, "LOOT_READY"); lf.script(lf, "LOOT_CLOSED")
   end
   kill("Creature-0-1-0-1-900-A", 41)
+  local firstRevision = d.db.exchange.revision
   kill("Creature-0-1-0-1-900-A", 41)
+  -- Fails if each repeat kill adds a revision: a farming session would grow every reply by one row a kill.
+  check("a repeat drop counts without a new revision", d.db.exchange.revision == firstRevision)
   local seen = d.db.found.items[2000]
   check("a drop keeps its subzone, its own spot and a count", seen and #seen == 1 and seen[1].area == 41 and seen[1].map == 1429
     and seen[1].x == 0.5 and seen[1].count == 2)

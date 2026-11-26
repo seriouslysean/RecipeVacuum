@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- Self-found finds are one collection with an ID and a revision counter; renumbering revisions issues a new ID so peers resync.
 
@@ -97,7 +98,7 @@ function ns.FindsSince(after, limit)
 	return rows, ns.db.exchange.revision
 end
 
--- Validate every received row before saving; received data is parsed, never executed (another addon 2021 ran it through loadstring).
+-- Validate every received row before saving; received data is parsed, never run as code (docs/data.md, "Sharing").
 local function PositiveID(value)
 	return type(value) == "number" and value > 0 and value < ns.MAX_WIRE_NUMBER and value == math.floor(value)
 end
@@ -278,5 +279,5 @@ function ns.ExportFinds()
 		observations = rows,
 	})
 	ns.toolkit:ShowText(
-		ns.title .. ": " .. ns.voice.exportTitle, json)
+		ns.title .. ": " .. L["Recipe Sources"], json)
 end

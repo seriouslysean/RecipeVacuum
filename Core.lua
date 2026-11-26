@@ -16,7 +16,7 @@ ns.MAX_WIRE_NUMBER = 2^32
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 -- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
 ns.LEVEL = toolkit.SOURCE_LEVEL
-ns.levelHeard = { L["only you"], L["you and your friends"], L["everyone nearby"] }
+ns.levelHeard = { L["only you"], L["you and your friends"], L["you, your friends and recipes people link in chat"] }
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }
@@ -180,7 +180,7 @@ migrations[8] = function(db)
 	db.shareWithFriends = nil
 end
 
--- Schema 9 splits sending from the level: Self Found used to stop sending, so it keeps that choice.
+-- Schema 9 splits sending from the level; a player at Self Found keeps not sending (docs/data.md, "Schema").
 migrations[9] = function(db)
 	db.shareFinds = db.sourceLevel ~= ns.LEVEL.SELF
 end

@@ -13,8 +13,6 @@ ns.voice = {
 	detected = "%d %s detected!",
 	-- Argument: where. The error itself follows on its own line.
 	malfunction = "Malfunction in %s!",
-	-- Window titles.
-	exportTitle = L["Recipe sources ready! Select all, then copy!"],
 }
 
 --@debug@

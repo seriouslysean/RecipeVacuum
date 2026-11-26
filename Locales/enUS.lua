@@ -25,7 +25,6 @@ L["Print one message in your chat window after a visit with new recipe sources."
 L["Open the options"] = true
 L["Copy the recipe sources you found"] = true
 L["Opens a window of every recipe source you found, ready to copy."] = true
-L["Recipe sources ready! Select all, then copy!"] = true
 
 -- Tooltips and the recipe pane (Sources.lua, RecipePanel.lua)
 L["Trainer"] = true
@@ -42,7 +41,7 @@ L["and %d more"] = true
 L["Your Recipe Vacuum is humming! Recipes you come across land in this list. Right now it listens to %s. You can change that in Options."] = true
 L["only you"] = true
 L["you and your friends"] = true
-L["everyone nearby"] = true
+L["you, your friends and recipes people link in chat"] = true
 
 -- Chat (Core.lua)
 L["Saved data is from a newer version of Recipe Vacuum; it was left unchanged."] = true
