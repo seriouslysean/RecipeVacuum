@@ -195,8 +195,7 @@ local function SyncNav()
 	-- Down from the last row stays in the list; right is the way to the details.
 	if previous then SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous) end
 	if not selected then return end
-	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
-	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
+	local into = detail.Output -- right enters the details at their top, the made item
 	local first, chosen, rowCount = nil, nil, 0
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		local item = items[index]
@@ -314,6 +313,7 @@ local function CreateRow()
 	-- Ours in place of Blizzard's, which would select a recipe in its own list.
 	row:SetScript("OnEnter", function(self)
 		if not self.recipe then return end
+		ns.ScrollRowIntoView(self)
 		self.Label:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 		self.Count:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 		for slot = 1, self.markCount do
@@ -579,7 +579,9 @@ local function PlaceList()
 	if not (panelTop and panelBottom and listTop and listBottom) then return end
 	local top = math.max(panelTop - listTop, CONTENT_TOP)
 	local bottom = math.max(listBottom - panelBottom, FRAME_INSET)
-	local key = ("%s:%s"):format(top, bottom)
+	-- The details open with the first recipe chosen and keep one size from then on, so only that first choice moves the list's end.
+	local open = selected ~= nil
+	local key = ("%s:%s:%s"):format(top, bottom, tostring(open))
 	if key == placedKey then return end
 	placedKey = key
 	local boxBottom = bottom + STRIP_HEIGHT - FRAME_INSET
@@ -588,14 +590,37 @@ local function PlaceList()
 	detail:SetHeight(math.max(math.floor(room / 2), DETAIL_FIT_HEIGHT))
 	detail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, boxBottom)
 	detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, boxBottom)
-	listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
+	detail:SetShown(open)
+	if open then
+		listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
+	else
+		listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
+	end
 	-- The list's background is drawn at the full height of the page's list and cut off where the details begin: squeezed into a
 	-- shorter list, its dark bottom fade showed as a bar above the box. It runs into the gap the ring hangs into, down to the box.
 	listArea.BackgroundFrame:SetHeight(panelTop - panelBottom - top - bottom)
 	listArea.Clip:ClearAllPoints()
 	listArea.Clip:SetPoint("TOPLEFT")
-	listArea.Clip:SetPoint("BOTTOMRIGHT", 0, -DETAIL_GAP)
+	listArea.Clip:SetPoint("BOTTOMRIGHT", 0, open and -DETAIL_GAP or 0)
 end
+
+-- Keeps a row inside the list's view. The d-pad's jumps land on rows scrolled out of view without scrolling to them, and the
+-- list's end moves up once when the details open; both would leave the cursor on a row nobody can see.
+local function ScrollIntoView(row)
+	local top, bottom = scroll:GetTop(), scroll:GetBottom()
+	local rowTop, rowBottom = row:GetTop(), row:GetBottom()
+	if not (top and bottom and rowTop and rowBottom) then return end
+	local offset = scroll:GetVerticalScroll()
+	if rowTop > top then
+		offset = offset - (rowTop - top)
+	elseif rowBottom < bottom then
+		offset = offset + (bottom - rowBottom)
+	else
+		return
+	end
+	scroll:SetVerticalScroll(math.max(0, math.min(offset, scroll:GetVerticalScrollRange())))
+end
+ns.ScrollRowIntoView = ScrollIntoView
 
 -- Discovery, as a challenge's progress: found of every recipe the character could still learn here.
 local function UpdateDiscovery(found, total)
@@ -890,6 +915,17 @@ end
 
 -- Draws the selected recipe in the details; the box itself never changes size.
 FillDetail = function()
+	local wasOpen = detail:IsShown()
+	PlaceList()
+	if selected and not wasOpen then
+		-- The list just got shorter: once the frames have their new size, bring the chosen row back into view.
+		RunNextFrame(function()
+			for index = 1, math.min((nextItem or 1) - 1, #items) do
+				local item = items[index]
+				if item.recipe and selected and item.recipe.recipeID == selected.recipeID then ScrollIntoView(slots[index]) end
+			end
+		end)
+	end
 	if not selected then
 		if detailSignature ~= "" then
 			detailSignature = ""
