@@ -51,7 +51,7 @@ local LABEL_GAP = 4
 local RANK_BAR_FILL_INSET = 12
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
-local PORTRAIT_SIZE, PORTRAIT_LEFT, PORTRAIT_RISE = 62, 5, 7
+local PORTRAIT_SIZE, PORTRAIT_LEFT = 62, 5
 -- The discovery bar starts just right of the portrait ring and ends the same distance from the list's right edge, so it fills the
 -- band between them (docs/client-notes.md, "Panel").
 local RANK_BAR_CLEARANCE = 4
@@ -73,12 +73,12 @@ local PAGE_ATLAS, PAGE_LEFT, PAGE_TOP, PAGE_WIDTH, PAGE_RIGHT_GAP = "Profession-
 local PAGE_BOTTOM_GAP = 3 -- the page's 570 height in the window's 594
 local WINDOW_BACKGROUND = "Profession-Background-Overview" -- Camelot/Blizzard_ProfessionsFrame.lua:137
 local FORM_BORDER_ATLAS, FORM_SLICE = "common-insideframe", 53
--- The details' icon is the window's portrait: a 62 px masked circle at -5, 7 (SharedUIPanelTemplates.xml:581-594) and the ring cut out of
--- the frame's corner piece (NineSliceLayouts.lua:20); the ring spans 5 to 71 of that 95 px art and the frame places the piece at -13, 16.
+-- The details' icon hangs off its pane where the window's portrait ring hangs off the window: the frame places that ring's corner art at
+-- -13, 16 (NineSliceLayouts.lua:20), the ring spanning 5 to 71 of the 95 px art.
 local ICON_SIZE = PORTRAIT_SIZE
-local ICON_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
-local RING_ATLAS, RING_ELEMENT, RING_FROM, RING_TO = "UI-Frame-PortraitMetal-CornerTopLeft", 95, 5, 71
+local RING_FROM, RING_TO = 5, 71 -- the portrait ring within its 95 px corner art
 local RING_SIZE = RING_TO - RING_FROM
+local OUTPUT_RING_INSET = (58 - 47) / 2 -- the output ring's drawn edge to its button (ProfessionsOutputButtonTemplate, 47 px)
 -- The window's frame line is its edge; the pane frame's line sits inside the box's edge, so the ring moves by that much more to
 -- hang off the line as the portrait does (measured against the window's portrait on the Deck).
 local LINE_IN_LEFT, LINE_IN_TOP = 2, 5
@@ -101,6 +101,7 @@ local SLOT_LEFT, SLOT_HEIGHT, SLOT_SPACING = 1, 50, 5
 local REAGENT_SIZE = 39 -- ProfessionsButtonTemplate (Blizzard_ProfessionsTemplates.xml:42)
 local REAGENT_PITCH = SLOT_HEIGHT + SLOT_SPACING
 local REAGENT_TEXT_GAP = 46 - REAGENT_SIZE
+local REAGENT_NAME_WIDTH, REAGENT_NAME_HEIGHT = 108, 36 -- Blizzard_ProfessionsRecipeReagentSlotBase.xml:20
 -- Show Map sits in the strip under the box as the window's Create button does: 7 above the bottom, the pane ending 38 above it
 -- (Blizzard_ProfessionsCrafting.lua:1036; 594 less the pane's 72 top and 484 height).
 local BUTTON_BOTTOM = 7
@@ -514,7 +515,7 @@ local function MakeReagentRow()
 	button:SetScript("OnLeave", GameTooltip_Hide)
 	button.Text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
 	button.Text:SetPoint("LEFT", button, "RIGHT", REAGENT_TEXT_GAP, 0)
-	button.Text:SetWidth(PANEL_INNER_WIDTH - DETAIL_SIDE - SLOT_LEFT - REAGENT_SIZE - REAGENT_TEXT_GAP - FRAME_INSET)
+	button.Text:SetSize(REAGENT_NAME_WIDTH, REAGENT_NAME_HEIGHT) -- Blizzard's slot name box, so long names wrap as the pane's do
 	button.Text:SetJustifyH("LEFT")
 	return button
 end
@@ -774,7 +775,8 @@ FillDetail = function()
 	local itemID = schematic and schematic.outputItemID
 	detail.itemID = itemID
 	detail.recipeID = selected.recipeID
-	detail.Output.Icon:SetTexture(selected.icon)
+	Professions.SetupOutputIconCommon(detail.Output, schematic and schematic.quantityMin or 1, schematic and schematic.quantityMax or 1,
+		selected.icon, itemID, itemID and C_Item.GetItemQualityByID(itemID) or 1)
 	detail.Name:SetText(selected.name)
 	local skill = selected.requiredSkill
 	detail.Sub:SetShown(skill ~= nil)
@@ -1025,34 +1027,11 @@ local function CreatePanel()
 	detail.Border:SetTextureSliceMargins(FORM_SLICE, FORM_SLICE, FORM_SLICE, FORM_SLICE)
 	detail.Border:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
 	detail:Hide()
-	-- The made item as the window's portrait is drawn: a circle-masked icon and the frame's ring. A real Button, so the gamepad
-	-- focuses it and its tooltip shows.
-	detail.Output = CreateFrame("Button", nil, detail)
-	detail.Output:SetSize(ICON_SIZE, ICON_SIZE)
-	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", -PORTRAIT_LEFT - LINE_IN_LEFT, PORTRAIT_RISE - LINE_IN_TOP)
+	-- The made item as the window's recipe pane shows it (its output icon and brown ring), placed where the portrait's ring would hang so
+	-- it hangs off the pane's frame line. The ring is 68 px around the 47 px button and drawn about 58 across.
+	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
+	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", -RING_LEFT + OUTPUT_RING_INSET, RING_RISE - OUTPUT_RING_INSET)
 	detail.Output:SetFrameLevel(ICON_LEVEL)
-	detail.Output.Icon = detail.Output:CreateTexture(nil, "ARTWORK")
-	detail.Output.Icon:SetAllPoints()
-	local iconMask = detail.Output:CreateMaskTexture()
-	iconMask:SetTexture(ICON_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-	iconMask:SetPoint("TOPLEFT", detail.Output.Icon, "TOPLEFT", 2, 0)
-	iconMask:SetPoint("BOTTOMRIGHT", detail.Output.Icon, "BOTTOMRIGHT", -2, 4)
-	detail.Output.Icon:AddMaskTexture(iconMask)
-	local ring = detail.Output:CreateTexture(nil, "OVERLAY")
-	local ringInfo = C_Texture.GetAtlasInfo(RING_ATLAS)
-	if ringInfo then
-		local width, height = ringInfo.rightTexCoord - ringInfo.leftTexCoord, ringInfo.bottomTexCoord - ringInfo.topTexCoord
-		ring:SetTexture(ringInfo.file)
-		ring:SetTexCoord(ringInfo.leftTexCoord + width * RING_FROM / RING_ELEMENT, ringInfo.leftTexCoord + width * RING_TO / RING_ELEMENT,
-			ringInfo.topTexCoord + height * RING_FROM / RING_ELEMENT, ringInfo.topTexCoord + height * RING_TO / RING_ELEMENT)
-	end
-	ring:SetSize(RING_SIZE, RING_SIZE)
-	ring:SetPoint("TOPLEFT", detail, "TOPLEFT", -RING_LEFT, RING_RISE)
-	-- The frame's corner piece also carries its metal bars; the same circle mask keeps the ring alone.
-	local ringMask = detail.Output:CreateMaskTexture()
-	ringMask:SetTexture(ICON_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-	ringMask:SetAllPoints(ring)
-	ring:AddMaskTexture(ringMask)
 	detail.Output:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if detail.itemID then GameTooltip:SetItemByID(detail.itemID) else GameTooltip:SetSpellByID(detail.recipeID) end
