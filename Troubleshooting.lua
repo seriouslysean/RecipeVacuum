@@ -655,6 +655,251 @@ areaCapture:SetScript("OnEvent", function(_, event)
 		CaptureArea(event)
 	end
 end)
+-- Layout measuring: Blizzard's profession window and our panel, each element relative to its pane's own top-left in the pane's own
+-- scale, read only (docs/development.md, "Working build"; tools/layout-diff.lua prints the differences).
+local LAYOUT_KEEP = 5 -- records kept in the saved file
+
+local function Number(value)
+	if type(value) == "number" and not issecretvalue(value) then return value end
+end
+
+-- A value read from a frame that may not have the method or may hold a secret.
+local function Read(object, method, ...)
+	if not (object and object[method]) then return end
+	local ok, first, second, third = pcall(object[method], object, ...)
+	if ok and not issecretvalue(first) then return first, second, third end
+end
+
+local function ScaleOf(region)
+	return Number(Read(region, "GetEffectiveScale") or Read(Read(region, "GetParent"), "GetEffectiveScale"))
+end
+
+-- Walks a dotted path of keys; nil as soon as one is missing.
+local function Path(root, path)
+	local value = root
+	for key in path:gmatch("[^.]+") do
+		if type(value) ~= "table" then return end
+		value = value[key]
+	end
+	return value
+end
+
+-- One region's geometry from the pane's top-left (y grows downward), in the pane's scale, plus text or art facts.
+local function Measure(region, pane)
+	if not (region and pane) then return { missing = true } end
+	local scale, paneScale = ScaleOf(region), ScaleOf(pane)
+	local left, top, width, height = Number(Read(region, "GetLeft")), Number(Read(region, "GetTop")),
+		Number(Read(region, "GetWidth")), Number(Read(region, "GetHeight"))
+	local paneLeft, paneTop = Number(Read(pane, "GetLeft")), Number(Read(pane, "GetTop"))
+	if not (scale and paneScale and left and top and width and height and paneLeft and paneTop) then return { missing = true } end
+	local result = { left = (left * scale - paneLeft * paneScale) / paneScale, top = (paneTop * paneScale - top * scale) / paneScale,
+		width = width * scale / paneScale, height = height * scale / paneScale, shown = Read(region, "IsShown") and true or false }
+	if Read(region, "IsObjectType", "FontString") then
+		local object = Read(region, "GetFontObject")
+		local _, size, flags = Read(region, "GetFont")
+		result.fontObject = Read(object, "GetName") or "?"
+		result.fontSize, result.fontFlags = Number(size), flags or ""
+		local stringWidth, stringHeight = Number(Read(region, "GetStringWidth")), Number(Read(region, "GetStringHeight"))
+		result.stringWidth = stringWidth and stringWidth * scale / paneScale
+		result.stringHeight = stringHeight and stringHeight * scale / paneScale
+		result.lines = Number(Read(region, "GetNumLines"))
+		result.justifyH, result.justifyV = Read(region, "GetJustifyH"), Read(region, "GetJustifyV")
+		result.wrapWidth = result.width
+		result.wordWrap = Read(region, "CanWordWrap") and true or false
+	elseif Read(region, "IsObjectType", "Texture") then
+		result.atlas = Read(region, "GetAtlas")
+		local texture = Read(region, "GetTexture")
+		result.texture = result.atlas == nil and (type(texture) == "string" or type(texture) == "number") and texture or nil
+	end
+	return result
+end
+
+local function ByTop(a, b)
+	return (Number(Read(a, "GetTop")) or 0) > (Number(Read(b, "GetTop")) or 0)
+end
+
+local function ShownFrames(list)
+	local found = {}
+	for _, frame in ipairs(list) do
+		if Read(frame, "IsShown") then found[#found + 1] = frame end
+	end
+	table.sort(found, ByTop)
+	return found
+end
+
+-- The first two recipe rows with no heading between them, so their pitch is the row spacing alone.
+local function AdjacentRows(rowList, headingList)
+	for index = 1, #rowList - 1 do
+		local upper, lower = Number(Read(rowList[index], "GetTop")), Number(Read(rowList[index + 1], "GetTop"))
+		local between = false
+		for _, heading in ipairs(headingList) do
+			local top = Number(Read(heading, "GetTop"))
+			between = between or (top and upper and lower and top < upper and top > lower)
+		end
+		if not between then return rowList[index], rowList[index + 1] end
+	end
+	return rowList[1]
+end
+
+-- Blizzard's recipe frames, split into headings and rows by the keys their templates declare (Blizzard_ProfessionsRecipeList.xml).
+local function BlizzardListFrames(scrollBox)
+	local headings, rows = {}, {}
+	if scrollBox and scrollBox.ForEachFrame then
+		pcall(scrollBox.ForEachFrame, scrollBox, function(frame)
+			if frame.SkillUps then rows[#rows + 1] = frame elseif frame.RankBar and frame.Label then headings[#headings + 1] = frame end
+		end)
+	end
+	return ShownFrames(headings), ShownFrames(rows)
+end
+
+local function LayoutRecord(parts)
+	local page = ProfessionsFrame.CraftingPage
+	local form, list, window = page.SchematicForm, page.RecipeList, ProfessionsFrame
+	local record = { pairs = {} }
+	local function Pair(pane, measure, blizzard, ours)
+		record.pairs[#record.pairs + 1] = { pane = pane, measure = measure, blizzard = blizzard, ours = ours }
+		for side, values in pairs({ blizzard = blizzard, ours = ours }) do
+			if values.missing then Append(("LAYOUT missing %s on %s: %s"):format(measure, side, pane)) end
+		end
+	end
+	-- Both sides of one measure, each from its own pane.
+	local function Both(pane, measure, blizzardPane, blizzardRegion, oursPane, oursRegion)
+		Pair(pane, measure, Measure(blizzardRegion, blizzardPane), Measure(oursRegion, oursPane))
+	end
+
+	-- The recipe pane: output icon and its ring, name, requirement, Reagents label, slots, bottom margin, action button.
+	local detail = parts.detail
+	local function Detail(measure, blizzardRegion, oursRegion)
+		Both("detail", measure, form, blizzardRegion, detail, oursRegion)
+	end
+	Detail("pane", form, detail)
+	Detail("icon", form.OutputIcon, detail.Output)
+	Detail("icon art", Path(form, "OutputIcon.Icon"), Path(detail, "Output.Icon"))
+	Detail("icon border", Path(form, "OutputIcon.IconBorder"), Path(detail, "Output.IconBorder"))
+	Detail("name", form.OutputText, detail.Name)
+	Detail("requirement", form.OutputSubText, detail.Sub)
+	Detail("Reagents label", Path(form, "Reagents.Label"), detail.ReagentsLabel)
+	local slots = Read(form, "GetSlotsByReagentType", Enum.CraftingReagentType.Basic) or Read(form, "GetSlots") or {}
+	local buttons = {}
+	for _, slot in ipairs(ShownFrames(slots)) do buttons[#buttons + 1] = slot end
+	local mine = ShownFrames(parts.reagentRows)
+	local last
+	for index = 1, math.max(#buttons, #mine) do
+		local slot, button = buttons[index], mine[index]
+		Detail(("reagent %d icon"):format(index), slot and slot.Button, button)
+		Detail(("reagent %d name"):format(index), slot and slot.Name, button and button.Text)
+		last = index
+	end
+	-- Gaps and the bottom margin come from the same measured edges, so both sides use one rule.
+	local function Edges(regions, pane)
+		local edges = {}
+		for index, region in ipairs(regions) do
+			local box = Measure(region, pane)
+			edges[index] = not box.missing and box or nil
+		end
+		return edges
+	end
+	local function Gaps(blizzardEdges, oursEdges, name)
+		local function Value(edges, index)
+			local first, second = edges[index], edges[index + 1]
+			if first and second then return { height = second.top - (first.top + first.height) } end
+			return { missing = true }
+		end
+		for index = 1, math.max(#blizzardEdges, #oursEdges, 2) - 1 do
+			Pair("detail", name:format(index), Value(blizzardEdges, index), Value(oursEdges, index))
+		end
+	end
+	local blizzardIcons, oursIcons = {}, {}
+	for index = 1, last or 0 do
+		blizzardIcons[index] = buttons[index] and buttons[index].Button
+		oursIcons[index] = mine[index]
+	end
+	local blizzardEdges, oursEdges = Edges(blizzardIcons, form), Edges(oursIcons, detail)
+	Gaps(blizzardEdges, oursEdges, "gap below reagent %d icon")
+	local function Margin(edges, pane)
+		local lowest = edges[last or 0]
+		local paneBox = Measure(pane, pane)
+		if not (lowest and not paneBox.missing) then return { missing = true } end
+		return { height = paneBox.height - (lowest.top + lowest.height) }
+	end
+	Pair("detail", "bottom content margin", Margin(blizzardEdges, form), Margin(oursEdges, detail))
+	local action = parts.mapMore:IsShown() and parts.mapMore or parts.mapButton
+	Both("detail", "action button", form, page.CreateButton, detail, action)
+
+	-- The recipe list: headings, rows, their text insets, the row pitch and the scroll bar.
+	local area = parts.listArea
+	local function List(measure, blizzardRegion, oursRegion)
+		Both("list", measure, list, blizzardRegion, area, oursRegion)
+	end
+	List("pane", list, area)
+	List("scroll area", list.ScrollBox, parts.scroll)
+	List("scroll bar", list.ScrollBar, parts.scroll.ScrollBar)
+	local blizzardHeadings, blizzardRows = BlizzardListFrames(list.ScrollBox)
+	local oursHeadings, oursRows = ShownFrames(parts.headings), ShownFrames(parts.rows)
+	List("heading", blizzardHeadings[1], oursHeadings[1])
+	List("heading text", blizzardHeadings[1] and blizzardHeadings[1].Label, oursHeadings[1] and oursHeadings[1].Label)
+	List("first row", blizzardRows[1], oursRows[1])
+	List("row text", blizzardRows[1] and blizzardRows[1].Label, oursRows[1] and oursRows[1].Label)
+	local function Inset(frame)
+		local box, text = Measure(frame, list), Measure(frame and frame.Label, list)
+		if box.missing or text.missing then return { missing = true } end
+		return { left = text.left - box.left, top = text.top - box.top }
+	end
+	local function InsetOurs(frame)
+		local box, text = Measure(frame, area), Measure(frame and frame.Label, area)
+		if box.missing or text.missing then return { missing = true } end
+		return { left = text.left - box.left, top = text.top - box.top }
+	end
+	Pair("list", "heading text inset", Inset(blizzardHeadings[1]), InsetOurs(oursHeadings[1]))
+	Pair("list", "row text inset", Inset(blizzardRows[1]), InsetOurs(oursRows[1]))
+	local function Pitch(rowList, headingList, pane)
+		local upper, lower = AdjacentRows(rowList, headingList)
+		local first, second = Measure(upper, pane), Measure(lower, pane)
+		if first.missing or second.missing then return { missing = true } end
+		return { height = second.top - first.top }
+	end
+	Pair("list", "row-to-row pitch", Pitch(blizzardRows, blizzardHeadings, list), Pitch(oursRows, oursHeadings, area))
+
+	-- The skill bar in its window, and the portrait; the details' icon is the pane's own portrait, so it pairs with the window's.
+	local rank = page.RankBar
+	local function Rank(measure, blizzardRegion, oursRegion)
+		Both("rank bar", measure, window, blizzardRegion, parts.panel, oursRegion)
+	end
+	Rank("bar", rank, parts.rankBar)
+	Rank("bar art", rank.Background, parts.rankBar.Background)
+	Rank("bar border", rank.Border, parts.rankBar.Border)
+	Rank("bar fill", rank.Fill, parts.rankBar.Fill)
+	Rank("bar text", Path(rank, "Rank.Text"), Path(parts.rankBar, "Rank.Text"))
+	Both("portrait", "portrait", window, Path(window, "PortraitContainer.portrait"), parts.panel, Path(parts.panel, "PortraitContainer.portrait"))
+	Both("portrait", "portrait box", window, Path(window, "PortraitContainer"), parts.panel, Path(parts.panel, "PortraitContainer"))
+	Pair("portrait", "details icon against the window's portrait", Measure(Path(window, "PortraitContainer.portrait"), window),
+		Measure(detail.Output, detail))
+	return record
+end
+
+table.insert(troubleshooting, { "layout", "Record Blizzard's profession window and our panel layout", function()
+	local parts = ns.DevPanelParts()
+	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
+	if not (page and page:IsVisible() and parts.panel and parts.panel:IsShown() and parts.detail:IsShown()) then
+		return ns.Log("Open a profession with a recipe selected in Blizzard's list and ours, then run it again.")
+	end
+	local profession = Professions.GetProfessionInfo()
+	local ok, record = pcall(LayoutRecord, parts)
+	if not ok then
+		return ns.Log("Layout failed: " .. tostring(record))
+	end
+	record.profession, record.professionID, record.time = profession.professionName or "?", profession.professionID, GetServerTime()
+	record.build = select(2, GetBuildInfo())
+	record.windowScale, record.panelScale = ProfessionsFrame:GetEffectiveScale(), parts.panel:GetEffectiveScale()
+	ns.db.devLayout = ns.db.devLayout or {}
+	ns.db.devLayout[date("%Y-%m-%d %H:%M:%S ") .. record.profession] = record
+	local keys = {}
+	for key in pairs(ns.db.devLayout) do keys[#keys + 1] = key end
+	table.sort(keys)
+	for index = 1, #keys - LAYOUT_KEEP do ns.db.devLayout[keys[index]] = nil end
+	Append(("LAYOUT recorded %d measures for %s"):format(#record.pairs, record.profession))
+	ns.Log(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
+end, quiet = true })
 -- Sharing self-test for one account (Sharing.lua).
 table.insert(troubleshooting, { "sharetest", "Test sharing without a second player", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }

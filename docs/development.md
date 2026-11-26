@@ -45,10 +45,16 @@ The Ace3 copies came from a repository checkout, not a tagged release, and that 
 
 Code between `--@debug@` and `--@end-debug@` exists in a checkout and is stripped from released builds by the BigWigs packager, as other addons use the same markers. A checkout build:
 
-- has the development commands `perf`, `scan` and `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character);
+- has the development commands `perf`, `scan`, `layout` and `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character);
 - times its own work all session (unlearned-recipe builds, loot, vendor, trainer and quest reads, tooltips, linking) and writes the table to the saved log at logout or `/reload`, as `PERF` lines in `RecipeVacuumDB.devLog`;
 - turns on the game's Lua error display (`scriptErrors`) at load and leaves it on;
 - uses a scan from the current game build ahead of the seed.
+
+`/recipevacuum layout` measures Blizzard's profession window against our panel so the layout is matched mechanically (owner, 2026-11-26: "I shouldn't have to correct what is a mechanical match"). With a profession open and a recipe selected in both Blizzard's list and ours, it reads (never writes) each element's left, top, width and height from its pane's own top-left, in that pane's scale, plus font object, size, string size, lines, justify and wrap width for text and the atlas for art. Pairs: the recipe pane (icon, ring, name, requirement, Reagents label, reagent icons and names, gaps, bottom margin, action button), the list (heading, row, text insets, row pitch, scroll bar), the skill bar, and the portrait against the details' icon. A missing frame is logged as missing. It saves the record to `RecipeVacuumDB.devLayout` (the newest 5) and says so in one chat line; `/reload` writes it. Then:
+
+    luajit tools/layout-diff.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua>
+
+prints each measure as Blizzard, ours and the difference in pixels, flagging over 1 px (`<<`) and any text fact that differs. It cannot measure art drawn inside a texture (the portrait ring's own edge), a ScrollBox row that is scrolled out of view, or anything that needs a click to appear.
 
 A file must still compile with the marked blocks removed.
 
