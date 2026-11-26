@@ -795,6 +795,7 @@ describe("simulation", function()
 			HIGHLIGHT_FONT_COLOR, DISABLED_FONT_COLOR = color, color
 			CaseAccentInsensitiveParse = function(text) return text:lower() end
 			GetUIPanel = function() return nil end
+			InCombatLockdown = function() return false end
 			hooksecurefunc = function(owner, name, fn)
 				if type(owner) == "string" then return end
 				local original = owner[name]

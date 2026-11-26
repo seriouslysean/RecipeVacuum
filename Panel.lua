@@ -21,9 +21,10 @@ local CORNER_OVERHANG = 13
 local PANEL_GAP = 2 + CORNER_OVERHANG -- space between the tab column and the panel
 -- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
 local TAB_TOP_OFFSET = 60
--- SharedUIPanelTemplates.xml:629 (PortraitFrameTexturedBaseTemplate.Bg): the frame's art starts 21 px down, under its title strip.
-local TITLE_STRIP_HEIGHT = 21
-local COUNT_GAP = 2
+-- Blizzard_ProfessionsCrafting.xml:199 (RankBar, TOPLEFT y=-40): where the window's own content starts below its title strip.
+-- The frame's top edge art (NineSliceLayouts.lua:24, drawn over the frame's own layers) is taller than the 21 px at which the
+-- background starts (SharedUIPanelTemplates.xml:629), so nothing sits higher than this.
+local CONTENT_TOP = 40
 local COUNT_BAND_HEIGHT = 16 -- one line of GameFontDisableSmall and its gap; the list area starts under it
 -- Blizzard_ProfessionsRecipeList.lua: view spacing, indent and pad; the element extents (20 per recipe, 20 + 5 per category).
 local ROW_HEIGHT = 20
@@ -44,7 +45,10 @@ local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
 -- Rows are made in steps of at most this much time and this many rows, so no frame from the panel nears 16 ms.
 local BUILD_BUDGET_MS = 4
 local ROWS_PER_STEP = 40
-local RETRY_SECONDS = 1 -- once: the client may still be loading names and factions after the window opens
+local WAIT_SECONDS = 1 -- at most: the client may still be loading names and factions when the window opens; the list waits instead of redrawing
+-- Frames made ahead of need, out of combat, a few a frame (docs/client-notes.md, "Panel"), so a profession only fills frames that exist.
+local POOL_ROWS = 60
+local POOL_HEADINGS = 8
 
 local panel, listArea, scroll, child, empty, countText
 local placedBottom
@@ -55,7 +59,8 @@ local toggled = {} -- [professionID .. ":" .. band] = open, for the session only
 local professionInfo
 local wanted = false -- a character's own crafting page is open
 local requested = false
-local retried = false
+local waitUntil -- when the wait for the client's data ends, for the open profession
+local waitQueued = false
 local generation = 0 -- a newer build ends the steps of an older one
 local shownSignature, builtProfession
 local nextItem, buildMs, buildSteps, recipeCount, bandCount
@@ -125,6 +130,7 @@ local function CreateRow()
 			ns.ShowOnMap(target)
 		end
 	end)
+	row:Hide() -- hidden until a build places it
 	rows[#rows + 1] = row
 	return row
 end
@@ -151,6 +157,7 @@ local function CreateHeading()
 		ns.Trace("UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
 		Request()
 	end)
+	heading:Hide()
 	headings[#headings + 1] = heading
 	return heading
 end
@@ -198,6 +205,8 @@ local function ShowHeading(heading, item)
 end
 
 local function Finish()
+	empty:SetShown(#items == 0)
+	scroll:SetAlpha(1) -- the whole list at once
 	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
 	--@debug@
 	ns.PerfMs("panel build", buildMs)
@@ -208,19 +217,26 @@ end
 -- frame to reach one out of view, so a screenful of relabelled rows left it stuck at the last one shown.
 -- Frames are kept and reused across professions, and made a few a frame so opening the window never stalls.
 local function BuildStep(buildGeneration)
-	if buildGeneration ~= generation or not panel:IsShown() then return end
+	if buildGeneration ~= generation then return end
+	if not panel:IsShown() then
+		shownSignature = nil -- an unfinished build is made again when the panel shows
+		return
+	end
 	local started = debugprofilestop()
+	-- Only making a frame is limited; filling one that exists is cheap, so a pooled list is one pass.
 	local made = 0
-	while nextItem <= #items and made < ROWS_PER_STEP and (made == 0 or debugprofilestop() - started < BUILD_BUDGET_MS) do
+	while nextItem <= #items and (made == 0 or (made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS)) do
 		local item = items[nextItem]
 		local frame
 		if item.recipe then
+			if not rows[item.rowIndex] then made = made + 1 end
 			frame = rows[item.rowIndex] or CreateRow()
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", ROW_INDENT, -item.top)
 			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
 			frame:SetHeight(ROW_HEIGHT)
 			ShowRow(frame, item.recipe)
 		else
+			if not headings[item.headingIndex] then made = made + 1 end
 			frame = headings[item.headingIndex] or CreateHeading()
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -item.top)
 			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
@@ -230,7 +246,6 @@ local function BuildStep(buildGeneration)
 		frame:Show()
 		slots[nextItem] = frame
 		nextItem = nextItem + 1
-		made = made + 1
 	end
 	buildMs = buildMs + (debugprofilestop() - started)
 	buildSteps = buildSteps + 1
@@ -308,9 +323,19 @@ local function Update()
 	local list, complete = ns.GetListedRecipes(professionInfo)
 	-- Not ready: the client's list update comes back through the events below.
 	if not list then return end
-	if not complete and not retried then
-		retried = true
-		C_Timer.After(RETRY_SECONDS, Request)
+	-- Names or factions still loading: hold the list back for up to WAIT_SECONDS, then show what there is. The
+	-- client's own events end the wait early, so the list is drawn once rather than shown and redrawn.
+	if not complete then
+		waitUntil = waitUntil or (GetTime() + WAIT_SECONDS)
+		local left = waitUntil - GetTime()
+		if left > 0 then
+			if builtProfession ~= professionInfo.professionID then scroll:SetAlpha(0) end
+			if not waitQueued then
+				waitQueued = true
+				C_Timer.After(left, function() waitQueued = false; Request() end)
+			end
+			return
+		end
 	end
 	local found, search = CollectRecipes(list)
 	local newItems, signature, rowCount, headingCount, height = LayOut(found, search)
@@ -328,7 +353,8 @@ local function Update()
 	generation = generation + 1
 	nextItem, buildMs, buildSteps = 1, 0, 0
 	child:SetHeight(math.max(height, 1))
-	empty:SetShown(#items == 0)
+	empty:Hide()
+	scroll:SetAlpha(0) -- shown by Finish, once every frame is placed
 	countText:SetText(L["%d found"]:format(#found))
 	if builtProfession ~= professionInfo.professionID then
 		builtProfession = professionInfo.professionID
@@ -337,6 +363,22 @@ local function Update()
 	for index = rowCount + 1, #rows do rows[index]:Hide() end
 	for index = headingCount + 1, #headings do headings[index]:Hide() end
 	BuildStep(generation)
+end
+
+-- Frames ahead of need, a few a frame and never in combat, so a profession's first show only fills them.
+local function Prewarm()
+	if #rows >= POOL_ROWS and #headings >= POOL_HEADINGS then return end
+	if InCombatLockdown() or nextItem and nextItem <= #items then
+		C_Timer.After(WAIT_SECONDS, Prewarm) -- a build in progress makes frames itself
+		return
+	end
+	local started = debugprofilestop()
+	local made = 0
+	while made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS and (#rows < POOL_ROWS or #headings < POOL_HEADINGS) do
+		if #headings < POOL_HEADINGS then CreateHeading() else CreateRow() end
+		made = made + 1
+	end
+	RunNextFrame(Prewarm)
 end
 
 -- However many times the window rebuilds its page in a frame, the panel asks once, on the next.
@@ -372,17 +414,16 @@ local function CreatePanel()
 	listArea.Background = listArea:CreateTexture(nil, "BACKGROUND")
 	listArea.Background:SetAtlas("Professions-background-summarylist")
 	listArea.Background:SetAllPoints()
-	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -(TITLE_STRIP_HEIGHT + COUNT_BAND_HEIGHT))
+	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -(CONTENT_TOP + COUNT_BAND_HEIGHT))
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
 	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	countText:SetPoint("TOP", panel, "TOP", 0, -(TITLE_STRIP_HEIGHT + COUNT_GAP))
+	countText:SetPoint("TOP", panel, "TOP", 0, -CONTENT_TOP)
 
 	-- A plain scroll frame (a ScrollBox would hold our data in Blizzard's secure code) with Blizzard's minimal
 	-- scroll bar, the one its recipe list uses: the thumb is sized to the share of the list in view.
 	scroll = CreateFrame("ScrollFrame", nil, listArea, "ScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", listArea, "TOPLEFT", LIST_LEFT, 0)
-	scroll:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
 	-- Placed as the recipe list places its bar, right of the list (Blizzard_ProfessionsRecipeList.xml), and hidden
 	-- while the whole list fits.
 	scroll.ScrollBar:ClearAllPoints()
@@ -392,6 +433,15 @@ local function CreatePanel()
 	child = CreateFrame("Frame", nil, scroll)
 	child:SetSize(LIST_WIDTH, 1)
 	scroll:SetScrollChild(child)
+	-- The scroll bar's column is only reserved while the bar shows; hidden, the rows use the full width. The bar sets
+	-- its own shown state, so the frame follows it (rows are anchored to the child, which follows the frame).
+	local function PlaceScroll()
+		scroll:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", scroll.ScrollBar:IsShown() and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
+	end
+	scroll.ScrollBar:HookScript("OnShow", PlaceScroll)
+	scroll.ScrollBar:HookScript("OnHide", PlaceScroll)
+	scroll:HookScript("OnSizeChanged", function(_, width) child:SetWidth(width) end)
+	PlaceScroll()
 
 	empty = listArea:CreateFontString(nil, "ARTWORK", "GameFontDisable")
 	empty:SetPoint("TOP", scroll, "TOP", 0, -ROW_HEIGHT)
@@ -417,9 +467,12 @@ end
 -- Read-only post-hook: the window's own crafting page tells which profession is open. It runs once per
 -- rebuild of the page, and several times when the window opens, so it only asks for one rebuild of ours.
 local function OnInit(_, info)
-	panel = panel or CreatePanel()
+	if not panel then
+		panel = CreatePanel()
+		Prewarm()
+	end
 	if not (professionInfo and professionInfo.professionID == info.professionID) then
-		retried = false
+		waitUntil = nil
 	end
 	professionInfo = info
 	-- Only this character's own professions have recipes to learn.
