@@ -292,12 +292,18 @@ local function ReadBank()
 		end
 	end
 	if #containers == 0 and Enum.BagIndex and Enum.BagIndex.Characterbanktab then containers[1] = Enum.BagIndex.Characterbanktab end
+	local items, recipes = 0, 0
 	for _, bag in ipairs(containers) do
 		for slot = 1, C_Container.GetContainerNumSlots(bag) do
 			local itemID = C_Container.GetContainerItemID(bag, slot)
-			if itemID then NoteSeenItem(itemID) end
+			if itemID then
+				items = items + 1
+				if ns.IsRecipeItem(itemID) then recipes = recipes + 1 end
+				NoteSeenItem(itemID)
+			end
 		end
 	end
+	ns.Trace("SEEN bank read: %d containers, %d items, %d recipe items", #containers, items, recipes)
 end
 
 -- Auction house search results: every item a search lists is seen, as the window shows it
