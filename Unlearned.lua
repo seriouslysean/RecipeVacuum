@@ -287,6 +287,7 @@ local function AddUnlearnedRecipes(page)
 		end
 	end
 	added[dataProvider] = true
+	ns.Trace("UI recipe list rebuilt with %d unlearned categories (scroll kept: %s)", #matches, tostring(keepScroll))
 
 	scrollBox:SetDataProvider(dataProvider, ScrollBoxConstants.RetainScrollPosition)
 	if keepScroll then

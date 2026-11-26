@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 40
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 41
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -211,6 +211,26 @@ function lib:EnableWorkingBuild()
 			end
 		end)
 	end
+	-- Gamepad navigation, one line per d-pad release: where the cursor landed, and whether its state is
+	-- tainted and by which addon (issecurevariable), since tainted state makes it drop the move
+	-- (SmartNavigation.lua, HandleNavigationInput calls EnsureIsSecure first).
+	EventUtil.ContinueOnAddOnLoaded("Blizzard_GamepadSmartNavigation", function()
+		local directions = {}
+		for name, direction in pairs(SMART_NAV_INPUT_DIRECTION) do directions[direction] = name end
+		local function Taint(t, key)
+			local secure, addon = issecurevariable(t, key)
+			return secure and "clean" or ("tainted by " .. tostring(addon))
+		end
+		hooksecurefunc(SmartNavigation, "HandleNavigationInput", function(nav, isDown, direction)
+			if isDown then return end
+			local button = nav.currentButton
+			local data = button and button.GetElementData and button:GetElementData()
+			local recipe = type(data) == "table" and data.recipeInfo and data.recipeInfo.recipeID
+			lib:LogAll(("pad %s -> %s%s | cursor %s"):format(directions[direction] or "?",
+				button and button.GetDebugName and button:GetDebugName() or "nothing",
+				recipe and (" recipe " .. recipe) or "", Taint(nav, "currentButton")))
+		end)
+	end)
 	-- Lua errors, as Blizzard's error window receives them (Blizzard_ScriptErrorsFrame.lua, DisplayMessageInternal);
 	-- the client's own error handler list takes secure code only (AddLuaErrorHandler asserts issecure()).
 	EventUtil.ContinueOnAddOnLoaded("Blizzard_ScriptErrorsFrame", function()
