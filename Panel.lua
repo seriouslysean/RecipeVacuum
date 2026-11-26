@@ -473,10 +473,15 @@ local function PlaceList()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -top)
 	detail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, boxBottom)
 	detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, boxBottom)
+	-- The list's background runs down to the box, so the gap the ring hangs into reads as list, not as a strip of bare page.
+	listArea.Background:ClearAllPoints()
+	listArea.Background:SetPoint("TOPLEFT")
 	if detailHeight > 0 then
 		listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
+		listArea.Background:SetPoint("BOTTOMRIGHT", 0, -DETAIL_GAP)
 	else
 		listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
+		listArea.Background:SetPoint("BOTTOMRIGHT")
 	end
 end
 
