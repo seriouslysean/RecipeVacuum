@@ -162,7 +162,7 @@ local function SetNav(frame, direction, target)
 	navSet[frame][direction] = true
 end
 
--- Only the rows of the open list lead to the details, and every control in the details leads back to the selected row (the
+-- The list walks in order; its rows lead right to the details, and every control there leads back to the selected row (the
 -- first one when none is). Run whenever the selection, the rows or the details change.
 local function SyncNav()
 	if not NavAvailable() then return end
@@ -172,7 +172,21 @@ local function SyncNav()
 	end
 	navPending = false
 	ClearNav()
-	if not (panel and panel:IsShown() and detail:IsShown()) then return end
+	if not (panel and panel:IsShown()) then return end
+	-- Up and down walk the list in its own order: left to itself, the d-pad goes to the nearest button on screen, and a row
+	-- scrolled out of view is farther than the details below, so down would leave the list.
+	local previous
+	for index = 1, math.min((nextItem or 1) - 1, #items) do
+		local frame = slots[index]
+		if frame and frame:IsShown() then
+			if previous then
+				SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, frame)
+				SetNav(frame, SMART_NAV_INPUT_DIRECTION.UP, previous)
+			end
+			previous = frame
+		end
+	end
+	if not detail:IsShown() then return end
 	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
 	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
 	local first, chosen, rowCount = nil, nil, 0
@@ -200,7 +214,7 @@ local function SyncNav()
 	end
 	-- The open list is reached down from its button and walked with up and down; left from an entry goes back (above).
 	if placeMenu and placeMenu:IsShown() then
-		local previous = mapMore
+		previous = mapMore
 		for _, button in ipairs(sourceButtons) do
 			if button:IsShown() then
 				SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, button)
