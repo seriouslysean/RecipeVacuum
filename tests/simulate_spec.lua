@@ -777,7 +777,8 @@ describe("simulation", function()
 				if key == "SetText" then return function(o, v) o.text = v end end
 				if key == "GetText" then return function(o) return rawget(o, "text") or "" end end
 				if key == "SetScript" or key == "HookScript" then return function(o, name, fn) local scripts = rawget(o, "scripts") or {}; o.scripts = scripts; scripts[name] = fn end end
-				if key == "CreateFontString" or key == "CreateTexture" then return function(o) return Fake(o) end end
+				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" then return function(o) return Fake(o) end end
+				if key == "GetStringHeight" then return function() return 0 end end
 				return function() end
 			end
 			function Fake(parent) return setmetatable({ parent = parent }, meta) end
@@ -786,9 +787,8 @@ describe("simulation", function()
 				ProfessionsRecipeListRecipeTemplate = { "Label", "Count", "SkillUps", "LockedIcon" },
 				ProfessionsRecipeListCategoryTemplate = { "RankBar", "ButtonText" },
 				ScrollFrameTemplate = { "ScrollBar" },
-				-- Blizzard_SharedXML SharedUIPanelTemplates.xml: the portrait frame's close button, the inset frame's marble.
-				PortraitFrameTemplate = { "CloseButton" },
-				InsetFrameTemplate = { "Bg" },
+				-- Blizzard_SharedXML SharedUIPanelTemplates.xml: the portrait frame's close button, background and top streaks.
+				PortraitFrameTemplate = { "CloseButton", "Bg", "TopTileStreaks" },
 				ProfessionsRankBarTemplate = { "Background", "Border", "Fill", "ExpansionDropdownButton", "Rank" },
 			}
 			CreateFrame = function(kind, _, parent, template)
@@ -802,6 +802,7 @@ describe("simulation", function()
 			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end }
 			RunNextFrame = function(fn) queue[#queue + 1] = fn end
 			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
+			Enum.UITextureSliceMode = { Stretched = 0, Tiled = 1 } -- UITextureConstantsDocumentation.lua
 			local color = { GetRGB = function() return 1, 1, 1 end }
 			color.WrapTextInColorCode = function(_, text) return text end
 			HIGHLIGHT_FONT_COLOR, DISABLED_FONT_COLOR = color, color
