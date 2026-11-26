@@ -21,7 +21,7 @@ read_globals = {
 	"GetNumQuestChoices", "GetNumQuestRewards", "GetNumTrainerServices", "GetPlayerInfoByGUID", "GetQuestID",
 	"GetQuestItemInfo", "GetRealmID", "GetServerTime", "GetTime", "GetTrainerServiceCost",
 	"GetTrainerServiceInfo", "GetTrainerServiceSkillReq", "GetTrainerServiceStepIndex",
-	"GetTrainerServiceTypeFilter", "GRAY_FONT_COLOR", 	"HIGHLIGHT_FONT_COLOR", "hooksecurefunc", "IsFishingLoot", "IsInGroup", "IsInGuild",
+	"GetTrainerServiceTypeFilter", "GRAY_FONT_COLOR", "GREEN_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "hooksecurefunc", "IsFishingLoot", "IsInGroup", "IsInGuild",
 	"IsInInstance", "IsInRaid", "issecretvalue", "IsTradeskillTrainer", "Item", "LE_PARTY_CATEGORY_HOME",
 	"LE_PARTY_CATEGORY_INSTANCE", "LibStub", "MISCELLANEOUS", "NORMAL_FONT_COLOR",
 	"OPEN", "Professions", "ProfessionsFrame",

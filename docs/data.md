@@ -14,7 +14,7 @@ Where each kind of data lives, and what the saved file holds. Each kind has one 
 | Facts | `RecipeVacuumDB.recipeFacts`, saved | Recipe and item tooltips; a cache | Rebuilt on a new game build |
 | Scan | `RecipeVacuumDB.devScan`, working build only | `/recipevacuum scan` | Each scan; a layer over the seed for the session |
 
-Seed data is what the game says about itself: which item teaches which recipe. Found and Shared are what players saw: where things come from. The export holds Found only.
+Seed data is what the game says about itself: which item teaches which recipe, and the skill its item asks for. Found and Shared are what players saw: where things come from. The export holds Found only.
 
 ## Observations
 
@@ -94,7 +94,24 @@ A recipe with no known source counts as come across once it has been seen within
 
 ## Show rule
 
-The panel lists an unlearned recipe when it has a known source within the chosen level, or was come across within it (`ns.IsListed`). A recipe with neither is left out; that drops the later-expansion recipes the client holds (518 for Blacksmithing in the owner's log) with no list of them kept. Other faction's recipes are left out before this (`Unlearned.lua`).
+The panel is self-found (owner, 2026-11-26): a recipe appears only once it has been discovered, and the panel keeps no list of everything. A recipe is a candidate when it is unlearned, in the open profession window's skill line (`C_TradeSkillUI.IsRecipeInSkillLine` with `professionInfo.professionID`, so another expansion's recipes never are) and not the other faction's (`Unlearned.lua`). A candidate is found when it has a known source within the chosen level, or was come across within it (`ns.IsListed`). A recipe with neither is left out; that drops the later-expansion recipes the client holds (518 for Blacksmithing in the owner's log) with no list of them kept.
+
+One step button narrows the found recipes (`ns.steps`, `Unlearned.lua`), saved as `panelStep` (default `rank`; a key that names no step falls back to the default, so no migration):
+
+| Step | Shows found recipes whose required skill is |
+|---|---|
+| Now | at most the character's skill (`professionInfo.skillLevel`) |
+| This Rank (default) | at most the profession's current cap (`professionInfo.maxSkillLevel`, 75 as an Apprentice) |
+| All Found | any, and the only step with a recipe whose required skill is unknown |
+
+## Required skill
+
+The skill a recipe is learned at, `recipeInfo.requiredSkill` (`ns.SummarizeSources`), is the lowest of:
+
+- `ns.seed.learnSkill[recipeID]`: the lowest `RequiredSkillRank` of the recipe items that teach it. `tools/seed.lua` reads it from Blizzard's `ItemSparse` table (wago.tools DB2 CSV for the seed's build) for each item in `taught`. A rank of 0 is no requirement given and is left out. Build 71091: 1,814 of 2,114 taught recipes have one.
+- A recorded trainer's `skill` (`GetTrainerServiceSkillReq`) in the visible layers; a value of 0 or none is ignored.
+
+A recipe with neither has no required skill: it shows only under All Found, and is ordered by its trivial level. The list is in skill-up order by required skill where known, else `maxTrivialLevel`. Where the items of one recipe ask for different ranks, the lowest wins.
 
 Seeing an item a recipe makes is not coming across the recipe: it says nothing about the recipe or where to learn it, and the player's own loot would count. Crafted items are ignored.
 
@@ -152,3 +169,5 @@ The mark shows when the open profession's cap has a source with a place; the oth
 | 9 | Sending becomes its own option (`shareFinds`), off for anyone at Self Found |
 | 10 | Trainer rank records are dropped, to be recorded again with the skill-step check |
 | 11 | The options of the rows once added to Blizzard's recipe list (`showUnlearned`, `showUnavailable`, `sourceFilter`) and the first-run tip flag (`levelTipSeen`) are removed |
+
+The panel step (`panelStep`) was added with a default and no schema change.

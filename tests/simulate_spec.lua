@@ -736,11 +736,11 @@ describe("simulation", function()
 
 	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
 	describe("panel", function()
-		local pns, queue, buttons, traces, init, Fake
+		local pns, queue, buttons, traces, init, Fake, inLine
 		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
 		local function Names()
 			local names = {}
-			for _, button in ipairs(buttons) do if button:IsShown() then names[#names + 1] = button.Name.text end end
+			for _, button in ipairs(buttons) do if button:IsShown() and rawget(button, "recipe") then names[#names + 1] = button.Name.text end end
 			table.sort(names)
 			return names
 		end
@@ -785,11 +785,13 @@ describe("simulation", function()
 			ProfessionsFrame.CraftingPage.RecipeList = { SearchBox = Fake() }
 			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end }
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
-			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen" }
+			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
+			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion" }
+			inLine = { [106] = 999 } -- every other recipe is in the open skill line
 			C_TradeSkillUI = { IsTradeSkillReady = function() return true end,
-			  GetAllRecipeIDs = function() return { 101, 102, 103, 104 } end,
+			  GetAllRecipeIDs = function() return { 101, 102, 103, 104, 105, 106 } end,
 			  GetRecipeInfo = function(id) return { recipeID = id, name = recipes[id], categoryID = 1, learned = false, maxTrivialLevel = id, icon = 1 } end,
-			  IsRecipeInSkillLine = function() return true end,
+			  IsRecipeInSkillLine = function(id, line) return (inLine[id] or line) == line end,
 			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
 			  GetOnlyShowMakeableRecipes = function() return false end, GetShowUnlearned = function() return true end,
 			  GetOnlyShowSkillUpRecipes = function() return false end, GetOnlyShowFirstCraftRecipes = function() return false end,
@@ -797,13 +799,14 @@ describe("simulation", function()
 			load("Unlearned.lua", pns)
 			pns.GetRecipeFaction = function() return false end -- read from tooltip data
 			pns.GetRecipeLock = function() return false end
-			pns.db.found.recipes[101] = { { kind = "trainer", count = 1 } }
+			pns.db.found.recipes[101] = { { kind = "trainer", count = 1, skill = 30 } }
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
+			pns.db.panelStep = "all"
 			pns.Trace = function(text, ...) traces[#traces + 1] = text:format(...) end
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
-			init = function() ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164 }) end
+			init = function() ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = 40, maxSkillLevel = 75 }) end
 		end)
 		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the owner's window froze for 6 s.
 		it("several Init calls in one frame build the list once", function()
@@ -817,6 +820,38 @@ describe("simulation", function()
 		it("lists only recipes with a known source or come across within the level", function()
 			local names = Names()
 			assert(#names == 2 and names[1] == "Plans: Near" and names[2] == "Plans: Sourced", "lists only recipes with a known source or come across within the level")
+		end)
+		-- Fails if a step shows a recipe above its skill, hides one within it, takes the higher of two sources, or lists an unknown skill outside All Found.
+		it("each step shows exactly the found recipes whose required skill fits it", function()
+			pns.db.met.recipes[105] = pns.LEVEL.FRIENDS
+			pns.db.met.recipes[103] = pns.LEVEL.FRIENDS
+			-- 101: trainer 30 and the seed 90, so the lowest is 30; 102 at the cap; 103 above it; 105 has none.
+			pns.seed = { taught = {}, learnSkill = { [101] = 90, [102] = 75, [103] = 76 } }
+			local steps = {
+				{ "now", { "Plans: Sourced" } },
+				{ "rank", { "Plans: Near", "Plans: Sourced" } },
+				{ "all", { "Plans: Far", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
+			}
+			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
+			for _, row in ipairs(steps) do
+				pns.db.panelStep = row[1]
+				pns.ClearUnlearnedCache()
+				init()
+				Flush()
+				assert(table.concat(Names(), ",") == table.concat(row[2], ","), "step " .. row[1] .. " shows " .. table.concat(Names(), ","))
+			end
+		end)
+		-- Fails if a recipe of another expansion's skill line shows, however found: 518 Blacksmithing rows came from the client's whole list.
+		it("a recipe outside the open skill line never shows", function()
+			pns.db.found.recipes[106] = { { kind = "trainer", count = 1, skill = 10 } }
+			pns.seed.learnSkill[106] = 10
+			for _, key in ipairs({ "now", "rank", "all" }) do
+				pns.db.panelStep = key
+				pns.ClearUnlearnedCache()
+				init()
+				Flush()
+				for _, name in ipairs(Names()) do assert(name ~= "Plans: Later Expansion", "step " .. key .. " shows a recipe of another skill line") end
+			end
 			CreateFrame = realCreateFrame
 		end)
 	end)

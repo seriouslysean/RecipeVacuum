@@ -24,6 +24,7 @@ end
 -- Option defaults live in Settings.lua.
 local defaults = {
 	sourceLevel = ns.LEVEL.FRIENDS,
+	panelStep = "rank", -- the unlearned recipes panel's step (Unlearned.lua, ns.steps)
 	shareFinds = true, -- send own finds to party, guild and friends; separate from what the level shows
 	met = { recipes = {}, items = {} }, -- come across without a source: [recipeID or recipe itemID] = ns.LEVEL
 	npcs = {},

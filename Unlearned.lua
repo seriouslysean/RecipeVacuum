@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- Works out which recipes a character has not learned, grouped by category, for Recipe Vacuum's own panel. It writes nothing into Blizzard's frames (docs/client-notes.md, "Gamepad").
 
@@ -34,9 +35,15 @@ local function SortCategories(a, b)
 	return SortByName(a.info, b.info)
 end
 
+-- The skill a recipe is ordered and shown by: the skill to learn it where known, else the trivial level, the nearest threshold the client gives.
+function ns.SkillOf(recipeInfo)
+	return recipeInfo.requiredSkill or recipeInfo.maxTrivialLevel
+end
+
 local function SortRecipes(left, right)
-	if left.maxTrivialLevel ~= right.maxTrivialLevel then
-		return left.maxTrivialLevel < right.maxTrivialLevel
+	local leftSkill, rightSkill = ns.SkillOf(left), ns.SkillOf(right)
+	if leftSkill ~= rightSkill then
+		return leftSkill < rightSkill
 	end
 	local nameOrder = strcmputf8i(left.name, right.name)
 	if nameOrder ~= 0 then
@@ -45,7 +52,7 @@ local function SortRecipes(left, right)
 	return left.recipeID < right.recipeID
 end
 
--- This profession's unlearned recipes as categories in Blizzard's order, each { info, recipes } with recipes sorted by ascending trivial skill; nil while the client loads.
+-- This profession's unlearned recipes as categories in Blizzard's order, each { info, recipes } with recipes sorted by ascending skill (ns.SkillOf); nil while the client loads.
 function ns.GetUnlearnedRecipes(professionInfo)
 	local professionID = professionInfo.professionID
 	if not C_TradeSkillUI.IsTradeSkillReady() then
@@ -66,6 +73,7 @@ function ns.GetUnlearnedRecipes(professionInfo)
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if not recipeInfo then
 			indexComplete = false
+		-- professionID is the window's open skill line, so another expansion's recipes of the same profession are not candidates (docs/data.md, "Show rule").
 		elseif C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID) then
 			-- A learned recipe is read only to find a picked specialization, and only until one is found;
 			-- unlearned ones are read when listed.
@@ -132,7 +140,7 @@ function ns.GetUnlearnedRecipes(professionInfo)
 	return categories
 end
 
--- What the panel lists for a profession: the unlearned recipes that pass the show rule (ns.IsListed), in one flat
+-- What the panel lists for a profession: the unlearned recipes of the open skill line that pass the show rule (ns.IsListed), in one flat
 -- list in skill-up order. The second result is true once the client's data was complete, so the list will not change.
 -- Built once per cached categories table, which is replaced whenever the sources or the character's recipes change.
 local listed = {}
@@ -158,4 +166,28 @@ function ns.GetListedRecipes(professionInfo)
 		listed[professionID] = entry
 	end
 	return entry.list, cache[professionID] ~= nil
+end
+
+-- The panel's steps, in the order its button cycles (docs/data.md, "Show rule"). `cap` names the professionInfo field a
+-- recipe's required skill must not pass; a recipe with no known requirement fits only the step that has no cap.
+ns.steps = {
+	{ key = "now", name = L["Now"], tip = L["Recipes your skill can learn right now."], cap = "skillLevel" },
+	{ key = "rank", name = L["This Rank"], tip = L["Recipes you can learn up to this rank's skill cap."], cap = "maxSkillLevel" },
+	{ key = "all", name = L["All Found"], tip = L["Every recipe you have found."] },
+}
+local DEFAULT_STEP = 2
+
+-- The saved step and its place in ns.steps; the default when the saved key names none.
+function ns.CurrentStep()
+	for index, step in ipairs(ns.steps) do
+		if step.key == ns.db.panelStep then return step, index end
+	end
+	return ns.steps[DEFAULT_STEP], DEFAULT_STEP
+end
+
+-- Whether a found recipe belongs to a step, for the open profession's skill.
+function ns.FitsStep(recipeInfo, step, professionInfo)
+	if not step.cap then return true end
+	local required = recipeInfo.requiredSkill
+	return required ~= nil and required <= (professionInfo[step.cap] or 0)
 end

@@ -229,11 +229,25 @@ function ns.MetLevel(recipeID)
 	return level
 end
 
--- Caches sourceTypes (nil when no source is known) and met on the recipe, so redraws and filtering read fields.
+-- The skill needed to learn a recipe: the lowest of the seed's (from its recipe items) and any recorded trainer's; nil when
+-- neither says (docs/data.md, "Required skill"). Zero is no requirement given, not a free recipe.
+local function RequiredSkill(recipeID, entries)
+	local skill = ns.seed and ns.seed.learnSkill and ns.seed.learnSkill[recipeID]
+	for _, entry in ipairs(entries or {}) do
+		local trainerSkill = entry.kind == "trainer" and tonumber(entry.skill)
+		if trainerSkill and trainerSkill > 0 and (not skill or trainerSkill < skill) then
+			skill = trainerSkill
+		end
+	end
+	return skill
+end
+
+-- Caches sourceTypes (nil when no source is known), met and requiredSkill on the recipe, so redraws and filtering read fields.
 function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = nil
 	recipeInfo.met = ns.MetLevel(recipeInfo.recipeID)
 	local entries = ns.GetSources(recipeInfo)
+	recipeInfo.requiredSkill = RequiredSkill(recipeInfo.recipeID, entries)
 	if not entries then
 		return
 	end
