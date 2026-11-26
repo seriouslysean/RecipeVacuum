@@ -215,8 +215,11 @@ end
 function ns.UpdateRankMark()
 	local page = ProfessionsFrame.CraftingPage
 	if not mark then
-		-- On the crafting page, not our panel: the panel hides when it has nothing to list, and the mark sits on the window beside Blizzard's bar.
-		mark = CreateFrame("Button", nil, page)
+		-- Ours, never a child of Blizzard's page (Gamepad UI rule); it follows the page's showing and hiding instead, since our panel
+		-- hides when it has nothing to list and the mark belongs beside Blizzard's bar either way.
+		mark = CreateFrame("Button", nil, UIParent)
+		page:HookScript("OnHide", function() mark:Hide() end)
+		page:HookScript("OnShow", ns.UpdateRankMark)
 		mark:SetSize(MARK_SIZE, MARK_SIZE)
 		mark:SetFrameStrata("HIGH") -- drawn over the window it is positioned on, though it is ours
 		local icon = mark:CreateTexture(nil, "ARTWORK")
@@ -236,7 +239,7 @@ function ns.UpdateRankMark()
 		mark:SetPoint("LEFT", page.RankBar, "RIGHT", LINK_X, LINK_Y)
 	end
 	mark.rank = Professions.InLocalCraftingMode() and NextRank() or nil
-	mark:SetShown(mark.rank ~= nil)
+	mark:SetShown(mark.rank ~= nil and page:IsVisible())
 end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
