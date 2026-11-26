@@ -1,25 +1,25 @@
 -- Prints Blizzard's profession window against our panel from a `layout` record (docs/development.md, "Working build").
--- Every number is in pixels from its pane's own top-left; differences over 1 px are flagged. Records are kept one per
--- "Profession / Recipe"; with no name the newest is shown, and --list names them all.
---   luajit tools/layout-diff.lua <SavedVariables/RecipeVacuum.lua> [--list | "Engineering / Reagent Bot"]
+-- Every number is in pixels from its pane's own top-left; differences over 1 px are flagged. Every record is kept as
+-- "Profession / Recipe @ time"; a view name ("Engineering / Reagent Bot") picks its newest record, no name the newest of all,
+-- --list names them all.
+--   luajit tools/layout-diff.lua <SavedVariables/RecipeVacuum.lua> [--list | "Engineering / Reagent Bot" | full record name]
 local path, wanted = arg[1], arg[2]
 assert(path, "usage: luajit tools/layout-diff.lua <SavedVariables/RecipeVacuum.lua> [--list | name]")
 local TOLERANCE = 1
 dofile(path)
 local layouts = assert(RecipeVacuumDB and RecipeVacuumDB.devLayout, "no devLayout in this file; open a profession in a working build, then /reload")
-local names, newest = {}, nil
-for key, record in pairs(layouts) do
-	names[#names + 1] = key
-	local when = record.when or key
-	if not newest or when > (layouts[newest].when or newest) then newest = key end
-end
-table.sort(names)
+local names = {}
+for key in pairs(layouts) do names[#names + 1] = key end
+table.sort(names, function(a, b) return (layouts[a].when or a) < (layouts[b].when or b) end)
 if wanted == "--list" then
-	for _, key in ipairs(names) do print(("%s  %s  %s"):format(layouts[key].when or "?", tostring(layouts[key].version), key)) end
+	for _, key in ipairs(names) do print(("%s  %s"):format(tostring(layouts[key].version), key)) end
 	return
 end
-local name = wanted or newest
-local record = assert(name and layouts[name], "no record named " .. tostring(name) .. "; --list shows them")
+local name
+for _, key in ipairs(names) do
+	if not wanted or key == wanted or key:sub(1, #wanted + 3) == wanted .. " @ " then name = key end
+end
+local record = assert(name and layouts[name], "no record named " .. tostring(wanted) .. "; --list shows them")
 print(("%s | %s | %s | build %s | scales: window %.3f, panel %.3f"):format(name, tostring(record.when), tostring(record.version),
 	tostring(record.build), record.windowScale or 0, record.panelScale or 0))
 

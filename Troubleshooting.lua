@@ -893,11 +893,11 @@ local function RecordLayout()
 	record.version = C_AddOns.GetAddOnMetadata(addonName, "Version")
 	record.windowScale, record.panelScale = ProfessionsFrame:GetEffectiveScale(), parts.panel:GetEffectiveScale()
 	ns.db.devLayout = ns.db.devLayout or {}
-	-- One record per profession and recipe, by name, the newest replacing an older one of the same view, so every view opened
-	-- stays to be read (owner, 2026-11-26).
+	-- Every record is kept, by view and time, so each view and each build of it stays to be read: debugging data, nothing is
+	-- dropped (owner, 2026-11-26).
 	record.recipe = parts.detail.Name and parts.detail.Name:GetText() or "?"
 	record.when = date("%Y-%m-%d %H:%M:%S")
-	ns.db.devLayout[record.profession .. " / " .. record.recipe] = record
+	ns.db.devLayout[record.profession .. " / " .. record.recipe .. " @ " .. record.when] = record
 	Append(("LAYOUT recorded %d measures for %s"):format(#record.pairs, record.profession))
 	return record
 end
