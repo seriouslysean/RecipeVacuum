@@ -234,6 +234,8 @@ local function SyncNav()
 	for _, control in ipairs(controls) do
 		if control:IsShown() then
 			SetNav(control, SMART_NAV_INPUT_DIRECTION.LEFT, back)
+			-- Nothing lies right of the details; left to itself, the d-pad would reach up and right into the list.
+			SetNav(control, SMART_NAV_INPUT_DIRECTION.RIGHT, control)
 			count = count + 1
 		end
 	end
