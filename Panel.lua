@@ -77,11 +77,15 @@ local OUTPUT_RING = 68 -- its icon border, centered on the button (Blizzard_Item
 local OUTPUT_RING_MARGIN = (OUTPUT_RING - OUTPUT_SIZE) / 2 -- the ring reaches this far past the button
 local RING_LEFT = OUTPUT_RING * PORTRAIT_LEFT / PORTRAIT_SIZE
 local RING_RISE = OUTPUT_RING * PORTRAIT_RISE / PORTRAIT_SIZE
-local OUTPUT_LEFT = OUTPUT_RING_MARGIN - RING_LEFT -- the button's offset in the box: the ring hangs out, the button sits in
-local OUTPUT_TOP = OUTPUT_RING_MARGIN - RING_RISE
+-- The ring's art is transparent at its edges, so the drawn ring sits inside its 68 px; these pull it out by that much more, measured
+-- against the window's own portrait on the Deck at the default scale (docs/client-notes.md, "Panel").
+local RING_ART_LEFT, RING_ART_RISE = 8, 9
+local OUTPUT_LEFT = OUTPUT_RING_MARGIN - RING_LEFT - RING_ART_LEFT -- the button's offset in the box: the ring hangs out, the button sits in
+local OUTPUT_TOP = OUTPUT_RING_MARGIN - RING_RISE - RING_ART_RISE
 local OUTPUT_LEVEL = 400 -- the portrait container's frame level (SharedUIPanelTemplates.xml:574), so the ring draws over the box's border as the portrait does
 local OUTPUT_TEXT_GAP = 14 -- the name's gap right of the output icon (:193)
-local OUTPUT_TEXT_RISE = 17 -- and its rise above the icon's middle (:193)
+-- The name's rise above the icon's middle: Blizzard's 17 (:193) less the ring's pull upward, and 5 more so the name clears the box's top edge.
+local OUTPUT_TEXT_RISE = 17 - RING_ART_RISE - 5
 local OUTPUT_SUB_GAP = 5 -- the required skill under the name (:214)
 local REAGENTS_GAP = 4 -- the label's gap under the icon's ring
 local REAGENTS_LABEL_HEIGHT = 14 -- GameFontNormalSmall's line, and the gap after it:
