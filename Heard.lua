@@ -38,11 +38,15 @@ end
 local linkLevels = {} -- [character name] = nearest level seen
 
 -- A line without a link costs one plain search.
-local function OnChat(event, message)
+local function OnChat(event, message, sender)
 	if issecretvalue(message) or not message:find("|H", 1, true) then
 		return
 	end
 	local level = CHAT_LEVELS[event]
+	-- A whisper is as near as its sender: a stranger's counts as public chat.
+	if event == "CHAT_MSG_WHISPER" and not (sender and not issecretvalue(sender) and ns.IsTrusted(sender)) then
+		level = LEVEL.PUBLIC
+	end
 	for id in message:gmatch("|Hitem:(%d+)") do
 		local linkedID = tonumber(id)
 		local itemID = ns.IsRecipeItem(linkedID)
@@ -117,12 +121,12 @@ end
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
-frame:SetScript("OnEvent", function(_, event, message)
+frame:SetScript("OnEvent", function(_, event, message, sender)
 	if not ns.db then
 		return
 	end
 	if CHAT_LEVELS[event] then
-		OnChat(event, message)
+		OnChat(event, message, sender)
 		return
 	end
 	if event ~= "TRADE_SKILL_LIST_UPDATE" then

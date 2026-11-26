@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 37
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 38
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -18,7 +18,7 @@ do
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
-		"Links", "Copy link", "Website",
+		"Links", "Copy link", "Website", "CurseForge",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
 		"Tracks only %s you see for yourself.", "Also tracks what your party, guild and friends find.",
 		"Also tracks %s.",
@@ -52,12 +52,14 @@ end
 -- Links from standard TOC fields (X-Website as other addons, X-Curse-Project-ID
 -- as Can I Mog It and another addon). LaunchURL and CopyToClipboard are restricted, so a button opens the
 -- copy window with the address selected, as another addon Discord link does.
+local CURSEFORGE_PROJECT_URL = "https://www.curseforge.com/projects/"
+
 local function ModuleLinks(addonName)
 	local links = {}
 	local website = C_AddOns.GetAddOnMetadata(addonName, "X-Website")
 	if website then table.insert(links, { L["Website"], website }) end
 	local curse = C_AddOns.GetAddOnMetadata(addonName, "X-Curse-Project-ID")
-	if curse then table.insert(links, { "CurseForge", "https://www.curseforge.com/projects/" .. curse }) end
+	if curse then table.insert(links, { L["CurseForge"], CURSEFORGE_PROJECT_URL .. curse }) end
 	return links
 end
 
@@ -115,7 +117,7 @@ function lib:PrintBlock(header, rows)
 	end
 end
 
--- Returns the module's settings category and layout; call lib:FinishModule(module) after its rows.
+-- One registration per addon, so a second copy loading the same module cannot add a second page.
 -- class is a RAID_CLASS_COLORS key ("DRUID") for the device's name; without one the line color is used.
 function lib:RegisterModule(addonName, class)
 	for _, existing in ipairs(self.modules) do
@@ -142,7 +144,7 @@ end
 local ROW_TEMPLATE = "BackdropTemplate"
 local NOTE_LEFT = 37 -- where Blizzard's row labels start (SettingsAddOnDisabledLabelTemplate)
 
--- Shows one kind of custom row on a pooled frame and hides the other.
+-- Blizzard's list reuses row frames, so a reused frame must hide whatever the last row showed.
 local function UseRow(frame, kind)
 	if frame.Note then frame.Note:SetShown(kind == "note") end
 	for _, card in ipairs(frame.cards or {}) do card:SetShown(kind == "cards") end
@@ -215,6 +217,7 @@ end
 -- The log lives in the module's own saved table, since the library has none (docs/standards.md, "Working
 -- build helpers"). Trimming LOG_TRIM at once means a full log is not shifted on every new line.
 local LOG_LINES, LOG_TRIM = 20000, 1000
+local LOG_REFRESH_SECONDS = 0.25 -- an open log window rebuilds at most this often
 lib.LOG_LINES, lib.LOG_TRIM = LOG_LINES, LOG_TRIM
 lib.logs = lib.logs or {}
 lib.logOrder = lib.logOrder or {} -- addon names in the order their logs started, for /boltgrip log
@@ -314,8 +317,8 @@ end
 
 local function WriteTimings()
 	for _, log in pairs(lib.logs) do
-		local lines = lib:TimingLines(log.module)
-		local cpu = ProfilerLine(log.module.addon)
+		local lines = log.watching and lib:TimingLines(log.module) or {}
+		local cpu = log.watching and ProfilerLine(log.module.addon)
 		if #lines > 0 or cpu then
 			local version, build = GetBuildInfo()
 			lib:Log(log.module, "")
@@ -349,6 +352,10 @@ function lib:StartLog(module, saved, handlers)
 		self.logWriter:RegisterEvent("PLAYER_LOGOUT")
 		self.logWriter:SetScript("OnEvent", WriteTimings)
 	end
+	-- A working build logs from the start; /boltgrip watch off is remembered, and a paused log stays as it is.
+	if saved.watch == false then
+		return
+	end
 	-- Session header: one line per load, so each log reads on its own.
 	local version, build = GetBuildInfo()
 	self:Log(module, "")
@@ -356,8 +363,7 @@ function lib:StartLog(module, saved, handlers)
 		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
 		UnitLevel("player") or 0, ZoneLine()), true)
 	self:Log(module, DeviceLine())
-	-- A working build logs from the start; /boltgrip watch off is remembered.
-	if saved.watch ~= false and not log.watching then
+	if not log.watching then
 		self:SetWatch(module, true, true)
 	end
 end
@@ -371,7 +377,7 @@ function lib:Trace(module, line)
 	end
 end
 
--- Appends one line; a dated line (or an empty one) is kept as it is.
+-- A dated line already carries its own date, so it is not stamped again.
 function lib:Log(module, line, dated)
 	local log = self.logs[module.addon]
 	if not log then return end
@@ -386,10 +392,10 @@ function lib:Log(module, line, dated)
 		log.saved.devLogRun = math.max((log.saved.devLogRun or 1) - over, 1)
 		if log.viewStart then log.viewStart = math.max(log.viewStart - over, 1) end
 	end
-	-- An open log window follows, once per frame however many lines arrive, keeping the reader's place.
+	-- An open log window follows on a short delay, however many lines arrive: a rebuild joins every line kept.
 	if self:IsTextShown() and (self.textFrame.log == log or self.textFrame.log == "all") and not self.refreshQueued then
 		self.refreshQueued = true
-		C_Timer.After(0, function()
+		C_Timer.After(LOG_REFRESH_SECONDS, function()
 			lib.refreshQueued = nil
 			local shown = lib:IsTextShown() and lib.textFrame.log
 			if shown == "all" then
@@ -486,6 +492,11 @@ local function KitCommand(name, word)
 	end
 	word = (word or ""):lower()
 	if name == "watch" then
+		-- Anything but on, off or nothing is a typo: show the usage rather than guess.
+		if word ~= "on" and word ~= "off" and word ~= "" then
+			lib:Print(WORKING_BUILD_ROWS[1])
+			return true
+		end
 		local anyOn, titles = false, {}
 		for _, addon in ipairs(lib.logOrder) do
 			anyOn = anyOn or lib.logs[addon].watching ~= nil
@@ -503,11 +514,13 @@ local function KitCommand(name, word)
 			saved.devLog, saved.devLogRun = {}, nil
 		end
 		lib:Print("Logs purged!")
-	else
+	elseif word == "all" or word == "" then
 		for _, addon in ipairs(lib.logOrder) do
 			lib.logs[addon].viewStart = nil
 		end
 		lib:ShowAllLogs(word == "all")
+	else
+		lib:Print(WORKING_BUILD_ROWS[2])
 	end
 	return true
 end
@@ -647,11 +660,12 @@ local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
 -- One order on every page (docs/standards.md, "Options"); each section says its place.
 local SECTION_PLACES = { sources = 1, features = 2, blizzard = 3 }
 
--- Blizzard's own sections in the order its Settings pages show them; one not listed comes after these.
-local function BlizzardOrder()
-	local order = {}
-	for index, heading in ipairs({ KEY_BINDING, COMBAT, SOUND }) do order[heading] = index end
-	return setmetatable(order, { __index = function() return 99 end })
+-- Blizzard's sections in the order of its own Settings pages, read from the game's order table
+-- (Blizzard_SettingsDefinitions_Frame, GameplaySettingsGroup.lua); a page not in it, such as Audio,
+-- comes after those, in the order the module lists it.
+local function BlizzardOrder(heading)
+	local order = CUSTOM_GAMEPLAY_SETTINGS_ORDER
+	return order and order[heading] or math.huge
 end
 
 local function OrderedSections(sections)
@@ -673,7 +687,7 @@ local function OrderedSections(sections)
 			assert(cards == 1, ("section %q needs exactly one row of cards"):format(section.heading))
 		end
 		ordered[#ordered + 1] = { section = section, rank = rank, index = index,
-			blizzard = section.place == "blizzard" and BlizzardOrder()[section.heading] or 0 }
+			blizzard = section.place == "blizzard" and BlizzardOrder(section.heading) or 0 }
 	end
 	table.sort(ordered, function(left, right)
 		if left.rank ~= right.rank then return left.rank < right.rank end
@@ -727,8 +741,10 @@ function lib:BuildOptions(module, db, sections)
 			end
 			if row.kind == "checkbox" then
 				initializer = Settings.CreateCheckbox(category, setting, row.tooltip)
-				local parent = row.under and rows[row.under]
-				if parent then
+				if row.under then
+					-- A child built before its parent would silently stay a top-level, always-clickable row.
+					local parent = assert(rows[row.under], ("row %q: under %q must name a checkbox listed above it"):format(
+						tostring(row.key), tostring(row.under)))
 					initializer:SetParentInitializer(parent, function() return settings[row.under]:GetValue() end)
 				end
 			elseif row.kind == "dropdown" then
@@ -748,6 +764,9 @@ function lib:BuildOptions(module, db, sections)
 					initializer = CreateKeybindingEntryInitializer(bindingIndex, true)
 					initializer:AddSearchTags(GetBindingName(row.binding))
 					layout:AddInitializer(initializer)
+				else
+					-- A binding the game does not know leaves no row; say so rather than lose it unseen.
+					lib:Print(("%s: no key binding %s, so its row is left out."):format(module.title, tostring(row.binding)))
 				end
 			end
 			if setting and (row.onChange or showChoice) then
@@ -777,10 +796,13 @@ function lib:FinishModule(module)
 			module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Commands"],
 				L["Type these in chat, or run them here. /%s help lists them all."]:format(command.name)))
 			for _, entry in ipairs(rows) do
+				-- The button's click handler gets the button, not typed words: run it as the bare command.
 				module.layout:AddInitializer(CreateSettingsButtonInitializer(
-					"/" .. command.name .. " " .. entry.action, L["Run"], entry.run, entry.description, false))
-				-- entry.note says what the command does in a sentence or two; the description is the short form.
-				self:AddNote(module.layout, entry.note or entry.description)
+					"/" .. command.name .. " " .. entry.action, L["Run"], function() entry.run("") end, entry.description, false))
+				-- The description is already the button's tooltip; only a longer note earns a line of its own.
+				if entry.note then
+					self:AddNote(module.layout, entry.note)
+				end
 			end
 		end
 	end

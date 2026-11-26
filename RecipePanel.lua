@@ -236,6 +236,12 @@ local shownRecipeID, shownVersion, shownMapID
 local function UpdateMap(page)
 	local selected = page.SchematicForm:GetRecipeInfo()
 	local recipeID = selected and not selected.learned and selected.recipeID or nil
+	-- Blizzard hides the create buttons for a recipe not known but leaves them enabled, and the gamepad's
+	-- Create press still clicks them (Blizzard_ProfessionsFrame.lua, CanCreate). A learned recipe re-enables them.
+	if recipeID then
+		page.CreateButton:SetEnabled(false)
+		page.CreateAllButton:SetEnabled(false)
+	end
 	local mapID = C_Map.GetBestMapForUnit("player")
 	if recipeID == shownRecipeID and ns.sourcesVersion == shownVersion and mapID == shownMapID
 		and (mapButton or not recipeID) then

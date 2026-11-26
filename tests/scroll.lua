@@ -12,6 +12,7 @@ function tremove(...) return table.remove(...) end
 function issecurevariable() return true end
 function debugprofilestop() return 0 end
 function strcmputf8i(a, b) return a < b and -1 or (a > b and 1 or 0) end
+function CaseAccentInsensitiveParse(text) return text:lower() end -- the test's names are plain English
 function hooksecurefunc(t, name, hook)
 	local orig = t[name]
 	t[name] = function(...) local r = { orig(...) }; hook(...); return unpack(r) end

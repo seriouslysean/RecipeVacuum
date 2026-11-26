@@ -170,7 +170,6 @@ end
 -- Wire key of each identifying field, and the observation field it fills.
 local IDENTITY = { n = "npc", o = "object", ci = "container", fi = "fishing", z = "zone", q = "quest" }
 
--- Merges valid rows into the shared layer, newest per source; true if anything changed, false if not, nil for an invalid batch (nothing written).
 -- Wire key of each saved field of a shared observation.
 local MERGED_FIELDS = {
 	npc = "n", object = "o", container = "ci", fishing = "fi", zone = "z", quest = "q", faction = "f",
@@ -182,15 +181,19 @@ local MERGED_FIELDS = {
 -- the batch: refusing it would stop every later find from that player reaching an older version.
 local KNOWN_KINDS = { trainer = true, vendor = true, quest = true, drop = true }
 
+-- Into the shared layer, newest per source. Returns whether anything changed and how many rows were
+-- dropped as invalid; nil for a batch that is not a list of rows (nothing written).
 function ns.MergeFinds(rows, maxRows)
 	if type(rows) ~= "table" or #rows > maxRows then return nil end
-	local count = 0
+	local count, skipped = 0, 0
 	local known = {}
 	for index, row in pairs(rows) do
 		if not PositiveID(index) or index > #rows or type(row) ~= "table" then return nil end
-		if KNOWN_KINDS[row.k] then
-			if not ValidRow(row) then return nil end
+		-- One bad row is dropped, not the batch: the same batch would be refused every time it is asked for.
+		if KNOWN_KINDS[row.k] and ValidRow(row) then
 			known[#known + 1] = row
+		elseif KNOWN_KINDS[row.k] then
+			skipped = skipped + 1
 		end
 		count = count + 1
 	end
@@ -267,7 +270,7 @@ function ns.MergeFinds(rows, maxRows)
 			db.pendingItems[row.i] = db.pendingItems[row.i] or {}
 		end
 	end
-	return changed
+	return changed, skipped
 end
 
 -- Export an array, not a table with sparse numeric keys: C_EncodingUtil.SerializeJSON rejects those.

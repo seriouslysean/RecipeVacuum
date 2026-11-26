@@ -111,6 +111,10 @@ end
 local function Trusted(name)
 	return friends[name] or IsGuildMemberByName(name) or IsGroupMember(name)
 end
+-- Party, guild or friend: what the Friends level means, also for a chat line's sender.
+function ns.IsTrusted(name)
+	return Trusted(Ambiguate(name, "none"))
+end
 
 local function Broadcast(kind)
 	local message = Offer(kind)
@@ -302,18 +306,20 @@ local function OnData(_, message, channel, sender)
 		through = tonumber(through)
 		if not through or through <= after or through >= ns.MAX_WIRE_NUMBER then return end
 		local ok, rows = pcall(Decode, encoded)
-		local changed = ok and rows and ns.MergeFinds(rows, MAX_ROWS)
+		local changed, skipped
+		if ok and rows then changed, skipped = ns.MergeFinds(rows, MAX_ROWS) end
 		Trace("received %d bytes from %s, finds %d to %d: %s", #encoded, sender, after, through,
 			not (ok and rows) and "could not be read" or changed == nil and "rejected, nothing written"
-			or ("%d rows, %s"):format(#rows, changed and "merged" or "nothing new"))
-		if changed == nil or not (ok and rows) then
-			FinishRequest() -- invalid batch: nothing was written
+			or ("%d rows, %d skipped, %s"):format(#rows, skipped, changed and "merged" or "nothing new"))
+		if changed == nil then
+			-- Asked for again it would fail the same way, so the cursor moves past it.
+			exchange.received[id] = through
+			FinishRequest()
 			return
 		end
 		-- The sender may have found more since its probe.
 		peer.tip = math.max(peer.tip, through)
 		sourcesDirty = sourcesDirty or changed
-		-- Move the cursor only after the whole batch validated and merged.
 		exchange.received[id] = through
 		if through < peer.tip then
 			peer.after, peer.retries = through, REQUEST_RETRIES
@@ -525,9 +531,9 @@ function ns.ShareSelfTest(report)
 		local ok, rows = pcall(Decode, encoded)
 		if not (ok and rows) then return report("FAIL: the reply after revision " .. after .. " does not decode") end
 		ns.db = scratch
-		local merged, changed = pcall(ns.MergeFinds, rows, MAX_ROWS)
+		local merged, changed, skipped = pcall(ns.MergeFinds, rows, MAX_ROWS)
 		ns.db = real
-		if not merged or changed == nil then
+		if not merged or changed == nil or skipped > 0 then
 			return report("FAIL: the receiver's validation rejects the reply after revision " .. after)
 		end
 		messages[#messages + 1], rowsSent, largest = message, rowsSent + #rows, math.max(largest, #message)

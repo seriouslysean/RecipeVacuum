@@ -117,7 +117,8 @@ local function GetUnlearnedCategories(professionInfo)
 	for _, recipeInfo in ipairs(unlearned) do
 		if not seen[recipeInfo.recipeID] then
 			seen[recipeInfo.recipeID] = true
-			recipeInfo.searchName = recipeInfo.name:lower()
+			-- The game's own fold (case and accents, any language); string.lower knows only A to Z.
+			recipeInfo.searchName = CaseAccentInsensitiveParse(recipeInfo.name)
 			ns.SummarizeSources(recipeInfo)
 			if recipeInfo.sourceTypes then
 				established[recipeInfo.categoryID] = true
@@ -240,7 +241,7 @@ local function AddUnlearnedRecipes(page)
 	local startTime = debugprofilestop()
 	--@end-debug@
 	local categories = GetUnlearnedCategories(page.professionInfo)
-	local matches = categories and GetMatches(categories, page.RecipeList.SearchBox:GetText():lower())
+	local matches = categories and GetMatches(categories, CaseAccentInsensitiveParse(page.RecipeList.SearchBox:GetText()))
 	if not matches then
 		return
 	end

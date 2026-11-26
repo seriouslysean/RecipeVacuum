@@ -53,6 +53,9 @@ UnitFactionGroup = function() return "Alliance", "Alliance" end
 GetSubZoneText = function() return "" end
 GetPhysicalScreenSize = function() return 1280, 800 end
 GetLocale = function() return "enUS" end
+-- A client with no gamepad and no add-on profiler: both answer numbers the stand-ins cannot.
+C_GamePad = { IsEnabled = function() return false end }
+C_AddOnProfiler = { IsEnabled = function() return false end }
 SlashCmdList = {}
 UISpecialFrames = {}
 NORMAL_FONT_COLOR = { WrapTextInColorCode = function(_, text) return text end }
@@ -85,7 +88,7 @@ function CreateFrame()
 end
 
 -- Fires an event at every frame registered for it. Each handler error is kept with the event's name
--- (client.errors), so a test can fail on it rather than pass with the error hidden (Astra review).
+-- (client.errors), so a test can fail on it rather than pass with the error hidden.
 client.errors, client.standInLimits = {}, {}
 function client.Fire(event, ...)
 	for _, frame in ipairs(client.frames) do
@@ -139,7 +142,7 @@ function CreateSettingsButtonInitializer(title) return { button = title } end
 -- Runs the ADDON_LOADED callbacks registered for addonName, as the client does once saved data is read.
 -- Then the start-up events, in the client's order, for code that waits for login (key bindings are read then).
 -- Newest registration first: the client promises no order, and an addon that depends on its files'
--- registration order breaks in the game (Tackletron's log started before its saved table was set).
+-- registration order breaks in the game.
 function client.Loaded(addonName)
 	local loaded = client.loaded or {}
 	for index = #loaded, 1, -1 do

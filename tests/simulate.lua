@@ -5,6 +5,8 @@ local repo, savedFile = arg[1], arg[2]
 local now = os.time()
 local loaded, frames = {}, {}
 local function check(label, ok) print((ok and "PASS " or "FAIL ") .. label); if not ok then FAILED = true end end
+-- A row the validation refuses is dropped on its own: nothing changes and it is counted as skipped.
+local function Rejected(m, row) local changed, skipped = m.MergeFinds({ row }, 10) return changed == false and skipped == 1 end
 
 -- client stubs
 EventUtil = { ContinueOnAddOnLoaded = function(name, fn) loaded[#loaded + 1] = { name, fn } end }
@@ -369,7 +371,16 @@ do
   check("a shared drop carries its subzone, its own spot and its count", wired and wired.cn == 2 and wired.x == 0.5 and wired.m == 1429)
   place.area, place.instance = 40, nil
 end
-check("reject a subzone on a vendor row", boot(nil).MergeFinds({ { k = "vendor", i = 1000, n = 1, a = 5 } }, 1) == nil)
+-- Fails if one bad row makes the whole batch refused: the same batch is refused again on every ask, and
+-- nothing more arrives from that player.
+do
+  local m = boot(nil)
+  local changed, skipped = m.MergeFinds({ { k = "vendor", i = 1000, n = 1, a = 5 }, { k = "vendor", i = 1000, n = 2 } }, 2)
+  local vendors = {}
+  for _, o in ipairs(m.db.shared.items[1000] or {}) do vendors[o.npc] = true end
+  check("a bad row is dropped and the rest of its batch still merges", changed == true and skipped == 1
+    and vendors[2] and not vendors[1])
+end
 -- Fails if a row of a kind a newer version adds makes an older version refuse the whole batch, which would
 -- stop every later find from that player arriving.
 do
@@ -429,7 +440,7 @@ do
   check("reports merge to the same result in any order", cost1 == 200 and skill1 == 75 and seen1 == 300
     and cost2 == 200 and skill2 == 75 and seen2 == 300)
 end
-check("an unknown NPC faction is rejected", boot(nil).MergeFinds({ badFaction }, 1) == nil)
+check("an unknown NPC faction is rejected", Rejected(boot(nil), badFaction))
 -- A source both received and seen firsthand is listed once: the same creature in the same place.
 b.db.sourceLevel, b.db.recipeItems[99] = 2, { 1000 }
 local sharedCreature
@@ -484,15 +495,15 @@ check("saved data keeps no link or waiting item the seed covers", d.db.itemRecip
   and d.db.pendingItems[7778] == nil and d.db.itemRecipe[9999] == 111)
 
 -- 6. Validation rejects malformed new rows
-check("reject drop with two sources", b.MergeFinds({ { k = "drop", i = 1, n = 1, o = 2 } }, 10) == nil)
-check("reject quest without quest id", b.MergeFinds({ { k = "quest", i = 1 } }, 10) == nil)
-check("reject vendor carrying a quest", b.MergeFinds({ { k = "vendor", i = 1, n = 1, q = 5 } }, 10) == nil)
-check("reject bad object name", b.MergeFinds({ { k = "drop", i = 1, o = 2, on = "x|cff" } }, 10) == nil)
-check("reject unknown fishing zone", b.MergeFinds({ { k = "drop", i = 1, fi = UNKNOWN_MAP } }, 10) == nil)
-check("reject an item that is not a recipe item", b.MergeFinds({ { k = "drop", i = 777, n = 1 } }, 10) == nil)
-check("reject a position with one coordinate", b.MergeFinds({ { k = "drop", i = 1, fi = 1, x = 0.5 } }, 10) == nil)
-check("reject a drop carrying a quest", b.MergeFinds({ { k = "drop", i = 1, n = 1, q = 5 } }, 10) == nil)
-check("reject unknown roll zone", b.MergeFinds({ { k = "drop", i = 1, z = UNKNOWN_MAP } }, 10) == nil)
+check("reject drop with two sources", Rejected(b, { k = "drop", i = 1, n = 1, o = 2 }))
+check("reject quest without quest id", Rejected(b, { k = "quest", i = 1 }))
+check("reject vendor carrying a quest", Rejected(b, { k = "vendor", i = 1, n = 1, q = 5 }))
+check("reject bad object name", Rejected(b, { k = "drop", i = 1, o = 2, on = "x|cff" }))
+check("reject unknown fishing zone", Rejected(b, { k = "drop", i = 1, fi = UNKNOWN_MAP }))
+check("reject an item that is not a recipe item", Rejected(b, { k = "drop", i = 777, n = 1 }))
+check("reject a position with one coordinate", Rejected(b, { k = "drop", i = 1, fi = 1, x = 0.5 }))
+check("reject a drop carrying a quest", Rejected(b, { k = "drop", i = 1, n = 1, q = 5 }))
+check("reject unknown roll zone", Rejected(b, { k = "drop", i = 1, z = UNKNOWN_MAP }))
 check("shared roll keeps its zone", b.db.shared.items[3000] and b.db.shared.items[3000][1].zone == 1429)
 check("reject more rows than the limit", b.MergeFinds(rows, #rows - 1) == nil)
 
@@ -530,6 +541,10 @@ do
   check("nothing about who or where is kept", onlyLevels)
   chat("CHAT_MSG_GUILD", "mine |Henchant:5555|h[Engineering: Gizmo]|h")
   check("a nearer sighting replaces a farther one", met.recipes[5555] == 2)
+  -- Fails if a stranger's whisper counts as a friend's: at the default level it would show the recipe.
+  h.IsTrusted = function() return false end -- Sharing.lua, not loaded here
+  chat("CHAT_MSG_WHISPER", "psst |Hitem:1001::::|h[Pattern: Other]|h")
+  check("a stranger's whisper counts as public chat", met.items[1001] == 3)
   h.db.recipeItems[99] = { 1000 }
   local viaItem = { recipeID = 99, name = "x" }
   h.SummarizeSources(viaItem)

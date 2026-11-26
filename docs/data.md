@@ -82,9 +82,9 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 
 | Signal | Level |
 |---|---|
-| A recipe item or recipe link in party, raid, instance, guild, officer or whisper chat | Friends |
+| A recipe item or recipe link in party, raid, instance, guild or officer chat, or whispered by someone in the party, guild or friends list | Friends |
 | A recipe item in a loot line (someone nearby looting) | Friends |
-| A recipe item or recipe link in say, yell or a numbered channel | Public |
+| A recipe item or recipe link in say, yell or a numbered channel, or whispered by anyone else | Public |
 | The guild's profession view | Friends |
 | A linked profession the player opens | The level its link was seen at this session, else Public |
 
