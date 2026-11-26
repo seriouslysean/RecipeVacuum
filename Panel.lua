@@ -75,7 +75,6 @@ local WINDOW_BACKGROUND = "Profession-Background-Overview" -- Camelot/Blizzard_P
 local FORM_BORDER_ATLAS, FORM_SLICE = "common-insideframe", 53
 -- The details' icon hangs off its pane where the window's portrait ring hangs off the window: the frame places that ring's corner art at
 -- -13, 16 (NineSliceLayouts.lua:20), the ring spanning 5 to 71 of the 95 px art.
-local ICON_SIZE = PORTRAIT_SIZE
 local RING_FROM, RING_TO = 5, 71 -- the portrait ring within its 95 px corner art
 local RING_SIZE = RING_TO - RING_FROM
 local OUTPUT_RING_INSET = (58 - 47) / 2 -- the output ring's drawn edge to its button (ProfessionsOutputButtonTemplate, 47 px)
@@ -85,27 +84,27 @@ local LINE_IN_LEFT, LINE_IN_TOP = 2, 5
 local RING_LEFT = 13 - RING_FROM + LINE_IN_LEFT -- the ring's offset past the box's left, as the frame's corner piece less the art's own margin
 local RING_RISE = 16 - RING_FROM - LINE_IN_TOP
 local ICON_LEVEL = 600 -- above the list's whole tree and every frame of ours, so the ring draws over both boxes' borders
--- The pane's output icon sits 33 below its top and the name's top lines up with it, 14 right of the icon, the required skill 5 under it
--- (Blizzard_ProfessionsRecipeSchematicForm.lua:464,:469; .xml:193,214).
-local NAME_TOP = 33
-local NAME_LEFT = ICON_SIZE - PORTRAIT_LEFT + 14
+-- The pane's text and reagents as the live window places them, measured with /recipevacuum layout (build 71139; docs/client-notes.md,
+-- "Panel"): name 27.5 below the pane's top and 14 right of the output icon, the requirement 5 under it; the "Reagents:" label's top at
+-- 108 (lower if the text above runs long), its icons 25.5 under that, 28 in, 45 apart, each name 46 right of its icon.
+local OUTPUT_LEFT = -RING_LEFT + OUTPUT_RING_INSET
+local NAME_TOP = 27.5
+local NAME_LEFT = OUTPUT_LEFT + 47 + 14
 local OUTPUT_SUB_GAP = 5
 local DETAIL_GAP = RING_RISE + 2 -- the ring hangs into the gap above the box, so the list ends above it
-local DETAIL_SIDE = 28 -- the pane's content inset: the output icon's x (Blizzard_ProfessionsRecipeSchematicForm.xml:36) and its checkbox's (:62)
 local DETAIL_BOTTOM = 20 -- content ends this far above the pane's bottom (:62), clear of the border's corner art
--- Reagents as the window's pane lays them out: a 20 high label 25 below what is above (Blizzard_ProfessionsRecipeSchematicForm.lua:680,1281),
--- slots 1 right and 20 down from it (Blizzard_Professions.lua:1397), 50 high with 5 between (:1300), icon centered, name 46 from the slot's left.
-local REAGENTS_GAP = 25
+local REAGENTS_TOP, REAGENTS_LEFT = 108, 27
+local REAGENTS_BELOW_TEXT = 41.5 -- the label's top under the requirement line's bottom, as measured
 local REAGENTS_LABEL_HEIGHT = 20
-local SLOT_LEFT, SLOT_HEIGHT, SLOT_SPACING = 1, 50, 5
+local REAGENT_ICON_BELOW_LABEL = 25.5
+local REAGENT_LEFT, REAGENT_PITCH = 28, 45
 local REAGENT_SIZE = 39 -- ProfessionsButtonTemplate (Blizzard_ProfessionsTemplates.xml:42)
-local REAGENT_PITCH = SLOT_HEIGHT + SLOT_SPACING
 local REAGENT_TEXT_GAP = 46 - REAGENT_SIZE
 local REAGENT_NAME_WIDTH, REAGENT_NAME_HEIGHT = 108, 36 -- Blizzard_ProfessionsRecipeReagentSlotBase.xml:20
 -- Show Map sits in the strip under the box as the window's Create button does: 7 above the bottom, the pane ending 38 above it
 -- (Blizzard_ProfessionsCrafting.lua:1036; 594 less the pane's 72 top and 484 height).
 local BUTTON_BOTTOM = 7
-local SOURCE_HEIGHT = 22
+local SOURCE_HEIGHT = 28 -- the window's Create button, measured
 local STRIP_HEIGHT = 38
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
 
@@ -790,18 +789,19 @@ FillDetail = function()
 	-- Top-down from whichever ends lower, the ring or the name block. The box is exactly this tall; Show Map is below it.
 	local top = math.max(RING_SIZE - RING_RISE, NAME_TOP + detail.Name:GetStringHeight()
 		+ (skill and OUTPUT_SUB_GAP + detail.Sub:GetStringHeight() or 0))
+	local textBottom = NAME_TOP + detail.Name:GetStringHeight() + OUTPUT_SUB_GAP + detail.Sub:GetHeight()
 
 	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
 	if #data.reagents > 0 then
-		top = top + REAGENTS_GAP
-		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -top)
-		top = top + REAGENTS_LABEL_HEIGHT
+		top = math.max(REAGENTS_TOP, textBottom + REAGENTS_BELOW_TEXT)
+		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", REAGENTS_LEFT, -top)
+		top = top + REAGENT_ICON_BELOW_LABEL
 	end
 	for index, entry in ipairs(data.reagents) do
 		local button = Pooled(reagentRows, index, MakeReagentRow)
 		button.itemID = entry.itemID
-		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE + SLOT_LEFT, -(top + (SLOT_HEIGHT - REAGENT_SIZE) / 2))
+		button:SetPoint("TOPLEFT", detail, "TOPLEFT", REAGENT_LEFT, -top)
 		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
 		local quality = C_Item.GetItemQualityByID(entry.itemID)
 		if quality then button:SetSlotQuality(quality) else button.IconBorder:Hide() end
@@ -816,7 +816,7 @@ FillDetail = function()
 		reagentRows[index]:Hide()
 		reagentRows[index].Text:Hide()
 	end
-	if #data.reagents > 0 then top = top - SLOT_SPACING end -- none after the last slot
+	if #data.reagents > 0 then top = top - REAGENT_PITCH + REAGENT_SIZE end -- the last icon's bottom
 
 	-- The sources are the button's tooltip, not lines in the box. With none to pin it stays, disabled, so the tooltip still tells them.
 	mapButton = mapButton or MakeMapButton()
@@ -1030,7 +1030,7 @@ local function CreatePanel()
 	-- The made item as the window's recipe pane shows it (its output icon and brown ring), placed where the portrait's ring would hang so
 	-- it hangs off the pane's frame line. The ring is 68 px around the 47 px button and drawn about 58 across.
 	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
-	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", -RING_LEFT + OUTPUT_RING_INSET, RING_RISE - OUTPUT_RING_INSET)
+	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", OUTPUT_LEFT, RING_RISE - OUTPUT_RING_INSET)
 	detail.Output:SetFrameLevel(ICON_LEVEL)
 	detail.Output:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1044,7 +1044,7 @@ local function CreatePanel()
 	detail.Name:SetWidth(textWidth)
 	detail.Name:SetJustifyH("LEFT")
 	detail.Name:SetJustifyV("TOP")
-	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameTooltipText")
+	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameFontNormal") -- the pane's own requirement line font, measured
 	detail.Sub:SetPoint("TOPLEFT", detail.Name, "BOTTOMLEFT", 0, -OUTPUT_SUB_GAP)
 	detail.Sub:SetWidth(textWidth)
 	detail.Sub:SetJustifyH("LEFT")
