@@ -186,6 +186,8 @@ local function SyncNav()
 			previous = frame
 		end
 	end
+	-- Down from the last row stays in the list; right is the way to the details.
+	if previous then SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous) end
 	if not detail:IsShown() then return end
 	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
 	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
