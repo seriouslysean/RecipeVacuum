@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 42
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 43
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -134,51 +134,6 @@ function lib:RegisterModule(addonName, class)
 		Settings.OpenToCategory(category:GetID())
 	end, notes, false))
 	return module
-end
-
--- Custom options rows (notes, cards) are built in Lua on Blizzard's BackdropTemplate, which the options
--- list never uses itself, so they pool apart from Blizzard's rows. No XML of our own: a named template
--- in an embedded library is defined once per addon that embeds it, and the second definition warns.
-local ROW_TEMPLATE = "BackdropTemplate"
-local NOTE_LEFT = 37 -- where Blizzard's row labels start (SettingsAddOnDisabledLabelTemplate)
-
--- Blizzard's list reuses row frames, so a reused frame must hide whatever the last row showed.
-local function UseRow(frame, kind)
-	if frame.Note then frame.Note:SetShown(kind == "note") end
-	for _, card in ipairs(frame.cards or {}) do card:SetShown(kind == "cards") end
-end
-
--- A note under an options row: gray, wrapped, in plain words, for what a hover tooltip alone would hide.
--- The row's height is measured from the text.
-local NOTE_WIDTH = 520    -- room for a note beside the options list's left margin
-local NOTE_GAP = 8        -- space below a note, before the next row
-local measure
-
-function lib:AddNote(layout, text)
-	local initializer = Settings.CreateElementInitializer(ROW_TEMPLATE, { text = text })
-	initializer.GetExtent = function()
-		if not measure then
-			measure = UIParent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			measure:Hide()
-		end
-		measure:SetWidth(NOTE_WIDTH)
-		measure:SetText(text)
-		return math.ceil(measure:GetStringHeight()) + NOTE_GAP
-	end
-	initializer.InitFrame = function(_, frame)
-		if not frame.Note then
-			frame.Note = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-			frame.Note:SetPoint("TOPLEFT", NOTE_LEFT, 0)
-			frame.Note:SetJustifyH("LEFT")
-			frame.Note:SetJustifyV("TOP")
-		end
-		UseRow(frame, "note")
-		frame.Note:SetWidth(NOTE_WIDTH)
-		frame.Note:SetText(text)
-		frame.Note:SetTextColor(GRAY_FONT_COLOR:GetRGB())
-	end
-	layout:AddInitializer(initializer)
-	return initializer
 end
 
 -- Working builds. A module calls these from its own debug-only block, so a release never does; the library
@@ -600,96 +555,30 @@ end
 -- Options pages are data built from Blizzard's controls, so every page matches. The data shape follows
 -- AceConfig's options tables; the row kinds and fields are in docs/standards.md, "Options".
 
--- Cards: a choice shown as a row of cards, laid out like the game's ruleset choice.
-local CARD_WIDTH, CARD_HEIGHT, CARD_GAP = 184, 198, 12
-local CARDS_ROW_HEIGHT = 214 -- the cards plus the space below them
-local CARD_LEFT = 37 -- where Blizzard's own controls start
-local CARD_TITLE_TOP, CARD_ICON_TOP, CARD_ICON_SIZE = -14, -40, 48
-local CARD_TEXT_TOP, CARD_TEXT_INSET = -100, 12
-local ROUND_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask" -- Blizzard's round portrait mask
--- Spell icons carry a dark border; it is cut away before the round mask, as Blizzard does for round icons.
-local ICON_EDGE = 0.08
-local UNCHOSEN_ALPHA = 0.55 -- the cards not chosen are dimmed
-local CHOSEN_BACKGROUND = { r = 0.16, g = 0.13, b = 0.05 } -- a warm dark behind the gold border
-
-local function CreateCard(parent, index, choice, setting)
-	local card = CreateFrame("Button", nil, parent, "TooltipBackdropTemplate")
-	card:SetSize(CARD_WIDTH, CARD_HEIGHT)
-	card:SetPoint("TOPLEFT", CARD_LEFT + (index - 1) * (CARD_WIDTH + CARD_GAP), 0)
-	card.value = choice[1]
-	local title = card:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOP", 0, CARD_TITLE_TOP)
-	title:SetText(choice[2])
-	local icon = card:CreateTexture(nil, "ARTWORK")
-	icon:SetSize(CARD_ICON_SIZE, CARD_ICON_SIZE)
-	icon:SetPoint("TOP", 0, CARD_ICON_TOP)
-	icon:SetTexture(choice[3])
-	icon:SetTexCoord(ICON_EDGE, 1 - ICON_EDGE, ICON_EDGE, 1 - ICON_EDGE)
-	local mask = card:CreateMaskTexture()
-	mask:SetAllPoints(icon)
-	mask:SetTexture(ROUND_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-	icon:AddMaskTexture(mask)
-	local text = card:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-	text:SetPoint("TOP", 0, CARD_TEXT_TOP)
-	text:SetWidth(CARD_WIDTH - 2 * CARD_TEXT_INSET) -- a set width and no line limit, so the text wraps
-	text:SetWordWrap(true)
-	text:SetMaxLines(0)
-	text:SetJustifyH("CENTER")
-	text:SetJustifyV("TOP")
-	text:SetText(choice[4])
-	card.Title, card.Icon = title, icon
-	card:SetScript("OnEnter", function() card:SetAlpha(1) end)
-	card:SetScript("OnLeave", function() card:SetAlpha(card.chosen and 1 or UNCHOSEN_ALPHA) end)
-	card:SetScript("OnClick", function() setting:SetValue(card.value) end)
-	return card
+-- Tooltip text of a row: its tooltip, one line per option for a choice, then its note. The tooltip is the
+-- only place addon text can sit beside a Blizzard control without a row of our own.
+local function RowTooltip(row)
+	local lines = { row.tooltip }
+	for _, choice in ipairs(row.kind == "choice" and row.values or {}) do
+		lines[#lines + 1] = choice.description and (choice.label .. ": " .. choice.description) or nil
+	end
+	lines[#lines + 1] = row.note
+	return #lines > 0 and table.concat(lines, "\n") or nil
 end
 
-local function ShowChoice(frame, value)
-	for _, card in ipairs(frame.cards) do
-		local chosen = card.value == value
-		local background = chosen and CHOSEN_BACKGROUND or TOOLTIP_DEFAULT_BACKGROUND_COLOR
-		card:SetBackdropBorderColor((chosen and NORMAL_FONT_COLOR or TOOLTIP_DEFAULT_COLOR):GetRGB())
-		card:SetBackdropColor(background.r, background.g, background.b)
-		card.Title:SetTextColor((chosen and NORMAL_FONT_COLOR or DISABLED_FONT_COLOR):GetRGB())
-		card.Icon:SetDesaturated(not chosen)
-		card.chosen = chosen
-		card:SetAlpha((chosen or card:IsMouseOver()) and 1 or UNCHOSEN_ALPHA)
-	end
-end
-
-local function AddCards(layout, setting, values, label)
-	local initializer = Settings.CreateElementInitializer(ROW_TEMPLATE, {})
-	-- Found by the options search under its label and card names, as Blizzard's own rows are.
-	local tags = { label }
-	for _, choice in ipairs(values) do tags[#tags + 1] = choice[2] end
-	initializer:AddSearchTags(unpack(tags))
-	local shown -- the list's frame for this row while it is on screen
-	initializer.GetExtent = function()
-		return CARDS_ROW_HEIGHT
-	end
-	initializer.InitFrame = function(_, frame)
-		-- A pooled frame may already hold another card row's cards; they are made for this one.
-		if frame.cardValues ~= values then
-			for _, card in ipairs(frame.cards or {}) do card:Hide() end
-			frame.cards, frame.cardValues = nil, values
+-- A choice is Blizzard's slider whose value is the option's position. The setting reads and writes
+-- through this table, so the module's saved value stays its own and an unknown saved value reads as the default.
+local function ChoiceStore(db, values, default)
+	local function position(value)
+		for index, choice in ipairs(values) do
+			if choice.value == value then return index end
 		end
-		if not frame.cards then
-			frame.cards = {}
-			for index, choice in ipairs(values) do
-				frame.cards[index] = CreateCard(frame, index, choice, setting)
-			end
-		end
-		UseRow(frame, "cards")
-		shown = frame
-		ShowChoice(frame, setting:GetValue())
 	end
-	initializer.Resetter = function()
-		shown = nil
-	end
-	layout:AddInitializer(initializer)
-	return function(value)
-		if shown then ShowChoice(shown, value) end
-	end
+	local defaultPosition = assert(position(default), "a choice row's default must be one of its values")
+	return setmetatable({}, {
+		__index = function(_, key) return position(db[key]) or defaultPosition end,
+		__newindex = function(_, key, index) db[key] = values[index].value end,
+	}), defaultPosition
 end
 
 local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
@@ -710,18 +599,18 @@ local function OrderedSections(sections)
 	for index, section in ipairs(sections) do
 		local rank = assert(SECTION_PLACES[section.place], ("section %q needs a place: sources, features or blizzard"):format(
 			tostring(section.heading)))
-		-- A sources section is exactly one row of the kit's cards, plus any rows under it (sharing).
+		-- A sources section is exactly one row of the kit's source choices, plus any rows under it (sharing).
 		if section.place == "sources" then
-			assert(section.rows[1] and section.rows[1].kind == "cards",
-				("section %q: the cards come first"):format(section.heading))
-			local cards = 0
+			assert(section.rows[1] and section.rows[1].kind == "choice",
+				("section %q: the source choice comes first"):format(section.heading))
+			local choices = 0
 			for _, row in ipairs(section.rows) do
-				if row.kind == "cards" then
-					assert(lib.sourceCardSets[row.values], ("section %q: cards must come from SourceCards"):format(section.heading))
-					cards = cards + 1
+				if row.kind == "choice" then
+					assert(lib.sourceChoiceSets[row.values], ("section %q: the choice must come from SourceChoices"):format(section.heading))
+					choices = choices + 1
 				end
 			end
-			assert(cards == 1, ("section %q needs exactly one row of cards"):format(section.heading))
+			assert(choices == 1, ("section %q needs exactly one source choice"):format(section.heading))
 		end
 		ordered[#ordered + 1] = { section = section, rank = rank, index = index,
 			blizzard = section.place == "blizzard" and BlizzardOrder(section.heading) or 0 }
@@ -735,64 +624,62 @@ local function OrderedSections(sections)
 	return ordered
 end
 
--- Sources cards are the kit's: names, icons, openings and the friends line, so every module reads the
--- same. The module gives its own whole sentences, since a sentence built around a slotted word cannot be
+-- Source choices are the kit's: names, openings and the friends line, so every module reads the same.
+-- The module gives its own whole sentences, since a sentence built around a slotted word cannot be
 -- translated well; spec's fields are in docs/standards.md, "Options".
 lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
-local SOURCE_CARDS = {
-	{ name = L["Self Found"], icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = L["Short range."],
-		text = function(spec) return spec.self end },
-	{ name = FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = L["Medium range."],
+local SOURCE_CHOICES = {
+	{ name = L["Self Found"], opening = L["Short range."], text = function(spec) return spec.self end },
+	{ name = FRIENDS, opening = L["Medium range."],
 		text = function(spec) return spec.friends and L["Also tracks what your party, guild and friends find."] end },
-	{ name = L["Public"], icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = L["Long range."],
-		text = function(spec) return spec.public end },
+	{ name = L["Public"], opening = L["Long range."], text = function(spec) return spec.public end },
 }
 
--- Cards from here are marked, so BuildOptions can refuse cards built by hand.
-lib.sourceCardSets = lib.sourceCardSets or setmetatable({}, { __mode = "k" })
+-- Values from here are marked, so BuildOptions can refuse source choices built by hand.
+lib.sourceChoiceSets = lib.sourceChoiceSets or setmetatable({}, { __mode = "k" })
 
-function lib:SourceCards(spec)
-	assert(type(spec.self) == "string", "SourceCards needs spec.self, the module's sentence for what it tracks alone")
-	local cards = {}
-	self.sourceCardSets[cards] = true
-	for level, card in ipairs(SOURCE_CARDS) do
-		local text = card.text(spec)
+function lib:SourceChoices(spec)
+	assert(type(spec.self) == "string", "SourceChoices needs spec.self, the module's sentence for what it tracks alone")
+	local choices = {}
+	self.sourceChoiceSets[choices] = true
+	for level, choice in ipairs(SOURCE_CHOICES) do
+		local text = choice.text(spec)
 		if text then
-			cards[#cards + 1] = { level, card.name, card.icon, spec.openings == false and text or (card.opening .. " " .. text) }
+			choices[#choices + 1] = { value = level, label = choice.name,
+				description = spec.openings == false and text or (choice.opening .. " " .. text) }
 		end
 	end
-	return cards
+	return choices
 end
 
 function lib:BuildOptions(module, db, sections)
 	local category, layout, settings, rows = module.category, module.layout, {}, {}
 	for _, section in ipairs(OrderedSections(sections)) do
-		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(section.heading))
+		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(section.heading, section.tooltip))
 		for _, row in ipairs(section.rows) do
-			local setting, initializer, showChoice
+			local setting, initializer
+			local store, default = db, row.default
+			if row.kind == "choice" then store, default = ChoiceStore(db, row.values, row.default) end
 			if row.key then
-				setting = Settings.RegisterAddOnSetting(category, module.addon .. "_" .. row.key, row.key, db,
-					Settings.VarType[VAR_TYPES[type(row.default)]], row.label, row.default)
+				setting = Settings.RegisterAddOnSetting(category, module.addon .. "_" .. row.key, row.key, store,
+					Settings.VarType[VAR_TYPES[type(default)]], row.label, default)
 				settings[row.key] = setting
 			end
 			if row.kind == "checkbox" then
-				initializer = Settings.CreateCheckbox(category, setting, row.tooltip)
+				initializer = Settings.CreateCheckbox(category, setting, RowTooltip(row))
 				if row.under then
 					-- A child built before its parent would silently stay a top-level, always-clickable row.
 					local parent = assert(rows[row.under], ("row %q: under %q must name a checkbox listed above it"):format(
 						tostring(row.key), tostring(row.under)))
 					initializer:SetParentInitializer(parent, function() return settings[row.under]:GetValue() end)
 				end
-			elseif row.kind == "dropdown" then
-				initializer = Settings.CreateDropdown(category, setting, function()
-					local container = Settings.CreateControlTextContainer()
-					for _, choice in ipairs(row.values) do
-						container:Add(choice[1], choice[2])
-					end
-					return container:GetData()
-				end, row.tooltip)
-			elseif row.kind == "cards" then
-				showChoice = AddCards(layout, setting, row.values, row.label)
+			elseif row.kind == "choice" then
+				-- Blizzard's standard slider: addon-owned dropdowns and rows taint the Gamepad UI (docs/standards.md, "Gamepad UI").
+				local options = Settings.CreateSliderOptions(1, #row.values, 1)
+				options:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(index)
+					return row.values[index] and row.values[index].label or ""
+				end)
+				initializer = Settings.CreateSlider(category, setting, options, RowTooltip(row))
 			elseif row.kind == "keybinding" then
 				-- Blizzard's own key binding row, as the Controls page shows the Interact Key (Controls.lua).
 				local bindingIndex = C_KeyBindings.GetBindingIndex(row.binding)
@@ -805,14 +692,12 @@ function lib:BuildOptions(module, db, sections)
 					lib:Print(("%s: no key binding %s, so its row is left out."):format(module.title, tostring(row.binding)))
 				end
 			end
-			if setting and (row.onChange or showChoice) then
+			if setting and row.onChange then
 				setting:SetValueChangedCallback(function(_, value)
-					if showChoice then showChoice(value) end
-					if row.onChange then row.onChange(value) end
+					row.onChange(row.kind == "choice" and row.values[value].value or value)
 				end)
 			end
 			if row.key then rows[row.key] = initializer end
-			if row.note then self:AddNote(layout, row.note) end
 		end
 	end
 	return settings
@@ -834,11 +719,8 @@ function lib:FinishModule(module)
 			for _, entry in ipairs(rows) do
 				-- The button's click handler gets the button, not typed words: run it as the bare command.
 				module.layout:AddInitializer(CreateSettingsButtonInitializer(
-					"/" .. command.name .. " " .. entry.action, L["Run"], function() entry.run("") end, entry.description, false))
-				-- The description is already the button's tooltip; only a longer note earns a line of its own.
-				if entry.note then
-					self:AddNote(module.layout, entry.note)
-				end
+					"/" .. command.name .. " " .. entry.action, L["Run"], function() entry.run("") end,
+					entry.note and (entry.description .. "\n" .. entry.note) or entry.description, false))
 			end
 		end
 	end

@@ -14,7 +14,7 @@ ns.BUILD = tonumber((select(2, GetBuildInfo())))
 ns.MAX_WIRE_NUMBER = 2^32
 
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
--- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
+-- The levels, their names and range openings are the toolkit's source choices (its docs/standards.md, "Options").
 ns.LEVEL = toolkit.SOURCE_LEVEL
 
 function ns.NewLayer()

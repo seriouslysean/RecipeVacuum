@@ -82,6 +82,12 @@ local FORBIDDEN = {
 	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)" },
 	{ "SetCVar%(%s*\"scriptErrors\"", "working builds start with the kit's EnableWorkingBuild" },
 }
+-- Addon code that adds to Blizzard's lists, menus or panels is tainted, and the Gamepad UI then refuses
+-- to navigate them (docs/standards.md, "Gamepad UI"). Only the kit builds options, from Blizzard's own rows.
+for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
+	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap" }) do
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
+end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps
 -- them on the namespace, and the locale files take the addon's name from the TOC.
 table.insert(FORBIDDEN, { "[GN][ew][tw]Locale%(%s*\"", "a locale table is named by the addon's name from the TOC, not a string" })
@@ -300,15 +306,15 @@ function RULES.plain(text)
 		if words > SENTENCE_WORDS then return ("has a sentence of %d words"):format(words) end
 	end
 end
--- A card's sentence in the shape every module's cards share, so the cards read alike across modules.
-local CARD_SHAPES = { "^Tracks only .+ you see for yourself%.$", "^Also tracks what your party, guild and friends find%.$",
+-- A choice's description in the shape every module's source choices share, so they read alike across modules.
+local CHOICE_SHAPES = { "^Tracks only .+ you see for yourself%.$", "^Also tracks what your party, guild and friends find%.$",
 	"^Also tracks .+%.$" }
-function RULES.card(text)
+function RULES.choice(text)
 	local body = text:gsub("^%a+ range%. ", "", 1)
-	for _, shape in ipairs(CARD_SHAPES) do
+	for _, shape in ipairs(CHOICE_SHAPES) do
 		if body:find(shape) then return end
 	end
-	return "is not in the cards' sentence shape"
+	return "is not in the source choices' sentence shape"
 end
 function RULES.note(text)
 	if #text > NOTE_LIMIT then return ("is %d characters, over %d"):format(#text, NOTE_LIMIT) end
@@ -339,14 +345,21 @@ local function Text(what, text, rules)
 	check(("%s %q"):format(what, text), #problems == 0, table.concat(problems, "; "))
 end
 
+local ROW_KINDS = { checkbox = true, choice = true, button = true, keybinding = true }
 local pageCount, commandCount = 0, 0
 for _, sections in pairs(pages) do
 	pageCount = pageCount + 1
 	for _, section in ipairs(sections) do
 		Text("heading", section.heading, { "titleCase", "gameTerms" })
 		for _, row in ipairs(section.rows) do
-			for _, card in ipairs(row.kind == "cards" and row.values or {}) do
-				Text("card " .. tostring(card[2]), card[4], { "gameTerms", "plain", "card" })
+			check(("row kind %q"):format(tostring(row.kind)), ROW_KINDS[row.kind] == true,
+				"only checkbox, choice, button and keybinding rows: Blizzard's standard controls")
+			for _, choice in ipairs(row.kind == "choice" and row.values or {}) do
+				if section.place == "sources" then
+					Text("choice " .. tostring(choice.label), choice.description, { "gameTerms", "plain", "choice" })
+				else
+					Text("choice " .. tostring(choice.label), choice.description, { "gameTerms", "plain" })
+				end
 			end
 			Text("label", row.label, { "titleCase", "gameTerms", "plain" })
 			Text("tooltip", row.tooltip, { "oneSentence", "gameTerms", "plain" })

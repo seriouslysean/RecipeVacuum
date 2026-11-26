@@ -129,15 +129,21 @@ Settings = setmetatable({
 		table.insert(client.rows, row)
 		return row
 	end,
-	CreateDropdown = function(_, setting, _, tooltip)
-		local row = { dropdown = setting.label, tooltip = tooltip }
+	CreateSliderOptions = function(minimum, maximum, step)
+		local options = { minimum = minimum, maximum = maximum, step = step }
+		function options:SetLabelFormatter(side, formatter) self.side, self.formatter = side, formatter end
+		return options
+	end,
+	CreateSlider = function(_, setting, options, tooltip)
+		local row = { slider = setting.label, options = options, tooltip = tooltip }
 		table.insert(client.rows, row)
 		return row
 	end,
 	VarType = { Boolean = "boolean", Number = "number", String = "string" },
 }, { __index = function(settings, name) return client.Stub("Settings." .. name) end })
 function CreateSettingsListSectionHeaderInitializer(title) return { header = title } end
-function CreateSettingsButtonInitializer(title) return { button = title } end
+function CreateSettingsButtonInitializer(title, _, _, tooltip) return { button = title, tooltip = tooltip } end
+MinimalSliderWithSteppersMixin = { Label = { Left = 0, Right = 1, Top = 2, Min = 3, Max = 4 } }
 
 -- Runs the ADDON_LOADED callbacks registered for addonName, as the client does once saved data is read.
 -- Then the start-up events, in the client's order, for code that waits for login (key bindings are read then).

@@ -12,7 +12,7 @@ Settings labels and tooltips are not in this voice: they follow Blizzard's wordi
 
 ## Plain text
 
-The level cards speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the cards give the scanner's range), never a second in the same text. The verb for what the addon does with a recipe is "tracks". The cards' sentences are the toolkit's (`SourceCards`; Recipe Vacuum passes "recipes" and "recipes people link in chat").
+The level choices speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the choices give the scanner's range), never a second in the same text. The verb for what the addon does with a recipe is "tracks". The choices' sentences are the toolkit's (`SourceChoices`; Recipe Vacuum passes "recipes" and "recipes people link in chat").
 
 ## Where the voice comes from
 
