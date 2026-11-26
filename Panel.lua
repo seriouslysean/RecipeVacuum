@@ -402,7 +402,8 @@ local function CraftableCount(recipeID)
 	if not needs then
 		needs = {}
 		local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
-		for _, slot in ipairs(schematic and schematic.reagentSlotSchematics or {}) do
+		if not schematic then return 0 end -- not loaded yet: asked again on the next redraw, never cached as no reagents
+		for _, slot in ipairs(schematic.reagentSlotSchematics or {}) do
 			local reagent = slot.reagentType == Enum.CraftingReagentType.Basic and slot.reagents[1]
 			if reagent and reagent.itemID then needs[#needs + 1] = { reagent.itemID, slot.quantityRequired } end
 		end
@@ -1029,8 +1030,13 @@ local function Update()
 	if not (panel and panel:IsShown() and professionInfo) then return end
 	PlaceList()
 	local list, complete, total = ns.GetListedRecipes(professionInfo)
-	-- Not ready: the client's list update comes back through the events below.
-	if not list then return end
+	-- Not ready: the client's list update comes back through the events below. Until then the last profession's rows and count
+	-- must not stay on screen to be chosen.
+	if not list then
+		scroll:SetAlpha(0) -- shown again when the new list is complete (Finish)
+		shownSignature = nil
+		return
+	end
 	-- Names or factions still loading: hold the list back for up to WAIT_SECONDS, then show what there is. The
 	-- client's own events end the wait early, so the list is drawn once rather than shown and redrawn.
 	if not complete then
@@ -1097,6 +1103,18 @@ Request = function()
 	if requested then return end
 	requested = true
 	RunNextFrame(Update)
+end
+
+-- Panel show and hide, kept out of CreatePanel, which holds as many outside names as Lua allows.
+local function PanelHidden()
+	mapOpen = false
+	if placeMenu then placeMenu:Hide() end -- it would show again with the panel, with nothing left to close it
+	ClearNav()
+end
+
+local function RequestAndNav()
+	Request()
+	SyncNav() -- hiding cleared the jumps; an unchanged list and details would not set them again
 end
 
 local function CreatePanel()
@@ -1281,15 +1299,12 @@ local function CreatePanel()
 	empty:SetText(L["Nothing left to learn."])
 	empty:Hide()
 
-	panel:HookScript("OnHide", function()
-		mapOpen = false
-		ClearNav()
-	end)
+	panel:HookScript("OnHide", PanelHidden)
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
 		placedKey = nil -- the window may have changed size
 		shownDiscovery = nil
-		Request()
+		RequestAndNav()
 	end)
 	return panel
 end
@@ -1332,12 +1347,17 @@ end
 -- The events that change what the window lists: its own list update (also sent by a filter change), the data
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
 local eventFrame = CreateFrame("Frame")
-for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
+for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
 	"BAG_UPDATE_DELAYED" }) do -- bags change the counts; the same content refreshes rows in place
 	eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event)
-	if event == "PLAYER_REGEN_ENABLED" then
+	if event == "PLAYER_REGEN_DISABLED" then
+		-- Our jumps are refused in combat and block the d-pad there; this event comes just before the lockdown, while they can
+		-- still be cleared (SmartNavigation.lua, the override handling in Navigate). They are set again after combat.
+		ClearNav()
+		navPending = true
+	elseif event == "PLAYER_REGEN_ENABLED" then
 		if navPending then SyncNav() end
 	else
 		Request()
