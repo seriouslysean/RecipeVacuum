@@ -1,12 +1,35 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 32
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 33
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
 end
 
 lib.title = "Jig Boltgrip's Toolkit"
+
+-- The kit's player-facing text, English by default, through AceLocale-3.0 when the addon embeds it before
+-- the kit (owner, 2026-11-25: "English as the default ... I want the strings pulled out for localization").
+-- Other languages register "JigBoltgripToolkit" in their own files. Without AceLocale the English stands.
+-- Working-build lines (watch, log, malfunctions) stay English in the code.
+local L
+do
+	local AceLocale = LibStub("AceLocale-3.0", true)
+	local english = AceLocale and AceLocale:NewLocale("JigBoltgripToolkit", "enUS", true, true) or {}
+	for _, text in ipairs({
+		"%s commands:", "Troubleshooting", "List these commands",
+		"Prints these commands in your chat window, with what each one does.",
+		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
+		"Links", "Copy link", "Website",
+		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
+		"Tracks only %s you see for yourself.", "Also tracks what your party, guild and friends find.",
+		"Also tracks %s.",
+	}) do
+		english[text] = true
+	end
+	L = AceLocale and AceLocale:GetLocale("JigBoltgripToolkit")
+		or setmetatable({}, { __index = function(_, text) return text end })
+end
 lib.modules = lib.modules or {}
 
 -- Header for modules' key bindings: a module's Bindings.xml uses category="BINDING_HEADER_JIGBOLTGRIPTOOLKIT".
@@ -34,7 +57,7 @@ end
 local function ModuleLinks(addonName)
 	local links = {}
 	local website = C_AddOns.GetAddOnMetadata(addonName, "X-Website")
-	if website then table.insert(links, { "Website", website }) end
+	if website then table.insert(links, { L["Website"], website }) end
 	local curse = C_AddOns.GetAddOnMetadata(addonName, "X-Curse-Project-ID")
 	if curse then table.insert(links, { "CurseForge", "https://www.curseforge.com/projects/" .. curse }) end
 	return links
@@ -681,14 +704,14 @@ end
 --   spec.openings  false leaves out the range openings (owner, 2026-11-25, Tackletron: "Game terms, no range opening")
 lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 local SOURCE_CARDS = {
-	{ name = "Self Found", icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = "Short range.",
+	{ name = L["Self Found"], icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = L["Short range."],
 		text = function(spec)
-			return ("Tracks only %s you see for yourself."):format(spec.what)
+			return L["Tracks only %s you see for yourself."]:format(spec.what)
 		end },
-	{ name = FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range.",
-		text = function(spec) return spec.friends and "Also tracks what your party, guild and friends find." end },
-	{ name = "Public", icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = "Long range.",
-		text = function(spec) return spec.public and ("Also tracks %s."):format(spec.public) end },
+	{ name = FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = L["Medium range."],
+		text = function(spec) return spec.friends and L["Also tracks what your party, guild and friends find."] end },
+	{ name = L["Public"], icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = L["Long range."],
+		text = function(spec) return spec.public and L["Also tracks %s."]:format(spec.public) end },
 }
 
 -- Cards from here are marked, so BuildOptions can refuse cards built by hand (owner, 2026-11-25: rules baked in).
@@ -767,11 +790,11 @@ function lib:FinishModule(module)
 			end
 		end
 		if #rows > 0 then
-			module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Commands",
-				"Type these in chat, or run them here. /" .. command.name .. " help lists them all."))
+			module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Commands"],
+				L["Type these in chat, or run them here. /%s help lists them all."]:format(command.name)))
 			for _, entry in ipairs(rows) do
 				module.layout:AddInitializer(CreateSettingsButtonInitializer(
-					"/" .. command.name .. " " .. entry.action, "Run", entry.run, entry.description, false))
+					"/" .. command.name .. " " .. entry.action, L["Run"], entry.run, entry.description, false))
 				-- entry.note says what the command does in a sentence or two; the description is the short form.
 				self:AddNote(module.layout, entry.note or entry.description)
 			end
@@ -779,9 +802,9 @@ function lib:FinishModule(module)
 	end
 	local links = ModuleLinks(module.addon)
 	if #links > 0 then
-		module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer("Links"))
+		module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Links"]))
 		for _, link in ipairs(links) do
-			module.layout:AddInitializer(CreateSettingsButtonInitializer(link[1], "Copy link", function()
+			module.layout:AddInitializer(CreateSettingsButtonInitializer(link[1], L["Copy link"], function()
 				ShowLink(module.title .. ": " .. link[1], link[2])
 			end, link[2], false))
 		end
@@ -851,7 +874,7 @@ local function AddEntries(rows, command, troubleshooting)
 		if (entry.troubleshooting or false) == troubleshooting and entry.action ~= "help" then
 			if troubleshooting and not any then
 				-- A section heading in the game's heading gold, as a tooltip's headings are; its rows sit one step in.
-				table.insert(rows, NORMAL_FONT_COLOR:WrapTextInColorCode("Troubleshooting"))
+				table.insert(rows, NORMAL_FONT_COLOR:WrapTextInColorCode(L["Troubleshooting"]))
 			end
 			any = true
 			local slash = "/" .. command.name .. (entry.action ~= "" and " " .. entry.action or "")
@@ -866,7 +889,7 @@ function lib:PrintHelp(name)
 	local rows = {}
 	AddEntries(rows, command, false)
 	AddEntries(rows, command, true)
-	self:PrintBlock(("%s commands:"):format(command.title), rows)
+	self:PrintBlock(L["%s commands:"]:format(command.title), rows)
 end
 
 -- A method, so slash handlers made by an older copy of this file run the newest code.
@@ -900,8 +923,8 @@ function lib:RegisterCommands(module, name, entries)
 		hasHelp = hasHelp or entry.action == "help"
 	end
 	if not hasHelp then
-		table.insert(entries, { action = "help", description = "List these commands",
-			note = "Prints these commands in your chat window, with what each one does.", run = function()
+		table.insert(entries, { action = "help", description = L["List these commands"],
+			note = L["Prints these commands in your chat window, with what each one does."], run = function()
 			lib:PrintHelp(name)
 		end })
 	end

@@ -42,6 +42,11 @@ local FORBIDDEN = {
 	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)" },
 	{ "SetCVar%(%s*\"scriptErrors\"", "working builds start with the kit's EnableWorkingBuild" },
 }
+-- Player text outside working-build blocks goes through the addon's locale table, so it can be translated
+-- (owner, 2026-11-25: "I want the strings pulled out for localization").
+local LITERAL_TEXT = { "%f[%w_]label%s*=%s*\"%a", "%f[%w_]tooltip%s*=%s*\"%a", "%f[%w_]note%s*=%s*\"%a",
+	"%f[%w_]description%s*=%s*\"%a", "%f[%w_]heading%s*=%s*\"%a", "%f[%w_]text%s*=%s*\"%a",
+	"%f[%w_]noise%s*=%s*\"%a", "%f[%w_]report%s*=%s*\"%a" }
 for _, file in ipairs(files) do
 	if file:find("%.xml$") then
 		check(file .. ": no XML of the addon's own", false, "build frames in Lua on Blizzard's templates")
@@ -54,6 +59,14 @@ for _, file in ipairs(files) do
 			local code = line:gsub("%-%-.*$", "")
 			for _, rule in ipairs(FORBIDDEN) do
 				if code:find(rule[1]) then problems[#problems + 1] = ("line %d: %s"):format(number, rule[2]) end
+			end
+			if not open then
+				for _, pattern in ipairs(LITERAL_TEXT) do
+					if code:find(pattern) then
+						problems[#problems + 1] = ("line %d: player text is written in place, not looked up in the locale table"):format(number)
+						break
+					end
+				end
 			end
 			if line:find("%-%-@[%a%-]+@") then
 				local marker = line:match("^%s*%-%-@([%a%-]+)@%s*$")
