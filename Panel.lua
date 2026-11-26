@@ -88,7 +88,7 @@ local RING_RISE = 16 - RING_FROM - LINE_IN_TOP
 local ICON_LEVEL = 600 -- above the list's whole tree and every frame of ours, so the ring draws over both boxes' borders
 -- The pane's text and reagents as the live window places them, measured with /recipevacuum layout (build 71139; docs/client-notes.md,
 -- "Panel"): name 27.5 below the pane's top and 14 right of the output icon, the requirement 5 under it; the "Reagents:" label's top at
--- 108 (lower if the text above runs long), its icons 25.5 under that, 28 in, 45 apart, each name 46 right of its icon.
+-- 108 always, its icons 25.5 under that, 28 in, 45 apart, each name 46 right of its icon.
 local OUTPUT_LEFT = -RING_LEFT + OUTPUT_RING_INSET
 local NAME_TOP = 27.5
 local NAME_LEFT = OUTPUT_LEFT + 47 + 14
@@ -96,7 +96,6 @@ local OUTPUT_SUB_GAP = 5
 local DETAIL_GAP = RING_RISE + 2 -- the ring hangs into the gap above the box, so the list ends above it
 local DETAIL_BOTTOM = 20 -- content ends this far above the pane's bottom (:62), clear of the border's corner art
 local REAGENTS_TOP, REAGENTS_LEFT = 108, 27
-local REAGENTS_BELOW_TEXT = 41.5 -- the label's top under the requirement line's bottom, as measured
 local REAGENTS_LABEL_HEIGHT = 20
 local REAGENT_ICON_BELOW_LABEL = 25.5
 local REAGENT_LEFT, REAGENT_PITCH = 28, 45
@@ -848,12 +847,11 @@ FillDetail = function()
 	-- Top-down from whichever ends lower, the ring or the name block. The box is exactly this tall; Show Map is below it.
 	local top = math.max(RING_SIZE - RING_RISE, NAME_TOP + detail.Name:GetStringHeight()
 		+ (skill and OUTPUT_SUB_GAP + detail.Sub:GetStringHeight() or 0))
-	local textBottom = NAME_TOP + detail.Name:GetStringHeight() + OUTPUT_SUB_GAP + detail.Sub:GetHeight()
 
 	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
 	if #data.reagents > 0 then
-		top = math.max(REAGENTS_TOP, textBottom + REAGENTS_BELOW_TEXT)
+		top = REAGENTS_TOP -- fixed, as the window's pane keeps it whatever the text above holds
 		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", REAGENTS_LEFT, -top)
 		top = top + REAGENT_ICON_BELOW_LABEL
 	end
