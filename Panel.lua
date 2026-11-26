@@ -25,20 +25,30 @@ local TAB_TOP_OFFSET = 60
 -- The frame's top edge art (NineSliceLayouts.lua:24, drawn over the frame's own layers) is taller than the 21 px at which the
 -- background starts (SharedUIPanelTemplates.xml:629), so nothing sits higher than this.
 local CONTENT_TOP = 40
-local COUNT_BAND_HEIGHT = 16 -- one line of GameFontDisableSmall and its gap; the list area starts under it
+-- Blizzard_ProfessionsCrafting.xml:157 (RecipeList TOPLEFT y=-72): where the window's list starts; read from the window when shown.
+local LIST_TOP_DEFAULT = 72
 -- Blizzard_ProfessionsRecipeList.lua: view spacing, indent and pad; the element extents (20 per recipe, 20 + 5 per category).
 local ROW_HEIGHT = 20
 local HEADING_HEIGHT = 25
 local ROW_SPACING = 1
+-- Blizzard_ProfessionsRecipeList.lua:127-133 and Blizzard_Professions.lua:960-974: an open category holds a 1 px element above
+-- its recipes and a 10 px one below them, each followed by the list's spacing.
+local TOP_PAD = 1
+local BOTTOM_PAD = 10
 local ROW_INDENT = 10
 local LIST_PAD = 5 -- top, bottom and right pad of the list's view (:15, CreateScrollBoxListTreeListView)
 local ROW_PAD = 4
+-- Blizzard_SharedXML/ListTemplates.xml:35 (the title's left inset) and the gap the count keeps after it.
+local HEADING_TEXT_LEFT = 8
+local COUNT_GAP = 4
 -- Blizzard_ProfessionsRecipeList.xml:140-145,167-172: a row's SkillUps slot (26 x 15, 9 left of the row) and the
 -- label's 4 px gap after it. The skill number takes that slot, right-aligned so the numbers line up.
 local SKILL_WIDTH = 26
 local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
+-- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
+local RANK_BAR_FILL_INSET = 12
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -49,9 +59,29 @@ local WAIT_SECONDS = 1 -- at most: the client may still be loading names and fac
 -- Frames made ahead of need, out of combat, a few a frame (docs/client-notes.md, "Panel"), so a profession only fills frames that exist.
 local POOL_ROWS = 60
 local POOL_HEADINGS = 8
+-- The details below the list, built as Blizzard_ProfessionsRecipeSchematicForm.xml lays its recipe out (docs/client-notes.md, "Panel").
+local DETAIL_PAD = 8
+local DETAIL_GAP = 2 -- between the list and the details, as the window's list and recipe pane (Blizzard_ProfessionsCrafting.xml:164)
+local OUTPUT_SIZE = 47 -- ProfessionsOutputButtonTemplate (Blizzard_ProfessionsTemplates.xml:282)
+local OUTPUT_TEXT_GAP = 14 -- the name's gap right of the output icon (Blizzard_ProfessionsRecipeSchematicForm.xml:193)
+local OUTPUT_SUB_GAP = 5 -- the required skill under the name (:214)
+local REAGENT_SIZE = 39 -- ProfessionsButtonTemplate (Blizzard_ProfessionsTemplates.xml:42)
+local REAGENT_ROW = 43
+local REAGENT_TEXT_GAP = 7
+local SECTION_GAP = 8
+local LABEL_HEIGHT = 16
+local SOURCE_HEIGHT = 22
+local SOURCE_GAP = 2
+local PLAIN_HEIGHT = 16
+local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
 
-local panel, listArea, scroll, child, empty, countText
-local placedBottom
+local panel, listArea, scroll, child, empty, rankBar, detail
+local placedKey
+local SelectRecipe -- defined with the details; a row tap selects through it
+local selected -- the recipe whose details show: set by a tap, kept until another is tapped, the profession changes or it leaves the list
+local detailSignature
+local reagentRows, sourceButtons, plainTexts = {}, {}, {}
+local shownDiscovery
 local rows, headings = {}, {}
 local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
 local slots = {} -- the frame of each item once built
@@ -121,14 +151,11 @@ local function CreateRow()
 		end
 		GameTooltip_Hide()
 	end)
-	-- One click pins the nearest source; a menu would taint (docs/client-notes.md, "Gamepad").
+	-- A tap selects, as Blizzard's list does (Blizzard_ProfessionsRecipeList.lua:46-62); the details below hold the sources. A menu would taint (docs/client-notes.md, "Gamepad").
 	row:SetScript("OnClick", function(self, button)
 		if not self.recipe or button == "RightButton" then return end
-		local target = ns.MapTargets(self.recipe)[1]
-		ns.Trace("UI row clicked: recipe %d, %s", self.recipe.recipeID, target and "pinned" or "no place to pin")
-		if target then
-			ns.ShowOnMap(target)
-		end
+		PlaySound(SOUNDKIT.UI_90_BLACKSMITHING_TREEITEMCLICK)
+		SelectRecipe(self.recipe)
 	end)
 	row:Hide() -- hidden until a build places it
 	rows[#rows + 1] = row
@@ -151,6 +178,8 @@ end
 local function CreateHeading()
 	local heading = CreateFrame("Button", nil, child, HEADING_TEMPLATE)
 	heading.RankBar:Hide() -- Blizzard's skill line progress bar; a band has none
+	-- The count after the name, smaller and dim as Blizzard's rows show theirs, so it is not part of the title font.
+	heading.Count = heading:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	-- The template's own OnEnter and OnLeave stay: they only light the title and the marker.
 	heading:SetScript("OnClick", function(self)
 		toggled[BandKey(self.band)] = not IsOpen(self.band)
@@ -175,6 +204,7 @@ end
 -- Everything a row shows that does not move it, so a skill rise or new source updates a row without a rebuild.
 local function ShowRow(row, recipeInfo)
 	row.recipe = recipeInfo
+	row:SetSelected(selected ~= nil and selected.recipeID == recipeInfo.recipeID) -- the template's own selected look
 	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
 	row.Label:SetText(recipeInfo.name)
 	row.color = NameColor(recipeInfo)
@@ -195,12 +225,12 @@ end
 
 local function ShowHeading(heading, item)
 	heading.band = item.band
-	local first = (item.band - 1) * ns.RANK_BAND + 1
-	local text = L["Skill %d to %d"]:format(first, first + ns.RANK_BAND - 1)
+	heading:SetHeaderText(ns.BandTitle(professionInfo.professionID, item.band))
+	heading.Count:SetShown(not item.open)
 	if not item.open then
-		text = text .. L[" (%d)"]:format(item.count)
+		heading.Count:SetText(L["[%d]"]:format(item.count))
+		heading.Count:SetPoint("LEFT", heading, "LEFT", HEADING_TEXT_LEFT + heading.ButtonText:GetStringWidth() + COUNT_GAP, 0)
 	end
-	heading:SetHeaderText(text)
 	heading:UpdateCollapsedState(not item.open)
 end
 
@@ -291,36 +321,251 @@ local function LayOut(found, search)
 		parts[#parts + 1] = (open and "+" or "-") .. band .. "x" .. (last - index + 1)
 		top = top + HEADING_HEIGHT + ROW_SPACING
 		if open then
+			top = top + TOP_PAD + ROW_SPACING
 			for at = index, last do
 				rowCount = rowCount + 1
 				newItems[#newItems + 1] = { recipe = found[at], top = top, rowIndex = rowCount }
 				parts[#parts + 1] = found[at].recipeID
 				top = top + ROW_HEIGHT + ROW_SPACING
 			end
+			top = top + BOTTOM_PAD + ROW_SPACING
 		end
 		index = last + 1
 	end
 	return newItems, table.concat(parts, ","), rowCount, headingCount, top + LIST_PAD
 end
 
--- The list area ends where the crafting page's own list does, read when shown (the window can be a different size)
--- and only re-anchored when the offset changes. Above it are the title strip and the count line, beside Blizzard's
--- rank bar and search row (docs/client-notes.md, "Panel").
+-- The list area sits where the crafting page's own list does: its top and bottom are read when shown (the window can be a
+-- different size) and only re-anchored when they change. The details, when open, take their height from the bottom and the list
+-- ends above them (docs/client-notes.md, "Panel").
 local function PlaceList()
 	local theirs = ProfessionsFrame.CraftingPage.RecipeList
-	local panelBottom, listBottom = panel:GetBottom(), theirs:GetBottom()
-	if not (panelBottom and listBottom) then return end
+	local panelTop, panelBottom = panel:GetTop(), panel:GetBottom()
+	local listTop, listBottom = theirs:GetTop(), theirs:GetBottom()
+	if not (panelTop and panelBottom and listTop and listBottom) then return end
+	local top = math.max(panelTop - listTop, CONTENT_TOP)
 	local bottom = math.max(listBottom - panelBottom, FRAME_INSET)
-	if bottom == placedBottom then return end
-	placedBottom = bottom
-	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
+	local detailHeight = detail:IsShown() and detail:GetHeight() or 0
+	local key = ("%s:%s:%s"):format(top, bottom, detailHeight)
+	if key == placedKey then return end
+	placedKey = key
+	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -top)
+	detail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, bottom)
+	detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
+	if detailHeight > 0 then
+		listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
+	else
+		listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
+	end
+end
+
+-- Discovery as the window's own skill bar shows a skill: found of every recipe the character could still learn here.
+local function UpdateDiscovery(found, total)
+	local key = ("%s:%d:%d"):format(professionInfo.professionID, found, total)
+	if key == shownDiscovery then return end
+	shownDiscovery = key
+	rankBar:Update({ profession = professionInfo.profession, professionName = professionInfo.professionName,
+		skillLevel = found, maxSkillLevel = total, skillModifier = 0 })
+	rankBar.Rank.Text:SetText(L["%d / %d discovered"]:format(found, total))
+end
+
+-- The first frame of a pool of one kind, made when needed; later ones are reused for another recipe.
+local function Pooled(pool, index, make)
+	pool[index] = pool[index] or make()
+	return pool[index]
+end
+
+local function MakeReagentRow()
+	local button = CreateFrame("ItemButton", nil, detail, "ProfessionsButtonTemplate")
+	button:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetItemByID(self.itemID)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", GameTooltip_Hide)
+	button.Text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
+	button.Text:SetPoint("LEFT", button, "RIGHT", REAGENT_TEXT_GAP, 0)
+	button.Text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_PAD - REAGENT_SIZE - REAGENT_TEXT_GAP)
+	button.Text:SetJustifyH("LEFT")
+	return button
+end
+
+local function MakeSourceButton()
+	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
+	button:SetSize(PANEL_INNER_WIDTH - 2 * DETAIL_PAD, SOURCE_HEIGHT)
+	-- One source's pin, exactly: a button pins what it names (docs/client-notes.md, "Panel").
+	button:SetScript("OnClick", function(self)
+		ns.Trace("UI source pressed: %s", self.source.label)
+		ns.ShowOnMap(self.source.target)
+	end)
+	button:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip_SetTitle(GameTooltip, self.source.place)
+		GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", GameTooltip_Hide)
+	return button
+end
+
+local function MakePlainText()
+	local text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+	text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_PAD)
+	text:SetJustifyH("LEFT")
+	text:SetHeight(PLAIN_HEIGHT)
+	return text
+end
+
+-- What the details show: the made item, the basic reagents with what the character holds, and every source.
+local function DetailData(recipeInfo)
+	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeInfo.recipeID, false)
+	local data = { schematic = schematic, reagents = {}, sources = ns.SourceRows(recipeInfo) }
+	local parts = { recipeInfo.recipeID }
+	for _, slot in ipairs(schematic and schematic.reagentSlotSchematics or {}) do
+		local reagent = slot.reagentType == Enum.CraftingReagentType.Basic and slot.reagents[1]
+		if reagent and reagent.itemID then
+			local entry = { itemID = reagent.itemID, need = slot.quantityRequired, have = C_Item.GetItemCount(reagent.itemID, true) }
+			entry.name = C_Item.GetItemNameByID(reagent.itemID)
+			data.reagents[#data.reagents + 1] = entry
+			parts[#parts + 1] = ("%d:%d:%d:%s"):format(entry.itemID, entry.have, entry.need, entry.name or "")
+		end
+	end
+	for _, source in ipairs(data.sources) do
+		parts[#parts + 1] = source.label .. (source.target and "+" or "-")
+	end
+	return data, table.concat(parts, ",")
+end
+
+local itemWatch -- item names arrive later; the details are drawn again when they do, and only while one is missing
+
+local function HideDetail()
+	detailSignature = nil
+	detail:Hide()
+	PlaceList()
+end
+
+-- Draws the selected recipe in the details. The height is exactly the content, so the list above takes the rest.
+local function FillDetail()
+	if not selected then
+		if detail:IsShown() then HideDetail() end
+		return
+	end
+	local data, signature = DetailData(selected)
+	if signature == detailSignature then return end
+	detailSignature = signature
+	local schematic = data.schematic
+	local itemID = schematic and schematic.outputItemID
+	detail.itemID = itemID
+	detail.recipeID = selected.recipeID
+	Professions.SetupOutputIconCommon(detail.Output, schematic and schematic.quantityMin or 1, schematic and schematic.quantityMax or 1,
+		selected.icon, itemID, itemID and C_Item.GetItemQualityByID(itemID) or 1)
+	detail.Name:SetText(selected.name)
+	local skill = selected.requiredSkill
+	detail.Sub:SetShown(skill ~= nil)
+	if skill then detail.Sub:SetText(ITEM_MIN_SKILL:format(professionInfo.professionName, skill)) end
+	local top = DETAIL_PAD
+	local header = math.max(OUTPUT_SIZE, detail.Name:GetStringHeight() + (skill and OUTPUT_SUB_GAP + detail.Sub:GetStringHeight() or 0))
+	top = top + header
+
+	local missing = false
+	detail.ReagentsLabel:SetShown(#data.reagents > 0)
+	if #data.reagents > 0 then
+		top = top + SECTION_GAP
+		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+		top = top + LABEL_HEIGHT
+	end
+	for index, entry in ipairs(data.reagents) do
+		local button = Pooled(reagentRows, index, MakeReagentRow)
+		button.itemID = entry.itemID
+		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
+		local quality = C_Item.GetItemQualityByID(entry.itemID)
+		if quality then button:SetSlotQuality(quality) else button.IconBorder:Hide() end
+		local color = entry.have >= entry.need and HIGHLIGHT_FONT_COLOR or RED_FONT_COLOR
+		button.Text:SetText(color:WrapTextInColorCode(("%s %s"):format(TRADESKILL_REAGENT_COUNT:format(entry.have, entry.need), entry.name or "")))
+		button:Show()
+		button.Text:Show()
+		missing = missing or not entry.name
+		top = top + REAGENT_ROW
+	end
+	for index = #data.reagents + 1, #reagentRows do
+		reagentRows[index]:Hide()
+		reagentRows[index].Text:Hide()
+	end
+
+	local buttons, plain = 0, 0
+	if #data.sources > 0 then top = top + SECTION_GAP end
+	for _, source in ipairs(data.sources) do
+		if source.target then
+			buttons = buttons + 1
+			local button = Pooled(sourceButtons, buttons, MakeSourceButton)
+			button.source = source
+			button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+			button:SetText(source.label)
+			button:Show()
+			top = top + SOURCE_HEIGHT + SOURCE_GAP
+		else
+			plain = plain + 1
+			local text = Pooled(plainTexts, plain, MakePlainText)
+			text:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+			text:SetText(source.label)
+			text:Show()
+			top = top + PLAIN_HEIGHT + SOURCE_GAP
+		end
+	end
+	for index = buttons + 1, #sourceButtons do sourceButtons[index]:Hide() end
+	for index = plain + 1, #plainTexts do plainTexts[index]:Hide() end
+
+	detail:SetHeight(top + DETAIL_PAD)
+	detail:Show()
+	PlaceList()
+	if missing then
+		itemWatch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+	else
+		itemWatch:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
+	end
+end
+
+-- The row stays in view when the list above shrinks to make room for the details.
+local function KeepInView()
+	local top
+	for _, item in ipairs(items) do
+		if item.recipe and item.recipe.recipeID == selected.recipeID then top = item.top end
+	end
+	if not top then return end
+	local view, current = scroll:GetHeight(), scroll:GetVerticalScroll()
+	if top < current then
+		scroll:SetVerticalScroll(top)
+	elseif top + ROW_HEIGHT > current + view then
+		scroll:SetVerticalScroll(top + ROW_HEIGHT - view)
+	end
+end
+
+SelectRecipe = function(recipeInfo)
+	selected = recipeInfo
+	ns.Trace("UI recipe selected: %d", recipeInfo.recipeID)
+	for index = 1, math.min((nextItem or 1) - 1, #items) do
+		if items[index].recipe then slots[index]:SetSelected(items[index].recipe.recipeID == recipeInfo.recipeID) end
+	end
+	FillDetail()
+	RunNextFrame(function() if selected then KeepInView() end end)
+end
+
+-- A selected recipe that left the list (a filter, a search) is cleared; one still there is the list's current copy of it.
+local function ReconcileSelection(found)
+	if not selected then return end
+	local kept
+	for _, recipeInfo in ipairs(found) do
+		if recipeInfo.recipeID == selected.recipeID then kept = recipeInfo break end
+	end
+	selected = kept
 end
 
 local function Update()
 	requested = false
 	if not (panel and panel:IsShown() and professionInfo) then return end
 	PlaceList()
-	local list, complete = ns.GetListedRecipes(professionInfo)
+	local list, complete, total = ns.GetListedRecipes(professionInfo)
 	-- Not ready: the client's list update comes back through the events below.
 	if not list then return end
 	-- Names or factions still loading: hold the list back for up to WAIT_SECONDS, then show what there is. The
@@ -337,7 +582,10 @@ local function Update()
 			return
 		end
 	end
+	UpdateDiscovery(#list, total)
 	local found, search = CollectRecipes(list)
+	ReconcileSelection(found)
+	FillDetail()
 	local newItems, signature, rowCount, headingCount, height = LayOut(found, search)
 	local built = nextItem or 1
 	items = newItems
@@ -355,7 +603,6 @@ local function Update()
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
 	scroll:SetAlpha(0) -- shown by Finish, once every frame is placed
-	countText:SetText(L["%d found"]:format(#found))
 	if builtProfession ~= professionInfo.professionID then
 		builtProfession = professionInfo.professionID
 		scroll:SetVerticalScroll(0)
@@ -414,11 +661,57 @@ local function CreatePanel()
 	listArea.Background = listArea:CreateTexture(nil, "BACKGROUND")
 	listArea.Background:SetAtlas("Professions-background-summarylist")
 	listArea.Background:SetAllPoints()
-	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -(CONTENT_TOP + COUNT_BAND_HEIGHT))
+	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -LIST_TOP_DEFAULT)
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
-	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	countText:SetPoint("TOP", panel, "TOP", 0, -CONTENT_TOP)
+	-- The window's own skill bar template (Blizzard_ProfessionsCrafting.xml:197), at its height and strata and in the band above
+	-- the list. The template's width is its art's, so its parts are widened as its overrideWidth path does (Blizzard_ProfessionsRankBar.lua:105-112).
+	rankBar = CreateFrame("Frame", nil, panel, "ProfessionsRankBarTemplate")
+	rankBar.ownerManagesEvents = true -- it shows discovery here, not the window's skill, so the skill events do not drive it
+	rankBar:SetFrameStrata("HIGH")
+	rankBar.ExpansionDropdownButton:Hide() -- its menu picks the window's expansion
+	rankBar:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -CONTENT_TOP)
+	rankBar:SetWidth(PANEL_INNER_WIDTH)
+	rankBar.Background:SetWidth(PANEL_INNER_WIDTH)
+	rankBar.Border:SetWidth(PANEL_INNER_WIDTH)
+	rankBar.Fill:SetWidth(PANEL_INNER_WIDTH - RANK_BAR_FILL_INSET)
+	rankBar:EnableMouse(true)
+	rankBar:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip_AddNormalLine(GameTooltip, L["Recipes found out of all the ones you can still learn in this profession."])
+		GameTooltip:Show()
+	end)
+	rankBar:SetScript("OnLeave", GameTooltip_Hide)
+
+	-- The recipe's details, drawn as the list area is, under the list and sized to their content (FillDetail).
+	detail = CreateFrame("Frame", nil, panel, "InsetFrameTemplate")
+	detail.Bg:Hide()
+	detail.Background = detail:CreateTexture(nil, "BACKGROUND")
+	detail.Background:SetAtlas("Professions-background-summarylist")
+	detail.Background:SetAllPoints()
+	detail:Hide()
+	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
+	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -DETAIL_PAD)
+	detail.Output:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		if detail.itemID then GameTooltip:SetItemByID(detail.itemID) else GameTooltip:SetSpellByID(detail.recipeID) end
+		GameTooltip:Show()
+	end)
+	detail.Output:SetScript("OnLeave", GameTooltip_Hide)
+	local textWidth = PANEL_INNER_WIDTH - 2 * DETAIL_PAD - OUTPUT_SIZE - OUTPUT_TEXT_GAP
+	detail.Name = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
+	detail.Name:SetPoint("TOPLEFT", detail.Output, "TOPRIGHT", OUTPUT_TEXT_GAP, 0)
+	detail.Name:SetSize(textWidth, 0)
+	detail.Name:SetJustifyH("LEFT")
+	detail.Name:SetJustifyV("TOP")
+	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	detail.Sub:SetPoint("TOPLEFT", detail.Name, "BOTTOMLEFT", 0, -OUTPUT_SUB_GAP)
+	detail.Sub:SetWidth(textWidth)
+	detail.Sub:SetJustifyH("LEFT")
+	detail.ReagentsLabel = detail:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	detail.ReagentsLabel:SetText(PROFESSIONS_REAGENT_CONTAINER_LABEL)
+	itemWatch = CreateFrame("Frame")
+	itemWatch:SetScript("OnEvent", function() detailSignature = nil; FillDetail() end)
 
 	-- A plain scroll frame (a ScrollBox would hold our data in Blizzard's secure code) with Blizzard's minimal
 	-- scroll bar, the one its recipe list uses: the thumb is sized to the share of the list in view.
@@ -450,7 +743,8 @@ local function CreatePanel()
 
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
-		placedBottom = nil -- the window may have changed size
+		placedKey = nil -- the window may have changed size
+		shownDiscovery = nil
 		Request()
 	end)
 	return panel
@@ -473,6 +767,8 @@ local function OnInit(_, info)
 	end
 	if not (professionInfo and professionInfo.professionID == info.professionID) then
 		waitUntil = nil
+		selected = nil -- the details close with the profession
+		FillDetail()
 	end
 	professionInfo = info
 	-- Only this character's own professions have recipes to learn.

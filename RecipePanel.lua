@@ -34,21 +34,49 @@ function ns.SortTargets(targets)
 	end)
 end
 
--- Mappable sources, each { label, mapID, x, y }.
 -- Drops follow their scope (docs/data.md, "Drops"): one creature is pinned where it was killed; a zone or world drop has no one place to pin.
+local function IsPinnable(observation, scope)
+	return observation.kind ~= "drop" or observation.fishing or (scope and scope.scope == "single")
+end
+
+-- Mappable sources, each { label, mapID, x, y }.
 function ns.MapTargets(recipeInfo)
 	local targets = {}
 	local entries = ns.GetSources(recipeInfo) or {}
 	local scope = ns.DropScope(entries)
 	for _, observation in ipairs(entries) do
-		local pinned = observation.kind ~= "drop" or observation.fishing or (scope and scope.scope == "single")
-		local target = pinned and ns.SourceTarget(observation)
+		local target = IsPinnable(observation, scope) and ns.SourceTarget(observation)
 		if target then
 			table.insert(targets, target)
 		end
 	end
 	ns.SortTargets(targets)
 	return targets
+end
+
+-- The recipe's sources as the details list them, each { label, target, place }: "who, type" as the source tooltip names it, the pin
+-- when it has a place (nil otherwise, shown as plain text) and the place's name. Drops with no one creature are one row naming the scope.
+function ns.SourceRows(recipeInfo)
+	local rows = {}
+	local entries = ns.GetSources(recipeInfo) or {}
+	local scope = ns.DropScope(entries)
+	local scopeShown = false
+	for _, observation in ipairs(entries) do
+		if IsPinnable(observation, scope) or observation.container then
+			local name = ns.SourceInfo(observation)
+			local target = IsPinnable(observation, scope) and ns.SourceTarget(observation) or nil
+			local mapID = ns.SourcePosition(observation)
+			rows[#rows + 1] = {
+				label = ("%s, %s"):format(name or UNKNOWN, ns.sourceTypes[observation.kind].label),
+				target = target,
+				place = ns.PlaceName(observation, mapID and C_Map.GetMapInfo(mapID)),
+			}
+		elseif not scopeShown and scope then
+			scopeShown = true
+			rows[#rows + 1] = { label = ns.DropHeader(scope) }
+		end
+	end
+	return rows
 end
 
 -- Sets the waypoint and super-tracks it, as Blizzard's own pin links do (ItemRefHandlers.lua); nothing follows a pin that was not set. The world map is never opened: opening it from addon code taints (docs/client-notes.md, "Gamepad").

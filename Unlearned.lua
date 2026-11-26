@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- Works out which recipes a character has not learned, grouped by category, for Recipe Vacuum's own panel. It writes nothing into Blizzard's frames (docs/client-notes.md, "Gamepad").
 
@@ -140,8 +141,8 @@ function ns.GetUnlearnedRecipes(professionInfo)
 end
 
 -- What the panel lists for a profession: the unlearned recipes of the open skill line that pass the show rule (ns.IsListed), in one flat
--- list in skill-up order. The second result is true once the client's data was complete, so the list will not change.
--- Built once per cached categories table, which is replaced whenever the sources or the character's recipes change.
+-- list in skill-up order. The second result is true once the client's data was complete. The third is every candidate before the show
+-- rule, the total of the discovery count (docs/data.md, "Discovery"). Built once per cached categories table.
 local listed = {}
 
 function ns.GetListedRecipes(professionInfo)
@@ -152,8 +153,9 @@ function ns.GetListedRecipes(professionInfo)
 	local professionID = professionInfo.professionID
 	local entry = listed[professionID]
 	if not (entry and entry.categories == categories) then
-		local list = {}
+		local list, total = {}, 0
 		for _, category in ipairs(categories) do
+			total = total + #category.recipes
 			for _, recipeInfo in ipairs(category.recipes) do
 				if ns.IsListed(recipeInfo) then
 					table.insert(list, recipeInfo)
@@ -161,10 +163,10 @@ function ns.GetListedRecipes(professionInfo)
 			end
 		end
 		table.sort(list, SortRecipes)
-		entry = { categories = categories, list = list }
+		entry = { categories = categories, list = list, total = total }
 		listed[professionID] = entry
 	end
-	return entry.list, cache[professionID] ~= nil
+	return entry.list, cache[professionID] ~= nil, entry.total
 end
 
 -- The panel groups recipes by the rank caps of a profession (75, 150, 225, 300); band 1 is skill 1 to 75.
@@ -172,4 +174,16 @@ ns.RANK_BAND = 75
 
 function ns.BandOf(skill)
 	return math.max(1, math.ceil(skill / ns.RANK_BAND))
+end
+
+-- A band's heading: the game's own rank spell for the profession and step ("Journeyman Engineer"), read by ID from the seed
+-- (docs/data.md, "Rank spells"); the skill range when no rank spell is known.
+function ns.BandTitle(professionID, band)
+	local ranks = ns.seed and ns.seed.rankSpell and ns.seed.rankSpell[professionID]
+	local name = ranks and ranks[band] and C_Spell.GetSpellName(ranks[band])
+	if name then
+		return name
+	end
+	local first = (band - 1) * ns.RANK_BAND + 1
+	return L["Skill %d to %d"]:format(first, first + ns.RANK_BAND - 1)
 end

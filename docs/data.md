@@ -98,6 +98,14 @@ The panel is self-found (owner, 2026-11-26): a recipe appears only once it has b
 
 The panel groups the found recipes by rank band of their required skill (`ns.BandOf`, `Unlearned.lua`): bands of 75, the profession's rank caps (1 to 75, 76 to 150, 151 to 225, 226 to 300). A recipe with no known requirement is placed by its trivial level (`ns.SkillOf`). The band holding the character's skill, and every band below it, start open; higher bands start collapsed. A click on a heading toggles it for the session; nothing about it is saved.
 
+## Discovery
+
+The panel's discovery bar is found over total for the open skill line (`ns.GetListedRecipes`, `Unlearned.lua`). Found is the recipes the show rule lists, ignoring the search and filters. Total is every unlearned candidate of the skill line before the show rule: not the other faction's, nothing of another expansion's. The bar says how much of what the character could still learn has been found, and the panel keeps no list of the rest.
+
+## Rank spells
+
+A band heading is the game's rank spell for the profession and step ("Journeyman Engineer", `ns.BandTitle`), the name read with `C_Spell.GetSpellName` so it is in the player's language; "Skill 76 to 150" is the fallback where no rank spell is known. `ns.seed.rankSpell[skillLine][step]` holds the spell IDs. `tools/seed.lua` reads them from wago.tools' `SpellEffect` table for the seed's build: a rank spell is a row with `Effect` 118 (SKILL_STEP), the skill line in `EffectMiscValue_0` and the step in `EffectBasePointsF`. Checked against known spells: Blacksmithing (164) Apprentice 2018 is step 1 and Journeyman 3100 step 2; Engineering (202) Apprentice 4036 and Journeyman 4037. Build 71091: 106 skill line and step pairs. Three steps (Tailoring 182, Leatherworking 186, Engineering 202, step 1) have a second spell with an ID above 1,235,000, which Forever adds beside the classic one; the lower ID is kept. Band n is step n, so bands past the fourth have no rank spell.
+
 ## Required skill
 
 The skill a recipe is learned at, `recipeInfo.requiredSkill` (`ns.SummarizeSources`), is the lowest of:

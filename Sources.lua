@@ -532,17 +532,22 @@ local DROP_LINES = 6 -- sightings listed under a drop header before "and N more"
 
 local AddKindLines
 
--- Drops: the header names the scope ("Drop", "Zone Drop: Duskwood", "World Drop"), then the
--- sightings (a world drop lists its zones instead), then the evidence line.
+-- The header naming a drop's scope: "Drop", "Zone Drop: Duskwood", "World Drop".
+function ns.DropHeader(scope)
+	local header = DROP_SCOPE_LABELS[scope.scope]
+	if scope.scope == "zone" and scope.place then
+		header = ("%s: %s"):format(header, ns.DropPlaceName(scope.place.kind, scope.place.id))
+	end
+	return header
+end
+
+-- Drops: the header names the scope, then the sightings (a world drop lists its zones instead), then the evidence line.
 local function AddDropLines(tooltip, entries, detailed, withHeader)
 	local scope = ns.DropScope(entries)
 	if not scope then
 		return AddKindLines(tooltip, entries, "drop", detailed, withHeader, true)
 	end
-	local header = DROP_SCOPE_LABELS[scope.scope]
-	if scope.scope == "zone" and scope.place then
-		header = ("%s: %s"):format(header, ns.DropPlaceName(scope.place.kind, scope.place.id))
-	end
+	local header = ns.DropHeader(scope)
 	if withHeader then
 		GameTooltip_AddNormalLine(tooltip, MarkText("drop", header))
 	end

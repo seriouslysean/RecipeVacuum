@@ -775,16 +775,19 @@ describe("simulation", function()
 			-- The parts Blizzard's recipe list templates create (Blizzard_ProfessionsRecipeList.xml).
 			local parts = {
 				ProfessionsRecipeListRecipeTemplate = { "Label", "Count", "SkillUps", "LockedIcon" },
-				ProfessionsRecipeListCategoryTemplate = { "RankBar" },
+				ProfessionsRecipeListCategoryTemplate = { "RankBar", "ButtonText" },
 				ScrollFrameTemplate = { "ScrollBar" },
 				-- Blizzard_SharedXML SharedUIPanelTemplates.xml: the portrait frame's close button, the inset frame's marble.
 				PortraitFrameTemplate = { "CloseButton" },
 				InsetFrameTemplate = { "Bg" },
+				ProfessionsRankBarTemplate = { "Background", "Border", "Fill", "ExpansionDropdownButton", "Rank" },
 			}
 			CreateFrame = function(kind, _, parent, template)
 				local f = Fake(parent)
 				if kind == "Button" then f.shown = true; buttons[#buttons + 1] = f end
 				for _, key in ipairs(parts[template] or {}) do f[key] = Fake(f) end
+				if rawget(f, "ButtonText") then f.ButtonText.GetStringWidth = function() return 0 end end
+				if rawget(f, "Rank") then f.Rank.Text = Fake(f.Rank) end
 				return f
 			end
 			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end }
@@ -837,6 +840,49 @@ describe("simulation", function()
 			for _ = 1, 5 do init() end
 			Flush()
 			assert(Builds() == 1, "several Init calls in one frame build the list once")
+		end)
+		-- Fails if a heading says "Skill 76 to 150" where the game names the rank, or breaks where no rank spell is known.
+		it("a band heading is the profession's rank spell name, or the skill range without one", function()
+			local seed, spells = pns.seed, C_Spell
+			pns.seed = { rankSpell = { [164] = { [2] = 3100 } } }
+			C_Spell = { GetSpellName = function(id) return id == 3100 and "Journeyman Blacksmith" or nil end }
+			local ok, err = pcall(function()
+				assert(pns.BandTitle(164, 2) == "Journeyman Blacksmith", "the rank spell's name")
+				assert(pns.BandTitle(164, 3) == "Skill 151 to 225", "a step with no spell")
+				assert(pns.BandTitle(999, 2) == "Skill 76 to 150", "a profession with no spells")
+			end)
+			pns.seed, C_Spell = seed, spells
+			assert(ok, err)
+		end)
+		-- Fails if the discovery count (found over total) counts the wrong recipes: found is what the show rule lists, total every unlearned
+		-- candidate of the skill line, whichever category holds it.
+		it("the discovery count is the listed recipes over every candidate of the skill line", function()
+			local categories, isListed = pns.GetUnlearnedRecipes, pns.IsListed
+			pns.IsListed = function(recipeInfo) return recipeInfo.listed end
+			local cases = {
+				{ name = "none found", categories = { { false, false } }, found = 0, total = 2 },
+				{ name = "some found across categories", categories = { { true, false }, { true } }, found = 2, total = 3 },
+				{ name = "all found", categories = { { true, true } }, found = 2, total = 2 },
+				{ name = "nothing to learn", categories = {}, found = 0, total = 0 },
+			}
+			local ok, err = pcall(function()
+				for _, case in ipairs(cases) do
+					local built, id = {}, 0
+					for _, flags in ipairs(case.categories) do
+						local recipes = {}
+						for _, listed in ipairs(flags) do
+							id = id + 1
+							recipes[#recipes + 1] = { recipeID = id, name = "R" .. id, requiredSkill = id, listed = listed }
+						end
+						built[#built + 1] = { recipes = recipes }
+					end
+					pns.GetUnlearnedRecipes = function() return built end
+					local list, _, total = pns.GetListedRecipes({ professionID = 164 })
+					assert(#list == case.found and total == case.total, case.name .. ": " .. #list .. "/" .. total)
+				end
+			end)
+			pns.GetUnlearnedRecipes, pns.IsListed = categories, isListed
+			assert(ok, err)
 		end)
 		-- Fails if recipes with no source and never come across, or come across beyond the level, are listed: 518 rows for Blacksmithing.
 		it("lists only recipes with a known source or come across within the level", function()
