@@ -628,7 +628,7 @@ local function MakeMapMore()
 	button.Background:SetPoint("TOPLEFT", -art.bleed, art.bleed)
 	button.Background:SetPoint("BOTTOMRIGHT", art.bleed, -art.bleed)
 	button:SetNormalFontObject("GameFontHighlight")
-	button:SetText(SHOW_MAP)
+	button:SetText(MAP_PIN)
 	local text = button:GetFontString()
 	text:ClearAllPoints()
 	text:SetPoint("LEFT", 12, 0)
@@ -655,14 +655,14 @@ local function MakeMapMore()
 	return button
 end
 
--- The game's own Show Map label (SHOW_MAP, QuestMapFrame.xml). One place is a plain button that pins it (the same one as the quest
+-- The game's own word for what a press does, Map Pin (MAP_PIN): it places the map pin and focuses it, and never opens the map. One place is a plain button that pins it (the same one as the quest
 -- log's); several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
 -- would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
 	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
 	button:SetSize(PANEL_INNER_WIDTH, SOURCE_HEIGHT)
 	button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, BUTTON_BOTTOM) -- the window's action buttons sit at the bottom of their page
-	button:SetText(SHOW_MAP)
+	button:SetText(MAP_PIN)
 	button:SetScript("OnClick", function(self)
 		if self.single then
 			ns.Trace("UI source pressed: %s", self.single.label)
