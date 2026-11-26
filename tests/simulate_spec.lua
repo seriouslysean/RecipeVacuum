@@ -769,7 +769,7 @@ describe("simulation", function()
 			RunNextFrame = function(fn) queue[#queue + 1] = fn end
 			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
 			local color = { GetRGB = function() return 1, 1, 1 end }
-			DIFFICULT_DIFFICULTY_COLOR, FAIR_DIFFICULTY_COLOR, EASY_DIFFICULTY_COLOR, TRIVIAL_DIFFICULTY_COLOR, DISABLED_FONT_COLOR = color, color, color, color, color
+			HIGHLIGHT_FONT_COLOR, DISABLED_FONT_COLOR = color, color
 			CaseAccentInsensitiveParse = function(text) return text:lower() end
 			GetUIPanel = function() return nil end
 			hooksecurefunc = function(owner, name, fn)

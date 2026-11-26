@@ -32,13 +32,7 @@ local INSET_EDGES = {
 	bottom = { atlas = "_UI-Frame-InnerBotTile", key = "height" },
 }
 
--- Blizzard's own difficulty colors, by the recipe's difficulty for the player's skill (Blizzard_ProfessionsRecipeList.lua).
--- A trivial recipe has no entry there, and is drawn in the game's trivial color.
-local DIFFICULTY_COLORS = {
-	[Enum.TradeskillRelativeDifficulty.Optimal] = DIFFICULT_DIFFICULTY_COLOR,
-	[Enum.TradeskillRelativeDifficulty.Medium] = FAIR_DIFFICULTY_COLOR,
-	[Enum.TradeskillRelativeDifficulty.Easy] = EASY_DIFFICULTY_COLOR,
-}
+local SKILL_WIDTH = 22 -- room for a three-digit skill, right-aligned so the numbers line up
 
 local panel, scroll, child, empty, countText, stepButton
 local rows = {}
@@ -55,17 +49,21 @@ local function CreateRow(index)
 	row:SetHeight(ROW_HEIGHT)
 	row:SetHighlightAtlas("Options_List_Hover", "ADD") -- the highlight Blizzard's settings lists use
 
+	-- The skill the list is ordered by comes first: it is what the list is about.
+	row.Skill = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	row.Skill:SetPoint("LEFT", ROW_PAD, 0)
+	row.Skill:SetWidth(SKILL_WIDTH)
+	row.Skill:SetJustifyH("RIGHT")
+
 	row.Icon = row:CreateTexture(nil, "ARTWORK")
 	row.Icon:SetSize(ICON_SIZE, ICON_SIZE)
-	row.Icon:SetPoint("LEFT", ROW_PAD, 0)
+	row.Icon:SetPoint("LEFT", row.Skill, "RIGHT", ROW_PAD, 0)
 
 	row.Name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
 	row.Name:SetPoint("LEFT", row.Icon, "RIGHT", ROW_PAD, 0)
 	row.Name:SetJustifyH("LEFT")
 	row.Name:SetWordWrap(false)
 
-	-- The skill the list is ordered by, before the marks.
-	row.Skill = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 
 	-- Marks stack from the right edge, in display order from the left.
 	local marks = {}
@@ -119,12 +117,14 @@ local function CreateRow(index)
 	return row
 end
 
--- Grey when the recipe cannot be learned by this character, else the game's color for how it rates against their skill.
+-- White when the character's skill can learn it now, grey when not yet or not at all. Skill-up colors would
+-- mislead: a recipe not yet learned cannot be made, so it gives no skill.
 local function NameColor(recipeInfo)
-	if recipeInfo.disabled or recipeInfo.lockReason then
+	local skill = professionInfo and professionInfo.skillLevel or 0
+	if recipeInfo.disabled or recipeInfo.lockReason or (recipeInfo.requiredSkill or 0) > skill then
 		return DISABLED_FONT_COLOR
 	end
-	return DIFFICULTY_COLORS[recipeInfo.relativeDifficulty] or TRIVIAL_DIFFICULTY_COLOR
+	return HIGHLIGHT_FONT_COLOR
 end
 
 local function ShowRow(row, recipeInfo)
@@ -143,9 +143,8 @@ local function ShowRow(row, recipeInfo)
 			ns.SetMarkStrength(mark, false)
 		end
 	end
-	-- The skill number sits left of the marks, and the name stops where the number begins.
-	row.Skill:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
-	row.Name:SetPoint("RIGHT", row.Skill, "LEFT", -ROW_PAD, 0)
+	-- The name stops where the marks begin.
+	row.Name:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
 end
 
 local function Finish()
