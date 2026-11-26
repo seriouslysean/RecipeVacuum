@@ -48,7 +48,9 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
-local BAR_EDGE_SIDE, BAR_EDGE_TOP, BAR_EDGE_BOTTOM = 8, 7, 10 -- LegacyProgressBarTemplate's frame anchors
+local BAR_CORNER = 5 -- past the skill bar art's 3 px clipped corners, so slicing keeps them
+local BAR_FILL_LEFT, BAR_FILL_TOP, BAR_FILL_INSET = 5, 3, 12 -- Blizzard_ProfessionsRankBar.xml: the fill at 5, -3, 441 of 453
+local BAR_FILL_SLICE = 4 -- the game's slice data for the Legacy fill (UiTextureAtlasElementSliceData, element 36419)
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
@@ -547,8 +549,10 @@ local function UpdateDiscovery(found, total)
 	local key = ("%s:%d:%d"):format(professionInfo.professionID, found, total)
 	if key == shownDiscovery then return end
 	shownDiscovery = key
-	rankBar:SetMinMaxValues(0, math.max(total, 1))
-	rankBar:SetValue(found)
+	-- The fill's width is the share found, as the skill bar's mask shows its share.
+	local share = total > 0 and math.min(found / total, 1) or 0
+	rankBar.Fill:SetShown(share > 0)
+	rankBar.Fill:SetWidth(math.max((BAR_WIDTH - BAR_FILL_INSET) * share, 2 * BAR_FILL_SLICE))
 	rankBar.text:SetText(L["%d / %d discovered"]:format(found, total))
 end
 
@@ -1062,26 +1066,29 @@ local function CreatePanel()
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -LIST_TOP_DEFAULT)
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
-	-- Forever's own progress bar, the Legacy challenges' (LegacyProgressBarTemplate, Blizzard_LegacySystem/Blizzard_LegacySystemTemplates.xml):
-	-- a still fill on a frame, at the height of the window's skill bar beside it. Built from its atlases, since its addon loads on demand;
-	-- the frame is sliced on all four sides by the template's own overhang, so its edges keep their thickness at our size.
-	rankBar = CreateFrame("StatusBar", nil, panel)
+	-- The window's skill bar art (Professions-skillbar-bg and -frame, placed as Blizzard_ProfessionsRankBar.xml does), sliced past its
+	-- 3 px clipped corners (measured on the Deck) to keep its edges at our width; the fill is the Legacy challenge bar's still one,
+	-- since the template's fills are each profession's own animated art and its code recolors them.
+	rankBar = CreateFrame("Frame", nil, panel)
 	rankBar:SetSize(BAR_WIDTH, RANK_BAR_HEIGHT)
+	for key, atlas in pairs({ Background = "Professions-skillbar-bg", Border = "Professions-skillbar-frame" }) do
+		local art = rankBar:CreateTexture(nil, key == "Background" and "BACKGROUND" or "OVERLAY")
+		art:SetAtlas(atlas, true) -- at its own size, as useAtlasSize places it
+		art:SetWidth(BAR_WIDTH)
+		art:SetPoint("TOPLEFT")
+		art:SetTextureSliceMargins(BAR_CORNER, 0, BAR_CORNER, 0)
+		art:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
+		rankBar[key] = art
+	end
+	-- The fill sits where the template's does: 5 in, 3 down, 12 narrower than the bar (Blizzard_ProfessionsRankBar.xml).
 	rankBar.Fill = rankBar:CreateTexture(nil, "ARTWORK")
 	rankBar.Fill:SetAtlas("Legacy-Progressbar-Fill")
-	rankBar:SetStatusBarTexture(rankBar.Fill)
-	rankBar.Background = rankBar:CreateTexture(nil, "BACKGROUND")
-	rankBar.Background:SetAtlas("Legacy-Progressbar-BG")
-	rankBar.Background:SetAllPoints()
-	rankBar.Border = rankBar:CreateTexture(nil, "OVERLAY")
-	rankBar.Border:SetAtlas("Legacy-Progressbar-Frame")
-	-- The template's frame reaches 8 past each side, 7 above and 10 below its bar: that is its edge, kept at its own size.
-	rankBar.Border:SetPoint("TOPLEFT", -BAR_EDGE_SIDE, BAR_EDGE_TOP)
-	rankBar.Border:SetPoint("BOTTOMRIGHT", BAR_EDGE_SIDE, -BAR_EDGE_BOTTOM)
-	rankBar.Border:SetTextureSliceMargins(BAR_EDGE_SIDE, BAR_EDGE_TOP, BAR_EDGE_SIDE, BAR_EDGE_BOTTOM)
-	rankBar.Border:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
-	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "NumberFontNormal") -- the template's own font
-	rankBar.text:SetPoint("CENTER")
+	rankBar.Fill:SetTextureSliceMargins(BAR_FILL_SLICE, BAR_FILL_SLICE, BAR_FILL_SLICE, BAR_FILL_SLICE)
+	rankBar.Fill:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
+	rankBar.Fill:SetPoint("TOPLEFT", BAR_FILL_LEFT, -BAR_FILL_TOP)
+	rankBar.Fill:SetHeight(RANK_BAR_HEIGHT)
+	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "Number12FontOutline") -- the skill bar's own font
+	rankBar.text:SetPoint("CENTER", 0, -BAR_FILL_TOP)
 	rankBar:SetPoint("CENTER", panel, "TOP", 0, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
