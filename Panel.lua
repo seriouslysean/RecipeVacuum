@@ -48,8 +48,7 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
-local BAR_SCALE = 18 / 12 -- the Legacy bar's art is 12 high; ours matches the window's 18 px skill bar
-local BAR_CAP = 10 -- the frame art's end, kept unstretched when sliced (unmeasured: checked in game)
+local BAR_EDGE_SIDE, BAR_EDGE_TOP, BAR_EDGE_BOTTOM = 8, 7, 10 -- LegacyProgressBarTemplate's frame anchors
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
@@ -1065,7 +1064,7 @@ local function CreatePanel()
 
 	-- Forever's own progress bar, the Legacy challenges' (LegacyProgressBarTemplate, Blizzard_LegacySystem/Blizzard_LegacySystemTemplates.xml):
 	-- a still fill on a frame, at the height of the window's skill bar beside it. Built from its atlases, since its addon loads on demand;
-	-- the 2x art (24 high) drawn at 18 keeps it sharp, and the frame is sliced so its ends keep their shape at our width.
+	-- the frame is sliced on all four sides by the template's own overhang, so its edges keep their thickness at our size.
 	rankBar = CreateFrame("StatusBar", nil, panel)
 	rankBar:SetSize(BAR_WIDTH, RANK_BAR_HEIGHT)
 	rankBar.Fill = rankBar:CreateTexture(nil, "ARTWORK")
@@ -1076,10 +1075,10 @@ local function CreatePanel()
 	rankBar.Background:SetAllPoints()
 	rankBar.Border = rankBar:CreateTexture(nil, "OVERLAY")
 	rankBar.Border:SetAtlas("Legacy-Progressbar-Frame")
-	-- The template's frame reaches 8 past each side, 7 above and 10 below its bar at the art's own 12 px height.
-	rankBar.Border:SetPoint("TOPLEFT", -8 * BAR_SCALE, 7 * BAR_SCALE)
-	rankBar.Border:SetPoint("BOTTOMRIGHT", 8 * BAR_SCALE, -10 * BAR_SCALE)
-	rankBar.Border:SetTextureSliceMargins(BAR_CAP, 0, BAR_CAP, 0)
+	-- The template's frame reaches 8 past each side, 7 above and 10 below its bar: that is its edge, kept at its own size.
+	rankBar.Border:SetPoint("TOPLEFT", -BAR_EDGE_SIDE, BAR_EDGE_TOP)
+	rankBar.Border:SetPoint("BOTTOMRIGHT", BAR_EDGE_SIDE, -BAR_EDGE_BOTTOM)
+	rankBar.Border:SetTextureSliceMargins(BAR_EDGE_SIDE, BAR_EDGE_TOP, BAR_EDGE_SIDE, BAR_EDGE_BOTTOM)
 	rankBar.Border:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
 	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "NumberFontNormal") -- the template's own font
 	rankBar.text:SetPoint("CENTER")
