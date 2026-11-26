@@ -255,6 +255,7 @@ describe("simulation", function()
 		local hooks, caps, rankFrame, taught = {}, { [185] = 150, [186] = 75 }, nil, nil
 		local stepType, stepSpell = "used", 4036
 		it("a book used before a cap rise is that rank's source", function()
+			db.ranks = {} -- these specs read only the ranks they record; a real save's own ranks would pass or fail them by chance
 			hooksecurefunc = function(_, name, fn) hooks[name] = fn end
 			C_Container = { GetContainerItemID = function() return 2000 end }
 			GetProfessions = function() return nil, nil, nil, 1, 2 end
