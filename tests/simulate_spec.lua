@@ -1022,7 +1022,7 @@ describe("simulation", function()
 				placed = 0
 				Pick(8)
 				assert(placed == 0 and detail.height == height, "8 reagents after 2 changed the boxes: " .. placed .. " changes")
-				assert(height >= 108 + 25.5 + 2 * 45 + 39 + 20, "3 reagents fit without scrolling: " .. height)
+				assert(height >= 91.5 + 25.5 + 2 * 45 + 39 + 20, "3 reagents fit without scrolling: " .. height) -- label 33 below the header
 			end)
 			schematic.reagentSlotSchematics = {}
 			assert(ok, err)

@@ -85,16 +85,19 @@ local LINE_IN_LEFT, LINE_IN_TOP = 2, 5
 local RING_LEFT = 13 - RING_FROM + LINE_IN_LEFT -- the ring's offset past the box's left, as the frame's corner piece less the art's own margin
 local RING_RISE = 16 - RING_FROM - LINE_IN_TOP
 local ICON_LEVEL = 600 -- above the list's whole tree and every frame of ours, so the ring draws over both boxes' borders
--- The pane's text and reagents as the live window places them, measured with /recipevacuum layout (build 71139; docs/client-notes.md,
--- "Panel"): name 27.5 below the pane's top and 14 right of the output icon, the requirement 5 under it; the "Reagents:" label's top at
--- 108 always, its icons 25.5 under that, 28 in, 45 apart, each name 46 right of its icon.
+-- The pane's layout as measured in the live window (docs/client-notes.md, "Panel"): name 27.5 down and 14 right of the icon, the
+-- requirement 5 under it; "Reagents:" 33 below the header (the window's icon ends at 75, its label at 108); icons 25.5 under the
+-- label, 28 in, 45 apart, each name 46 right of its icon.
 local OUTPUT_LEFT = -RING_LEFT + OUTPUT_RING_INSET
 local NAME_TOP = 27.5
 local NAME_LEFT = OUTPUT_LEFT + 47 + 14
 local OUTPUT_SUB_GAP = 5
 local DETAIL_GAP = RING_RISE + 2 -- the ring hangs into the gap above the box, so the list ends above it
 local DETAIL_BOTTOM = 20 -- content ends this far above the pane's bottom (:62), clear of the border's corner art
-local REAGENTS_TOP, REAGENTS_LEFT = 108, 27
+-- Our icon hangs above the box, so our header ends at its requirement line (one line of name, 14, then 5 and 12): the label sits the
+-- window's 33 below that, fixed, so it never moves from recipe to recipe.
+local HEADER_BOTTOM = 27.5 + 14 + 5 + 12
+local REAGENTS_TOP, REAGENTS_LEFT = HEADER_BOTTOM + 33, 27
 local REAGENTS_LABEL_AT = { "TOPLEFT", REAGENTS_LEFT, -REAGENTS_TOP }
 local REAGENTS_LABEL_HEIGHT = 20
 local REAGENT_ICON_BELOW_LABEL = 25.5
