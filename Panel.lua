@@ -71,6 +71,7 @@ local REAGENT_TEXT_GAP = 7
 local SECTION_GAP = 8
 local LABEL_HEIGHT = 16
 local SOURCE_HEIGHT = 22
+local PLACE_INDENT = 10 -- the opened places sit this far in under Show Map
 local SOURCE_GAP = 2
 local PLAIN_HEIGHT = 16
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
@@ -81,6 +82,8 @@ local SelectRecipe -- defined with the details; a row tap selects through it
 local selected -- the recipe whose details show: set by a tap, kept until another is tapped, the profession changes or it leaves the list
 local detailSignature
 local reagentRows, sourceButtons, plainTexts = {}, {}, {}
+local mapButton -- one Show Map button for every source with a place
+local mapOpen -- the list of places under it is open; a press toggles it, focus never does
 local shownDiscovery
 local rows, headings = {}, {}
 local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
@@ -390,17 +393,47 @@ local function MakeReagentRow()
 	return button
 end
 
+local FillDetail -- defined below; a press on a place redraws the details
+
 local function MakeSourceButton()
 	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
-	button:SetSize(PANEL_INNER_WIDTH - 2 * DETAIL_PAD, SOURCE_HEIGHT)
-	-- One source's pin, exactly: a button pins what it names (docs/client-notes.md, "Panel").
+	button:SetSize(PANEL_INNER_WIDTH - 2 * DETAIL_PAD - PLACE_INDENT, SOURCE_HEIGHT)
+	-- One source's pin, exactly: a button pins what it names, then the list closes (docs/client-notes.md, "Panel").
 	button:SetScript("OnClick", function(self)
 		ns.Trace("UI source pressed: %s", self.source.label)
 		ns.ShowOnMap(self.source.target)
+		mapOpen = false
+		FillDetail()
 	end)
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip_SetTitle(GameTooltip, self.source.place)
+		GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", GameTooltip_Hide)
+	return button
+end
+
+-- The game's own Show Map label (SHOW_MAP, QuestMapFrame.xml). One place pins it; several open the list of places under the
+-- button. Our own Buttons throughout: a Blizzard menu would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
+local function MakeMapButton()
+	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
+	button:SetSize(PANEL_INNER_WIDTH - 2 * DETAIL_PAD, SOURCE_HEIGHT)
+	button:SetText(SHOW_MAP)
+	button:SetScript("OnClick", function(self)
+		if self.single then
+			ns.Trace("UI source pressed: %s", self.single.label)
+			ns.ShowOnMap(self.single.target)
+		else
+			mapOpen = not mapOpen
+			FillDetail()
+		end
+	end)
+	button:SetScript("OnEnter", function(self)
+		if not self.single then return end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip_SetTitle(GameTooltip, self.single.place)
 		GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
 		GameTooltip:Show()
 	end)
@@ -419,7 +452,18 @@ end
 -- What the details show: the made item, the basic reagents with what the character holds, and every source.
 local function DetailData(recipeInfo)
 	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeInfo.recipeID, false)
-	local data = { schematic = schematic, reagents = {}, sources = ns.SourceRows(recipeInfo) }
+	local data = { schematic = schematic, reagents = {}, plain = {}, places = {} }
+	local targets, rowOf = {}, {}
+	for _, row in ipairs(ns.SourceRows(recipeInfo)) do
+		if row.target then
+			targets[#targets + 1] = row.target
+			rowOf[row.target] = row
+		else
+			data.plain[#data.plain + 1] = row
+		end
+	end
+	ns.SortTargets(targets) -- the player's zone first
+	for _, target in ipairs(targets) do data.places[#data.places + 1] = rowOf[target] end
 	local parts = { recipeInfo.recipeID }
 	for _, slot in ipairs(schematic and schematic.reagentSlotSchematics or {}) do
 		local reagent = slot.reagentType == Enum.CraftingReagentType.Basic and slot.reagents[1]
@@ -430,9 +474,9 @@ local function DetailData(recipeInfo)
 			parts[#parts + 1] = ("%d:%d:%d:%s"):format(entry.itemID, entry.have, entry.need, entry.name or "")
 		end
 	end
-	for _, source in ipairs(data.sources) do
-		parts[#parts + 1] = source.label .. (source.target and "+" or "-")
-	end
+	for _, source in ipairs(data.plain) do parts[#parts + 1] = source.label .. "-" end
+	for _, source in ipairs(data.places) do parts[#parts + 1] = source.label .. "+" end
+	parts[#parts + 1] = (mapOpen and "open" or "shut") .. ":" .. (professionInfo.skillLevel or 0)
 	return data, table.concat(parts, ",")
 end
 
@@ -445,7 +489,7 @@ local function HideDetail()
 end
 
 -- Draws the selected recipe in the details. The height is exactly the content, so the list above takes the rest.
-local function FillDetail()
+FillDetail = function()
 	if not selected then
 		if detail:IsShown() then HideDetail() end
 		return
@@ -462,7 +506,11 @@ local function FillDetail()
 	detail.Name:SetText(selected.name)
 	local skill = selected.requiredSkill
 	detail.Sub:SetShown(skill ~= nil)
-	if skill then detail.Sub:SetText(ITEM_MIN_SKILL:format(professionInfo.professionName, skill)) end
+	if skill then
+		-- Colored as an item tooltip colors its requirement line: red while the skill is short (docs/client-notes.md, "Panel").
+		local color = (professionInfo.skillLevel or 0) >= skill and HIGHLIGHT_FONT_COLOR or RED_FONT_COLOR
+		detail.Sub:SetText(color:WrapTextInColorCode(ITEM_MIN_SKILL:format(professionInfo.professionName, skill)))
+	end
 	local top = DETAIL_PAD
 	local header = math.max(OUTPUT_SIZE, detail.Name:GetStringHeight() + (skill and OUTPUT_SUB_GAP + detail.Sub:GetStringHeight() or 0))
 	top = top + header
@@ -493,28 +541,34 @@ local function FillDetail()
 		reagentRows[index].Text:Hide()
 	end
 
-	local buttons, plain = 0, 0
-	if #data.sources > 0 then top = top + SECTION_GAP end
-	for _, source in ipairs(data.sources) do
-		if source.target then
-			buttons = buttons + 1
-			local button = Pooled(sourceButtons, buttons, MakeSourceButton)
-			button.source = source
-			button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
-			button:SetText(source.label)
-			button:Show()
-			top = top + SOURCE_HEIGHT + SOURCE_GAP
-		else
-			plain = plain + 1
-			local text = Pooled(plainTexts, plain, MakePlainText)
-			text:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
-			text:SetText(source.label)
-			text:Show()
-			top = top + PLAIN_HEIGHT + SOURCE_GAP
-		end
+	if #data.plain + #data.places > 0 then top = top + SECTION_GAP end
+	for index, source in ipairs(data.plain) do
+		local text = Pooled(plainTexts, index, MakePlainText)
+		text:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+		text:SetText(source.label)
+		text:Show()
+		top = top + PLAIN_HEIGHT + SOURCE_GAP
 	end
-	for index = buttons + 1, #sourceButtons do sourceButtons[index]:Hide() end
-	for index = plain + 1, #plainTexts do plainTexts[index]:Hide() end
+	for index = #data.plain + 1, #plainTexts do plainTexts[index]:Hide() end
+
+	mapButton = mapButton or MakeMapButton()
+	local several = #data.places > 1
+	mapButton:SetShown(#data.places > 0)
+	if #data.places > 0 then
+		mapButton.single = not several and data.places[1] or nil
+		mapButton:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+		top = top + SOURCE_HEIGHT + SOURCE_GAP
+	end
+	local shown = several and mapOpen and #data.places or 0
+	for index = 1, shown do
+		local button = Pooled(sourceButtons, index, MakeSourceButton)
+		button.source = data.places[index]
+		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD + PLACE_INDENT, -top)
+		button:SetText(button.source.label)
+		button:Show()
+		top = top + SOURCE_HEIGHT + SOURCE_GAP
+	end
+	for index = shown + 1, #sourceButtons do sourceButtons[index]:Hide() end
 
 	detail:SetHeight(top + DETAIL_PAD)
 	detail:Show()
@@ -543,6 +597,7 @@ end
 
 SelectRecipe = function(recipeInfo)
 	selected = recipeInfo
+	mapOpen = false
 	ns.Trace("UI recipe selected: %d", recipeInfo.recipeID)
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		if items[index].recipe then slots[index]:SetSelected(items[index].recipe.recipeID == recipeInfo.recipeID) end
@@ -704,7 +759,7 @@ local function CreatePanel()
 	detail.Name:SetSize(textWidth, 0)
 	detail.Name:SetJustifyH("LEFT")
 	detail.Name:SetJustifyV("TOP")
-	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameTooltipText")
 	detail.Sub:SetPoint("TOPLEFT", detail.Name, "BOTTOMLEFT", 0, -OUTPUT_SUB_GAP)
 	detail.Sub:SetWidth(textWidth)
 	detail.Sub:SetJustifyH("LEFT")
