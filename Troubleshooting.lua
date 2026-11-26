@@ -623,11 +623,23 @@ local MADE_BATCH = 50 -- recipes read per frame
 -- when the new profession reports ready), so its counts came in pairs (Tailoring and Enchanting 471 each,
 -- Engineering 18) and the profession switched to was never read.
 local MADE_FORMAT, MADE_SAMPLES = 3, 8 -- a new format number makes every profession be read again
-local madeScanning
+local madeScanning, madeWait
+
+-- The list updates often while it fills; one line per reason is enough to see why a read never ran.
+local function MadeWait(reason, ...)
+	local wait = "made-item read waits: " .. reason:format(...)
+	if wait ~= madeWait then
+		madeWait = wait
+		Append(wait)
+	end
+end
 
 local function ScanMade()
-	if madeScanning or not C_TradeSkillUI.IsTradeSkillReady() then
+	if madeScanning then
 		return
+	end
+	if not C_TradeSkillUI.IsTradeSkillReady() then
+		return MadeWait("list not ready")
 	end
 	local profession = C_TradeSkillUI.GetBaseProfessionInfo()
 	local professionID = profession and profession.professionID
@@ -636,13 +648,24 @@ local function ScanMade()
 		done = { build = ns.BUILD, format = MADE_FORMAT, missing = {} }
 		ns.db.devMadeDone, ns.db.devMade = done, {}
 	end
-	if not professionID or (done[professionID] or 0) > 0 then
+	if not professionID then
+		return MadeWait("no base profession (%s)", tostring(profession and profession.professionName))
+	end
+	if (done[professionID] or 0) > 0 then
 		return
 	end
 	local recipeIDs, made, index = C_TradeSkillUI.GetAllRecipeIDs(), ns.db.devMade, 0
-	-- Not filled yet, or still the previous profession's list: read it on a later update.
-	if #recipeIDs == 0 or not C_TradeSkillUI.IsRecipeInSkillLine(recipeIDs[1], professionID) then
-		return
+	-- Not filled yet, or still the previous profession's list: read it on a later update. Any recipe is
+	-- checked, not the first: a list holds every expansion's recipes, and the first can sit in another line.
+	local current
+	for _, recipeID in ipairs(recipeIDs) do
+		if C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID) then
+			current = true
+			break
+		end
+	end
+	if not current then
+		return MadeWait("line %d, %d recipes, none in the line", professionID, #recipeIDs)
 	end
 	local noSchematic, noOutput, samples = 0, 0, {}
 	madeScanning = true
