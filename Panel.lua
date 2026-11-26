@@ -106,26 +106,20 @@ local function ShowRow(row, entry)
 	row.Name:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
 end
 
--- Only the rows in view are drawn, so a long list costs a screenful.
+-- One row per entry, all in the scroll child: the Gamepad UI moves between rows that exist and scrolls the
+-- frame to reach one out of view, so a screenful of relabelled rows left it stuck at the last one shown.
+-- Rows are kept and reused across professions.
 local function Redraw()
-	local viewHeight = scroll:GetHeight()
-	local first = math.floor(scroll:GetVerticalScroll() / ROW_HEIGHT) + 1
-	local visible = math.ceil(viewHeight / ROW_HEIGHT) + 1
-	for slot = 1, visible do
-		local entry = entries[first + slot - 1]
-		local row = rows[slot] or (entry and CreateRow(slot))
-		if row then
-			if entry then
-				local top = -(first + slot - 2) * ROW_HEIGHT
-				row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, top)
-				row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, top)
-				ShowRow(row, entry)
-			end
-			row:SetShown(entry ~= nil)
-		end
+	for index, entry in ipairs(entries) do
+		local row = rows[index] or CreateRow(index)
+		local top = -(index - 1) * ROW_HEIGHT
+		row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, top)
+		row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, top)
+		ShowRow(row, entry)
+		row:Show()
 	end
-	for slot = visible + 1, #rows do
-		rows[slot]:Hide()
+	for index = #entries + 1, #rows do
+		rows[index]:Hide()
 	end
 end
 
@@ -172,7 +166,6 @@ local function CreatePanel()
 	scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", LIST_INSET_X, -(TITLE_HEIGHT + LIST_INSET_TOP))
 	scroll:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_INSET_BOTTOM)
-	scroll:SetScript("OnVerticalScroll", Redraw)
 	child = CreateFrame("Frame", nil, scroll)
 	child:SetSize(PANEL_WIDTH - LIST_INSET_X - SCROLLBAR_WIDTH, 1)
 	scroll:SetScrollChild(child)
