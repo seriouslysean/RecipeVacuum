@@ -1,13 +1,10 @@
 local _, ns = ...
 local comm = {}
 LibStub("AceComm-3.0"):Embed(comm)
-local toolkit = ns.toolkit
 
--- Each exchange step, to the working build's log (the toolkit's Trace; nothing in a release).
+-- Each exchange step, to the working build's log.
 local function Trace(text, ...)
-	if toolkit:IsLogging(ns.device) then
-		toolkit:Trace(ns.device, "SHARE " .. text:format(...))
-	end
+	ns.Trace("SHARE " .. text, ...)
 end
 
 -- Sharing uses hidden addon messages only: probe, request, batched reply (docs/data.md, "Sharing").

@@ -55,6 +55,13 @@ function ns.Log(text)
 	toolkit:Print(text)
 end
 
+-- A line for the working build's log, read back after play; nothing while the log is paused or in a release.
+function ns.Trace(text, ...)
+	if toolkit:IsLogging(ns.device) then
+		toolkit:Trace(ns.device, text:format(...))
+	end
+end
+
 function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 	local npc = npcs[npcID]
 	if not npc then

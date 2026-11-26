@@ -106,6 +106,13 @@ local function ShowSourceLine(form, recipeInfo, isRecraft)
 		return
 	end
 	ns.SummarizeSources(recipeInfo)
+	if ns.toolkit:IsLogging(ns.device) then
+		local kinds = {}
+		for kind in pairs(recipeInfo.sourceTypes or {}) do kinds[#kinds + 1] = kind end
+		table.sort(kinds)
+		ns.Trace("UI selected unlearned recipe %d %s | sources %s", recipeInfo.recipeID, tostring(recipeInfo.name),
+			#kinds > 0 and table.concat(kinds, ",") or "none")
+	end
 	sourceLineRecipe = recipeInfo
 	button.Text:SetText(TRADESKILL_UNLEARNED_RECIPE_HEADER)
 	-- Blizzard sets this button's OnEnter on every Init (ProfessionsRecipeSchematicFormMixin:Init), so setting it after is the same pattern; a hook would not survive.
@@ -177,6 +184,7 @@ local function MapTargets(recipeInfo)
 end
 
 function ns.ShowOnMap(target)
+	ns.Trace("UI show map: %s (map %s)", tostring(target.label), tostring(target.mapID))
 	if target.zoneOnly then
 		if not InCombatLockdown() then
 			OpenWorldMap(target.mapID)

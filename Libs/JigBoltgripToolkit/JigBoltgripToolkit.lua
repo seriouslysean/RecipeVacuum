@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 39
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 40
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -200,6 +200,17 @@ function lib:EnableWorkingBuild()
 		lib:LogAll(line)
 		lib:LogAll(debugstack(2, 12, 0))
 	end)
+	-- "Interface action failed because of an AddOn": gamepad navigation shows it for a call from tainted
+	-- code without firing either event above (Blizzard_GamepadSmartNavigation, EnsureIsSecure), so the
+	-- message itself is logged where Blizzard prints it (ChatFrameUtil.lua), with the stack that led there.
+	if ChatFrameUtil and ChatFrameUtil.AddSystemMessage then
+		hooksecurefunc(ChatFrameUtil, "AddSystemMessage", function(text)
+			if text == INTERFACE_ACTION_BLOCKED then
+				lib:LogAll("interface action blocked (no event): " .. tostring(text))
+				lib:LogAll(debugstack(3, 12, 0))
+			end
+		end)
+	end
 	-- Lua errors, as Blizzard's error window receives them (Blizzard_ScriptErrorsFrame.lua, DisplayMessageInternal);
 	-- the client's own error handler list takes secure code only (AddLuaErrorHandler asserts issecure()).
 	EventUtil.ContinueOnAddOnLoaded("Blizzard_ScriptErrorsFrame", function()
@@ -245,7 +256,15 @@ local function ZoneLine()
 	return ("zone %s areas %s | %s | %s"):format(tostring(mapID), areas and table.concat(areas, ",") or "-",
 		info and info.name or "?", GetSubZoneText() or "")
 end
-local CONTEXT_EVENTS = { ZONE_CHANGED_NEW_AREA = true, ZONE_CHANGED = true, ZONE_CHANGED_INDOORS = true }
+-- Context every log keeps while watching: where the player is, which input is in use (a report reads
+-- each line against it), and each screenshot, which is the player's way to mark a moment worth reading.
+local CONTEXT_EVENTS = {
+	ZONE_CHANGED_NEW_AREA = ZoneLine, ZONE_CHANGED = ZoneLine, ZONE_CHANGED_INDOORS = ZoneLine,
+	GAME_PAD_ACTIVE_CHANGED = function(isActive)
+		return "input: " .. (isActive and "gamepad" or "keyboard and mouse")
+	end,
+	SCREENSHOT_SUCCEEDED = function() return "screenshot taken: " .. date("%m%d%y_%H%M%S") end,
+}
 
 local function UpdateWatchEvents()
 	local frame = lib.watchFrame
@@ -254,10 +273,7 @@ local function UpdateWatchEvents()
 		lib.watchFrame = frame
 		frame:SetScript("OnEvent", function(_, event, ...)
 			if CONTEXT_EVENTS[event] then
-				for _, addon in ipairs(lib.logOrder) do
-					local log = lib.logs[addon]
-					if log.watching then lib:Log(log.module, ZoneLine()) end
-				end
+				lib:LogAll(CONTEXT_EVENTS[event](...))
 			end
 			for _, addon in ipairs(lib.logOrder) do
 				local log = lib.logs[addon]
