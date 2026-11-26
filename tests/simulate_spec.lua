@@ -776,6 +776,7 @@ describe("simulation", function()
 			local parts = {
 				ProfessionsRecipeListRecipeTemplate = { "Label", "Count", "SkillUps", "LockedIcon" },
 				ProfessionsRecipeListCategoryTemplate = { "RankBar" },
+				ScrollFrameTemplate = { "ScrollBar" },
 			}
 			CreateFrame = function(kind, _, parent, template)
 				local f = Fake(parent)

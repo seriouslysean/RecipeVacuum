@@ -386,11 +386,17 @@ local function CreatePanel()
 	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	countText:SetPoint("TOP", title, "BOTTOM", 0, -TITLE_GAP)
 
-	-- UIPanelScrollFrameTemplate, as Field Guide Forever's list; a ScrollBox would hold our data in Blizzard's secure code.
-	scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
+	-- A plain scroll frame (a ScrollBox would hold our data in Blizzard's secure code) with Blizzard's minimal
+	-- scroll bar, the one its recipe list uses: the thumb is sized to the share of the list in view.
+	scroll = CreateFrame("ScrollFrame", nil, panel, "ScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", LIST_LEFT, -(top + TITLE_HEIGHT))
 	scroll:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
-	scroll.scrollBarHideable = true -- the template's own switch: the bar shows only when the list is taller than the view
+	-- Placed as the recipe list places its bar, right of the list (Blizzard_ProfessionsRecipeList.xml), and hidden
+	-- while the whole list fits.
+	scroll.ScrollBar:ClearAllPoints()
+	scroll.ScrollBar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 0, 0)
+	scroll.ScrollBar:SetPoint("BOTTOMLEFT", scroll, "BOTTOMRIGHT", 0, 0)
+	scroll.ScrollBar:SetHideIfUnscrollable(true)
 	child = CreateFrame("Frame", nil, scroll)
 	child:SetSize(PANEL_WIDTH - LIST_LEFT - SCROLLBAR_WIDTH, 1)
 	scroll:SetScrollChild(child)
