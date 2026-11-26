@@ -1150,7 +1150,7 @@ local function CreatePanel()
 	listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, FRAME_INSET)
 
 	-- The window's skill bar art (Professions-skillbar-bg and -frame, placed as Blizzard_ProfessionsRankBar.xml does), sliced past its
-	-- 3 px clipped corners (measured on the Deck) to keep its edges at our width; the fill is the Legacy challenge bar's still one,
+	-- 3 px clipped corners (measured on the Deck) to keep its edges at our width; the fill is the reputation bar's still green,
 	-- since the template's fills are each profession's own animated art and its code recolors them.
 	rankBar = CreateFrame("Frame", nil, panel)
 	rankBar:SetSize(BAR_WIDTH, RANK_BAR_HEIGHT)
@@ -1204,7 +1204,7 @@ local function CreatePanel()
 	-- The fill spans the bar under the skill bar's own mask, set as the template sets it (Blizzard_ProfessionsRankBar.xml: Fill and
 	-- Mask, at its atlas size, LEFT of the fill plus 1, clamped to black past its edges); the mask's width is the share shown.
 	rankBar.Fill = fillLayer:CreateTexture(nil, "ARTWORK")
-	rankBar.Fill:SetAtlas("Legacy-Progressbar-Fill")
+	rankBar.Fill:SetAtlas("UI-HUD-ExperienceBar-Fill-Reputation-Faction-Green") -- the reputation bar's Friendly fill (ReputationBar.lua)
 	rankBar.Fill:SetPoint("TOPLEFT", BAR_FILL_LEFT, -BAR_FILL_TOP)
 	rankBar.Fill:SetSize(BAR_WIDTH - BAR_FILL_INSET, RANK_BAR_HEIGHT)
 	rankBar.Mask = fillLayer:CreateMaskTexture()
