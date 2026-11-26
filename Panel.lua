@@ -655,8 +655,8 @@ local function MakeMapMore()
 	return button
 end
 
--- The game's own word for what a press does, Map Pin (MAP_PIN): it places the map pin and focuses it, and never opens the map. One place is a plain button that pins it (the same one as the quest
--- log's); several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
+-- The game's own word for what a press does, Map Pin (MAP_PIN): it places the map pin and focuses it, and never opens the map. One place is a plain button that pins it;
+-- several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
 -- would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
 	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
