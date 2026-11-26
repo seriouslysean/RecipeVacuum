@@ -779,6 +779,7 @@ describe("simulation", function()
 				if key == "SetScript" or key == "HookScript" then return function(o, name, fn) local scripts = rawget(o, "scripts") or {}; o.scripts = scripts; scripts[name] = fn end end
 				if key == "CreateFontString" or key == "CreateTexture" or key == "CreateMaskTexture" then return function(o) return Fake(o) end end
 				if key == "GetStringHeight" then return function() return 0 end end
+				if key == "GetFrameLevel" then return function() return 1 end end
 				return function() end
 			end
 			function Fake(parent) return setmetatable({ parent = parent }, meta) end

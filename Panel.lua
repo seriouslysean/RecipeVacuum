@@ -48,7 +48,7 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
-local BAR_CORNER = 5 -- past the skill bar art's 3 px clipped corners, so slicing keeps them
+local BAR_CAP = 16 -- each end of the skill bar art kept at its own size: past its 3 px clipped corners, where the art is even
 local BAR_FILL_LEFT, BAR_FILL_TOP, BAR_FILL_INSET = 5, 3, 12 -- Blizzard_ProfessionsRankBar.xml: the fill at 5, -3, 441 of 453
 local BAR_FILL_SLICE = 4 -- the game's slice data for the Legacy fill (UiTextureAtlasElementSliceData, element 36419)
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
@@ -1071,23 +1071,60 @@ local function CreatePanel()
 	-- since the template's fills are each profession's own animated art and its code recolors them.
 	rankBar = CreateFrame("Frame", nil, panel)
 	rankBar:SetSize(BAR_WIDTH, RANK_BAR_HEIGHT)
+	-- Each art is three pieces cut from its atlas by texture coordinates: both ends at their own size, the even middle stretched.
+	-- The engine's slice margins clipped the ends here, so the cut is ours and in the atlas's own pixels.
 	for key, atlas in pairs({ Background = "Professions-skillbar-bg", Border = "Professions-skillbar-frame" }) do
-		local art = rankBar:CreateTexture(nil, key == "Background" and "BACKGROUND" or "OVERLAY")
-		art:SetAtlas(atlas, true) -- at its own size, as useAtlasSize places it
-		art:SetWidth(BAR_WIDTH)
-		art:SetPoint("TOPLEFT")
-		art:SetTextureSliceMargins(BAR_CORNER, 0, BAR_CORNER, 0)
-		art:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
-		rankBar[key] = art
+		local info = C_Texture.GetAtlasInfo(atlas)
+		local holder = CreateFrame("Frame", nil, rankBar)
+		holder:SetPoint("TOPLEFT")
+		holder:SetSize(BAR_WIDTH, info and info.height or RANK_BAR_HEIGHT)
+		holder:SetFrameLevel(rankBar:GetFrameLevel() + (key == "Background" and 0 or 2))
+		if info then
+			local layer = key == "Background" and "BACKGROUND" or "OVERLAY"
+			local span = info.rightTexCoord - info.leftTexCoord
+			local capShare = BAR_CAP / info.width
+			local pieces = {
+				{ "LEFT", info.leftTexCoord, info.leftTexCoord + span * capShare, BAR_CAP },
+				{ "MIDDLE", info.leftTexCoord + span * capShare, info.rightTexCoord - span * capShare },
+				{ "RIGHT", info.rightTexCoord - span * capShare, info.rightTexCoord, BAR_CAP },
+			}
+			local previous
+			for _, piece in ipairs(pieces) do
+				local texture = holder:CreateTexture(nil, layer)
+				texture:SetTexture(info.file)
+				texture:SetTexCoord(piece[2], piece[3], info.topTexCoord, info.bottomTexCoord)
+				texture:SetPoint("TOP")
+				texture:SetPoint("BOTTOM")
+				if piece[1] == "LEFT" then
+					texture:SetPoint("LEFT")
+					texture:SetWidth(piece[4])
+				elseif piece[1] == "RIGHT" then
+					texture:SetPoint("RIGHT")
+					texture:SetWidth(piece[4])
+					previous:SetPoint("RIGHT", texture, "LEFT")
+				else
+					texture:SetPoint("LEFT", previous, "RIGHT")
+				end
+				previous = texture
+			end
+		end
+		rankBar[key] = holder
 	end
 	-- The fill sits where the template's does: 5 in, 3 down, 12 narrower than the bar (Blizzard_ProfessionsRankBar.xml).
-	rankBar.Fill = rankBar:CreateTexture(nil, "ARTWORK")
+	-- Background under the fill, the frame over it and the text over all, by frame level, as the template's sublevels order them.
+	local fillLayer = CreateFrame("Frame", nil, rankBar)
+	fillLayer:SetAllPoints()
+	fillLayer:SetFrameLevel(rankBar:GetFrameLevel() + 1)
+	local textLayer = CreateFrame("Frame", nil, rankBar)
+	textLayer:SetAllPoints()
+	textLayer:SetFrameLevel(rankBar:GetFrameLevel() + 3)
+	rankBar.Fill = fillLayer:CreateTexture(nil, "ARTWORK")
 	rankBar.Fill:SetAtlas("Legacy-Progressbar-Fill")
 	rankBar.Fill:SetTextureSliceMargins(BAR_FILL_SLICE, BAR_FILL_SLICE, BAR_FILL_SLICE, BAR_FILL_SLICE)
 	rankBar.Fill:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
 	rankBar.Fill:SetPoint("TOPLEFT", BAR_FILL_LEFT, -BAR_FILL_TOP)
 	rankBar.Fill:SetHeight(RANK_BAR_HEIGHT)
-	rankBar.text = rankBar:CreateFontString(nil, "OVERLAY", "Number12FontOutline") -- the skill bar's own font
+	rankBar.text = textLayer:CreateFontString(nil, "OVERLAY", "Number12FontOutline") -- the skill bar's own font
 	rankBar.text:SetPoint("CENTER", 0, -BAR_FILL_TOP)
 	rankBar:SetPoint("CENTER", panel, "TOP", 0, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
