@@ -84,11 +84,14 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 
 | Signal | Level |
 |---|---|
+| A recipe item in the character's own bags, read when they change and on entering the world | Self Found |
 | A recipe item or recipe link in party, raid, instance, guild or officer chat, or whispered by someone in the party, guild or friends list | Friends |
 | A recipe item in a loot line (someone nearby looting) | Friends |
 | A recipe item or recipe link in say, yell or a numbered channel, or whispered by anyone else | Public |
 | The guild's profession view | Friends |
 | A linked profession the player opens | The level its link was seen at this session, else Public |
+
+A recipe item in the bags counts as seen by the player (owner, 2026-11-26: "it makes sense to me. I saw them."), so the recipe is kept at Self Found without where the item came from. The scan reads item IDs only and reads each item once a session; an item whose data has not loaded is read again on the next bag event.
 
 A recipe with no known source counts as come across once it has been seen within the chosen level (`recipeInfo.met`).
 

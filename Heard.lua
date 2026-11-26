@@ -98,7 +98,33 @@ local function ReadShownProfession()
 	end
 end
 
+-- A recipe item in the bags was seen by the player: Self Found, not where it came from (docs/data.md, "Come across").
+-- Bag reads are allowed in combat. An item whose data is still loading is not an answer: it is read again on the next bag event.
+local bagItemsDone = {} -- [itemID] = true once read this session, a recipe or not
+
+local function ReadBags()
+	local lastBag = NUM_BAG_SLOTS + (Enum.BagIndex and Enum.BagIndex.ReagentBag and 1 or 0)
+	for bag = 0, lastBag do
+		for slot = 1, C_Container.GetContainerNumSlots(bag) do
+			local itemID = C_Container.GetContainerItemID(bag, slot)
+			if itemID and not bagItemsDone[itemID] and ns.IsRecipeItem(itemID) then
+				local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID] or ns.GetTaughtRecipe(itemID)
+				if recipeID ~= nil then
+					bagItemsDone[itemID] = true
+					if recipeID then
+						Note("recipes", recipeID, LEVEL.SELF)
+					end
+				end
+			elseif itemID then
+				bagItemsDone[itemID] = true
+			end
+		end
+	end
+end
+
 local frame = CreateFrame("Frame")
+frame:RegisterEvent("BAG_UPDATE_DELAYED")
+frame:RegisterEvent("PLAYER_ENTERING_WORLD")
 for event in pairs(CHAT_LEVELS) do
 	frame:RegisterEvent(event)
 end
@@ -107,6 +133,10 @@ frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
 frame:SetScript("OnEvent", function(_, event, message, sender)
 	if not ns.db then
+		return
+	end
+	if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_ENTERING_WORLD" then
+		ReadBags()
 		return
 	end
 	if CHAT_LEVELS[event] then

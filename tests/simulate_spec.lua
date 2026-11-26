@@ -714,6 +714,7 @@ describe("simulation", function()
 		local h, known, chat, met
 		it("links are noticed with how near they arrived", function()
 			h = boot(nil)
+			NUM_BAG_SLOTS = 1
 			known = C_TradeSkillUI
 			C_TradeSkillUI = { GetTradeSkillLineForRecipe = function(id) return id == 5555 and 202 or nil end }
 			load("Heard.lua", h)
@@ -741,6 +742,27 @@ describe("simulation", function()
 			chat("CHAT_MSG_WHISPER", "psst |Hitem:1001::::|h[Pattern: Other]|h")
 			assert(met.items[1001] == 3, "a stranger's whisper counts as public chat")
 			C_TradeSkillUI = known
+		end)
+		-- Fails if a recipe item in the bags is not listed at Self Found, or if a non-recipe item or an unanswered tooltip changes anything.
+		it("a recipe item in the bags is listed at Self Found", function()
+			h.scanned = { [2000] = 6000, [2001] = 6001 }
+			h.db.sourceLevel = h.LEVEL.SELF
+			local bags = { [0] = { 2000, 777, 5 }, [1] = { 2001 } }
+			C_Container = { GetContainerNumSlots = function(bag) return bags[bag] and #bags[bag] or 0 end,
+			  GetContainerItemID = function(bag, slot) return bags[bag][slot] end }
+			local heard = frames[#frames]
+			local seen = CopyTable(h.db.met.recipes)
+			heard.script(heard, "BAG_UPDATE_DELAYED")
+			local listed = { recipeID = 6000 }
+			h.SummarizeSources(listed)
+			local unseen = { recipeID = 6002 }
+			h.SummarizeSources(unseen)
+			assert(h.db.met.recipes[6000] == 1 and h.db.met.recipes[6001] == 1 and h.IsListed(listed) and not h.IsListed(unseen),
+				"a recipe item in the bags is listed at Self Found")
+			local items, recipes = 0, 0
+			for _ in pairs(h.db.met.items) do items = items + 1 end
+			for id in pairs(h.db.met.recipes) do if seen[id] == nil then recipes = recipes + 1 end end
+			assert(recipes == 2 and items == 2, "a non-recipe item in the bags records nothing")
 		end)
 	end)
 
