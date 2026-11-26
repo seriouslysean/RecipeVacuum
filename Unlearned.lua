@@ -176,14 +176,20 @@ function ns.BandOf(skill)
 	return math.max(1, math.ceil(skill / ns.RANK_BAND))
 end
 
--- A band's heading: the game's own rank spell for the profession and step ("Journeyman Engineer"), read by ID from the seed
--- (docs/data.md, "Rank spells"); the skill range when no rank spell is known.
-function ns.BandTitle(professionID, band)
+-- A band's heading: the rank its rank spell names (docs/data.md, "Rank spells"), else the skill range. onLoad
+-- runs when that spell's data arrives: ranks above the character's are not loaded until asked for.
+function ns.BandTitle(professionID, band, onLoad)
 	local ranks = ns.seed and ns.seed.rankSpell and ns.seed.rankSpell[professionID]
-	-- A rank spell is named after its profession; the rank (Apprentice, Journeyman) is the spell's subtext.
-	local name = ranks and ranks[band] and C_Spell.GetSpellSubtext(ranks[band])
-	if name and name ~= "" then
-		return name
+	local spellID = ranks and ranks[band]
+	if spellID then
+		-- A rank spell is named after its profession; the rank (Apprentice, Journeyman) is the spell's subtext.
+		local name = C_Spell.GetSpellSubtext(spellID)
+		if name and name ~= "" then
+			return name
+		end
+		if onLoad and not C_Spell.IsSpellDataCached(spellID) then
+			Spell:CreateFromSpellID(spellID):ContinueOnSpellLoad(onLoad)
+		end
 	end
 	local first = (band - 1) * ns.RANK_BAND + 1
 	return L["Skill %d to %d"]:format(first, first + ns.RANK_BAND - 1)

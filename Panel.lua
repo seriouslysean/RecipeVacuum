@@ -228,7 +228,13 @@ end
 
 local function ShowHeading(heading, item)
 	heading.band = item.band
-	heading:SetHeaderText(ns.BandTitle(professionInfo.professionID, item.band))
+	local professionID = professionInfo.professionID
+	heading:SetHeaderText(ns.BandTitle(professionID, item.band, function()
+		-- Only if the heading still shows this band when the rank's name arrives.
+		if heading.band == item.band and professionInfo and professionInfo.professionID == professionID then
+			ShowHeading(heading, item)
+		end
+	end))
 	heading.Count:SetShown(not item.open)
 	if not item.open then
 		heading.Count:SetText(L["[%d]"]:format(item.count))

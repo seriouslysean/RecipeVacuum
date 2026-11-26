@@ -845,13 +845,24 @@ describe("simulation", function()
 		it("a band heading is the rank spell's subtext, or the skill range without one", function()
 			local seed, spells = pns.seed, C_Spell
 			pns.seed = { rankSpell = { [164] = { [2] = 3100 } } }
-			C_Spell = { GetSpellSubtext = function(id) return id == 3100 and "Journeyman" or nil end }
+			local spellLoaded, waiting = false, nil
+			C_Spell = {
+				GetSpellSubtext = function(id) return id == 3100 and spellLoaded and "Journeyman" or "" end,
+				IsSpellDataCached = function() return spellLoaded end,
+			}
+			local spellMixin = Spell
+			Spell = { CreateFromSpellID = function() return { ContinueOnSpellLoad = function(_, fn) waiting = fn end } end }
 			local ok, err = pcall(function()
-				assert(pns.BandTitle(164, 2) == "Journeyman", "the rank spell's subtext")
+				-- Fails if a rank the client has not spellLoaded yet stays on the fallback (Deck, 2026-11-26: only Apprentice showed).
+				local filled
+				assert(pns.BandTitle(164, 2, function() filled = pns.BandTitle(164, 2) end) == "Skill 76 to 150", "not spellLoaded yet")
+				spellLoaded = true
+				waiting()
+				assert(filled == "Journeyman", "the rank spell's subtext once spellLoaded")
 				assert(pns.BandTitle(164, 3) == "Skill 151 to 225", "a step with no spell")
 				assert(pns.BandTitle(999, 2) == "Skill 76 to 150", "a profession with no spells")
 			end)
-			pns.seed, C_Spell = seed, spells
+			pns.seed, C_Spell, Spell = seed, spells, spellMixin
 			assert(ok, err)
 		end)
 		-- Fails if the discovery count (found over total) counts the wrong recipes: found is what the show rule lists, total every unlearned

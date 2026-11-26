@@ -7,7 +7,7 @@ max_line_length = false
 ignore = { "21./self", "212" }
 read_globals = {
 	"RunNextFrame", "PlaySound", "SOUNDKIT", "ITEM_MIN_SKILL", "SHOW_MAP", "TRADESKILL_REAGENT_COUNT", "PROFESSIONS_REAGENT_CONTAINER_LABEL", "RED_FONT_COLOR", "InCombatLockdown", "GetUIPanel", "DIFFICULT_DIFFICULTY_COLOR", "FAIR_DIFFICULTY_COLOR", "EASY_DIFFICULTY_COLOR", "TRIVIAL_DIFFICULTY_COLOR", "GameTooltip_AddBlankLineToTooltip",
-	"CaseAccentInsensitiveParse", "CUSTOM_GAMEPLAY_SETTINGS_ORDER", "GetBindingName", "CreateKeybindingEntryInitializer", "C_KeyBindings", "TRANSMOG_SOURCE_4", "GetRealZoneText", "CreateVector2D", "GetMinimapZoneText", "GetSubZoneText", "GetZoneText", "GetInstanceInfo", "C_MapExplorationInfo", "ADDONS", "Ambiguate", "BATTLE_PET_SOURCE_1", "BATTLE_PET_SOURCE_2", "BATTLE_PET_SOURCE_3", "BNET_CLIENT_WOW",
+	"CaseAccentInsensitiveParse", "Spell", "CUSTOM_GAMEPLAY_SETTINGS_ORDER", "GetBindingName", "CreateKeybindingEntryInitializer", "C_KeyBindings", "TRANSMOG_SOURCE_4", "GetRealZoneText", "CreateVector2D", "GetMinimapZoneText", "GetSubZoneText", "GetZoneText", "GetInstanceInfo", "C_MapExplorationInfo", "ADDONS", "Ambiguate", "BATTLE_PET_SOURCE_1", "BATTLE_PET_SOURCE_2", "BATTLE_PET_SOURCE_3", "BNET_CLIENT_WOW",
 	"BNGetNumFriends", "C_AddOns", "C_BattleNet", "C_CVar", "C_ChatInfo", "C_EncodingUtil", "C_FriendList", "C_GossipInfo",
 	"C_GuildInfo", "C_Item", "C_Map", "C_MerchantFrame", "C_QuestLog", "C_Spell", "C_SpellBook", "C_SuperTrack", "C_Texture",
 	"C_Timer", "C_TooltipInfo", "C_TradeSkillUI", "ChatTypeInfo", "CopyTable", "COSTS_LABEL",
