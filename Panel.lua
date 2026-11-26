@@ -1408,15 +1408,15 @@ end
 
 function pool.start()
 	if pool.started or not ns.db then return end
+	-- The row templates live in a load-on-demand Blizzard addon; loading it from our code would run Blizzard's files tainted
+	-- (docs/client-notes.md), so the pool waits for the game to load it (the first professions window of the session).
 	if not C_AddOns.IsAddOnLoaded(pool.templates) then
-		if InCombatLockdown() then
-			ns.Trace("POOL start waits, in combat; the templates are loaded after it")
-			return
+		if not pool.waiting then
+			pool.waiting = true
+			ns.Trace("POOL waits for %s, loaded by the game with the first professions window", pool.templates)
+			EventUtil.ContinueOnAddOnLoaded(pool.templates, pool.start)
 		end
-		local started = debugprofilestop()
-		local loaded, reason = C_AddOns.LoadAddOn(pool.templates)
-		ns.Trace("POOL loaded %s: %s, %.1f ms", pool.templates, tostring(loaded or reason), debugprofilestop() - started)
-		if not loaded then return end
+		return
 	end
 	pool.started = true
 	pool.rescan()
