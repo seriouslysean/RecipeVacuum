@@ -77,8 +77,7 @@ local WINDOW_BACKGROUND = "Profession-Background-Overview" -- Camelot/Blizzard_P
 local FORM_BORDER_ATLAS, FORM_SLICE = "common-insideframe", 53
 -- The details' icon hangs off its pane where the window's portrait ring hangs off the window: the frame places that ring's corner art at
 -- -13, 16 (NineSliceLayouts.lua:20), the ring spanning 5 to 71 of the 95 px art.
-local RING_FROM, RING_TO = 5, 71 -- the portrait ring within its 95 px corner art
-local RING_SIZE = RING_TO - RING_FROM
+local RING_FROM = 5 -- the portrait ring starts this far into its 95 px corner art
 local OUTPUT_RING_INSET = (58 - 47) / 2 -- the output ring's drawn edge to its button (ProfessionsOutputButtonTemplate, 47 px)
 -- The window's frame line is its edge; the pane frame's line sits inside the box's edge, so the ring moves by that much more to
 -- hang off the line as the portrait does (measured against the window's portrait on the Deck).
@@ -96,6 +95,7 @@ local OUTPUT_SUB_GAP = 5
 local DETAIL_GAP = RING_RISE + 2 -- the ring hangs into the gap above the box, so the list ends above it
 local DETAIL_BOTTOM = 20 -- content ends this far above the pane's bottom (:62), clear of the border's corner art
 local REAGENTS_TOP, REAGENTS_LEFT = 108, 27
+local REAGENTS_LABEL_AT = { "TOPLEFT", REAGENTS_LEFT, -REAGENTS_TOP }
 local REAGENTS_LABEL_HEIGHT = 20
 local REAGENT_ICON_BELOW_LABEL = 25.5
 local REAGENT_LEFT, REAGENT_PITCH = 28, 45
@@ -108,19 +108,16 @@ local BUTTON_BOTTOM = 7
 local SOURCE_HEIGHT = 28 -- the window's Create button, measured
 local STRIP_HEIGHT = 38
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
--- The list always keeps this many recipe rows of room, measured as the list lays them out (one open heading and its pads);
--- past it the details stop growing and their reagents scroll (docs/client-notes.md, "Panel").
-local LIST_MIN_ROWS = 6
-local LIST_MIN_HEIGHT = LIST_PAD + HEADING_HEIGHT + ROW_SPACING + TOP_PAD + ROW_SPACING
-	+ LIST_MIN_ROWS * (ROW_HEIGHT + ROW_SPACING) + LIST_BOTTOM_INSET
 local REAGENTS_VIEW_TOP = REAGENTS_TOP + REAGENT_ICON_BELOW_LABEL -- the scrolling reagents start at the first icon
+-- The details are half the room between the list's top and the Map Pin strip, but never less than what shows the header and this
+-- many reagents without scrolling; their height does not depend on the recipe (docs/client-notes.md, "Panel").
+local FIT_REAGENTS = 3
+local DETAIL_FIT_HEIGHT = REAGENTS_VIEW_TOP + (FIT_REAGENTS - 1) * REAGENT_PITCH + REAGENT_SIZE + DETAIL_BOTTOM
 local DETAIL_SCROLL_RIGHT = FRAME_INSET -- the reagents' scroll bar clears the box's border
 
 local panel, listArea, scroll, child, empty, rankBar, detail
-local reagentScroll, reagentChild -- the reagent rows scroll inside the details when the list would be squeezed
-local detailContent -- the details' height when nothing is cut; they are never taller than the list allows
+local reagentScroll, reagentChild -- the reagent rows scroll inside the details when they do not fit
 local placedKey
-local stripShown -- the details leave the strip under their box for Show Map
 local SelectRecipe -- defined with the details; a row tap selects through it
 local selected -- the recipe whose details show: set by a tap, kept until another is tapped, the profession changes or it leaves the list
 local detailSignature
@@ -197,7 +194,7 @@ local function SyncNav()
 	end
 	-- Down from the last row stays in the list; right is the way to the details.
 	if previous then SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous) end
-	if not detail:IsShown() then return end
+	if not selected then return end
 	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
 	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
 	local first, chosen, rowCount = nil, nil, 0
@@ -573,41 +570,31 @@ local function LayOut(found, search)
 end
 
 -- The list area sits where the crafting page's own list does: its top and bottom are read when shown (the window can be a
--- different size) and only re-anchored when they change. The details, when open, take their height from the bottom and the list
--- ends above them (docs/client-notes.md, "Panel").
+-- different size) and only re-anchored when they change. The details and the Map Pin strip are fixed, so the list is too: choosing
+-- a recipe moves nothing under the cursor (docs/client-notes.md, "Panel").
 local function PlaceList()
 	local theirs = ProfessionsFrame.CraftingPage.RecipeList
 	local panelTop, panelBottom = panel:GetTop(), panel:GetBottom()
 	local listTop, listBottom = theirs:GetTop(), theirs:GetBottom()
-	if not (panelTop and panelBottom and listTop and listBottom) then
-		if detail:IsShown() and detailContent then detail:SetHeight(detailContent) end -- not laid out yet: nothing to cut for
-		return
-	end
+	if not (panelTop and panelBottom and listTop and listBottom) then return end
 	local top = math.max(panelTop - listTop, CONTENT_TOP)
 	local bottom = math.max(listBottom - panelBottom, FRAME_INSET)
-	local boxBottom = bottom + (stripShown and STRIP_HEIGHT - FRAME_INSET or 0)
-	local content = detail:IsShown() and detailContent or 0
-	local key = ("%s:%s:%s:%s"):format(top, bottom, content, boxBottom)
+	local key = ("%s:%s"):format(top, bottom)
 	if key == placedKey then return end
 	placedKey = key
-	-- What the list keeps is taken first; the details get the rest, and their reagents scroll when it is less than they need.
-	local detailHeight = math.max(math.min(content, panelTop - panelBottom - top - boxBottom - DETAIL_GAP - LIST_MIN_HEIGHT), 0)
-	if content > 0 then detail:SetHeight(detailHeight) end
+	local boxBottom = bottom + STRIP_HEIGHT - FRAME_INSET
+	local room = panelTop - panelBottom - top - boxBottom - DETAIL_GAP
 	listArea:SetPoint("TOPLEFT", panel, "TOPLEFT", FRAME_INSET, -top)
+	detail:SetHeight(math.max(math.floor(room / 2), DETAIL_FIT_HEIGHT))
 	detail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, boxBottom)
 	detail:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, boxBottom)
-	-- The list's background is always drawn at the list's full height and cut off where the details begin: squeezed into a shorter
-	-- list, its dark bottom fade showed as a bar above the box. It runs into the gap the ring hangs into, down to the box.
+	listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
+	-- The list's background is drawn at the full height of the page's list and cut off where the details begin: squeezed into a
+	-- shorter list, its dark bottom fade showed as a bar above the box. It runs into the gap the ring hangs into, down to the box.
 	listArea.BackgroundFrame:SetHeight(panelTop - panelBottom - top - bottom)
 	listArea.Clip:ClearAllPoints()
 	listArea.Clip:SetPoint("TOPLEFT")
-	if detailHeight > 0 then
-		listArea:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", 0, DETAIL_GAP)
-		listArea.Clip:SetPoint("BOTTOMRIGHT", 0, -DETAIL_GAP)
-	else
-		listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
-		listArea.Clip:SetPoint("BOTTOMRIGHT")
-	end
+	listArea.Clip:SetPoint("BOTTOMRIGHT", 0, -DETAIL_GAP)
 end
 
 -- Discovery, as a challenge's progress: found of every recipe the character could still learn here.
@@ -879,18 +866,35 @@ end
 
 local itemWatch -- item names arrive later; the details are drawn again when they do, and only while one is missing
 
-local function HideDetail()
-	detailSignature = nil
-	detail:Hide()
-	PlaceList()
+-- What the box shows with no recipe, and between recipes: the schematic background of the profession, as the window's pane has it
+-- before a pick.
+local function SetDetailBackground()
+	local atlas = professionInfo and Professions.GetProfessionBackgroundAtlas(professionInfo)
+	detail.Background:SetAtlas(atlas or "Professions-background-summarylist", TextureKitConstants.IgnoreAtlasSize)
+end
+
+local function ShowEmptyDetail()
+	detail.recipeID, detail.itemID = nil, nil
+	for _, part in ipairs({ detail.Output, detail.Name, detail.Sub, detail.ReagentsLabel, reagentScroll }) do part:Hide() end
+	for _, button in ipairs(reagentRows) do
+		button:Hide()
+		button.Text:Hide()
+	end
+	-- Like the window's Create button, the Map Pin button is not there until a recipe is picked (Blizzard_ProfessionsCrafting.lua:812).
+	if mapButton then mapButton:Hide() end
+	if mapMore then mapMore:Hide() end
+	SetDetailBackground()
 	ClosePlaces()
 	SyncNav()
 end
 
--- Draws the selected recipe in the details. The height is exactly the content, so the list above takes the rest.
+-- Draws the selected recipe in the details; the box itself never changes size.
 FillDetail = function()
 	if not selected then
-		if detail:IsShown() then HideDetail() end
+		if detailSignature ~= "" then
+			detailSignature = ""
+			ShowEmptyDetail()
+		end
 		return
 	end
 	local data, signature = DetailData(selected)
@@ -911,19 +915,13 @@ FillDetail = function()
 		local color = (professionInfo.skillLevel or 0) >= skill and HIGHLIGHT_FONT_COLOR or RED_FONT_COLOR
 		detail.Sub:SetText(color:WrapTextInColorCode(ITEM_MIN_SKILL:format(professionInfo.professionName, skill)))
 	end
-	-- The window's schematic background for this profession (Blizzard_ProfessionsCrafting.lua:1032).
-	detail.Background:SetAtlas(Professions.GetProfessionBackgroundAtlas(professionInfo) or "Professions-background-summarylist", TextureKitConstants.IgnoreAtlasSize)
-	-- Top-down from whichever ends lower, the ring or the name block. The box is exactly this tall; Show Map is below it.
-	local top = math.max(RING_SIZE - RING_RISE, NAME_TOP + detail.Name:GetStringHeight()
-		+ (skill and OUTPUT_SUB_GAP + detail.Sub:GetStringHeight() or 0))
+	detail.Output:Show()
+	detail.Name:Show()
+	SetDetailBackground() -- the window's own schematic background (Blizzard_ProfessionsCrafting.lua:1032)
 
 	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
 	reagentScroll:SetShown(#data.reagents > 0)
-	if #data.reagents > 0 then
-		top = REAGENTS_TOP -- fixed, as the window's pane keeps it whatever the text above holds
-		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", REAGENTS_LEFT, -top)
-	end
 	if changedRecipe then reagentScroll:SetVerticalScroll(0) end
 	local y = 0 -- within the scroll child
 	for index, entry in ipairs(data.reagents) do
@@ -944,11 +942,7 @@ FillDetail = function()
 		reagentRows[index]:Hide()
 		reagentRows[index].Text:Hide()
 	end
-	if #data.reagents > 0 then
-		local reagentsHeight = y - REAGENT_PITCH + REAGENT_SIZE -- to the last icon's bottom
-		reagentChild:SetHeight(reagentsHeight)
-		top = REAGENTS_VIEW_TOP + reagentsHeight
-	end
+	if #data.reagents > 0 then reagentChild:SetHeight(y - REAGENT_PITCH + REAGENT_SIZE) end -- to the last icon's bottom
 
 	-- The sources are the button's tooltip, not lines in the box. With none to pin it stays, disabled, so the tooltip still tells them.
 	mapButton = mapButton or MakeMapButton()
@@ -961,11 +955,7 @@ FillDetail = function()
 	mapMore:SetShown(several)
 	mapMore.sources = data.sources
 	mapMore.places = data.places
-	stripShown = #data.sources > 0
 
-	detailContent = top + DETAIL_BOTTOM
-	detail:Show()
-	PlaceList()
 	UpdatePlaceMenu() -- the list floats: it never takes height from the details
 	--@debug@
 	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected.recipeID) end
@@ -974,21 +964,6 @@ FillDetail = function()
 		itemWatch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 	else
 		itemWatch:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
-	end
-end
-
--- The row stays in view when the list above shrinks to make room for the details.
-local function KeepInView()
-	local top
-	for _, item in ipairs(items) do
-		if item.recipe and item.recipe.recipeID == selected.recipeID then top = item.top end
-	end
-	if not top then return end
-	local view, current = scroll:GetHeight(), scroll:GetVerticalScroll()
-	if top < current then
-		scroll:SetVerticalScroll(top)
-	elseif top + ROW_HEIGHT > current + view then
-		scroll:SetVerticalScroll(top + ROW_HEIGHT - view)
 	end
 end
 
@@ -1001,7 +976,6 @@ SelectRecipe = function(recipeInfo)
 	end
 	FillDetail()
 	SyncNav() -- the details may be unchanged while the row to go back to is not
-	RunNextFrame(function() if selected then KeepInView() end end)
 end
 
 -- A selected recipe that left the list (a filter, a search) is cleared; one still there is the list's current copy of it.
@@ -1217,7 +1191,7 @@ local function CreatePanel()
 	end)
 	rankBar:SetScript("OnLeave", GameTooltip_Hide)
 
-	-- The recipe's details, drawn as the window's recipe pane is, under the list and sized to their content (FillDetail).
+	-- The recipe's details, drawn as the window's recipe pane is, in a box of fixed size under the list (PlaceList, FillDetail).
 	detail = CreateFrame("Frame", nil, panel)
 	detail.Background = detail:CreateTexture(nil, "BACKGROUND")
 	detail.Background:SetAllPoints()
@@ -1226,7 +1200,6 @@ local function CreatePanel()
 	detail.Border:SetAllPoints()
 	detail.Border:SetTextureSliceMargins(FORM_SLICE, FORM_SLICE, FORM_SLICE, FORM_SLICE)
 	detail.Border:SetTextureSliceMode(Enum.UITextureSliceMode.Stretched)
-	detail:Hide()
 	-- The made item as the window's recipe pane shows it (its output icon and brown ring), placed where the portrait's ring would hang so
 	-- it hangs off the pane's frame line. The ring is 68 px around the 47 px button and drawn about 58 across.
 	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
@@ -1252,7 +1225,8 @@ local function CreatePanel()
 	detail.ReagentsLabel:SetText(PROFESSIONS_REAGENT_CONTAINER_LABEL)
 	detail.ReagentsLabel:SetHeight(REAGENTS_LABEL_HEIGHT)
 	detail.ReagentsLabel:SetJustifyH("LEFT")
-	-- The reagents scroll inside the box under their label when the list's room would squeeze the box (FillDetail, PlaceList).
+	detail.ReagentsLabel:SetPoint(REAGENTS_LABEL_AT[1], detail, unpack(REAGENTS_LABEL_AT)) -- fixed, as the window's pane keeps it
+	-- The reagents scroll inside the box under their label when they do not fit.
 	reagentScroll, reagentChild = CreateSlimScroll(detail, function(frame, barShown)
 		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
 	end)
@@ -1305,12 +1279,14 @@ local function OnInit(_, info)
 		Prewarm()
 		ns.UpdateRankMark() -- Ranks.lua's own hook ran before the panel existed
 	end
-	if not (professionInfo and professionInfo.professionID == info.professionID) then
+	local changed = not (professionInfo and professionInfo.professionID == info.professionID)
+	professionInfo = info
+	if changed then
 		waitUntil = nil
-		selected = nil -- the details close with the profession
+		selected = nil -- the details empty with the profession
+		detailSignature = nil -- and take its background
 		FillDetail()
 	end
-	professionInfo = info
 	-- Only this character's own professions have recipes to learn.
 	wanted = Professions.InLocalCraftingMode()
 	UpdateVisibility()

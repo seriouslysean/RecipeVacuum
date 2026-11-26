@@ -896,7 +896,7 @@ local function RecordLayout()
 	ns.db.devLayout = ns.db.devLayout or {}
 	-- Every record is kept, by view and time, so each view and each build of it stays to be read: debugging data, nothing is
 	-- dropped (owner, 2026-11-26).
-	record.recipe = parts.detail:IsShown() and parts.detail.Name and parts.detail.Name:GetText() or "no recipe selected"
+	record.recipe = parts.detail.recipeID and parts.detail.Name:GetText() or "no recipe selected"
 	record.when = date("%Y-%m-%d %H:%M:%S")
 	ns.db.devLayout[record.profession .. " / " .. record.recipe .. " @ " .. record.when] = record
 	Append(("LAYOUT recorded %d measures for %s"):format(#record.pairs, record.profession))

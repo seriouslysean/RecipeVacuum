@@ -824,7 +824,9 @@ describe("simulation", function()
 			ProfessionsFrame.CraftingPage.Init = function() end
 			ProfessionsFrame.CraftingPage.RecipeList = Fake(ProfessionsFrame.CraftingPage)
 			ProfessionsFrame.CraftingPage.RecipeList.SearchBox = Fake()
-			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end }
+			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end,
+				GetProfessionBackgroundAtlas = function() end }
+			TextureKitConstants = { IgnoreAtlasSize = 1 }
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
 			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
 			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion", [107] = "Plans: High" }
@@ -954,8 +956,9 @@ describe("simulation", function()
 			end
 			assert(Builds() == builds, "an event with unchanged content does not rebuild")
 		end)
-		-- Fails if a recipe with many reagents grows the details until the list has fewer than 6 rows of room: the list is what the panel is for.
-		it("many reagents leave the list its rows and scroll inside the details", function()
+		-- Fails if choosing a recipe resizes or moves the details or the list: the list scrolled and moved under the gamepad cursor when
+		-- the details sized to their reagents.
+		it("choosing a recipe leaves the list and the details where they are", function()
 			local schematic = {} -- these stand-ins stay for the specs after: the selection and its details stay too
 			local ok, err = pcall(function()
 				PlaySound, SOUNDKIT = function() end, { UI_90_BLACKSMITHING_TREEITEMCLICK = 1 }
@@ -982,7 +985,14 @@ describe("simulation", function()
 				panel.GetTop, panel.GetBottom = function() return 800 end, function() return 100 end
 				local list = ProfessionsFrame.CraftingPage.RecipeList
 				list.GetTop, list.GetBottom = function() return 728 end, function() return 150 end -- 72 below the panel's top, 50 above its bottom
-				detail.SetHeight = function(self, height) self.height = height end
+				local listArea
+				for _, frame in ipairs(made) do if rawget(frame, "Clip") then listArea = frame end end
+				local placed = 0 -- every change of size or place of the two boxes
+				for _, frame in ipairs({ detail, listArea }) do
+					for _, name in ipairs({ "SetHeight", "SetPoint", "ClearAllPoints" }) do
+						frame[name] = function(self, ...) placed = placed + 1; if name == "SetHeight" then self.height = ... end end
+					end
+				end
 				pns.ClearUnlearnedCache()
 				init(300)
 				Flush()
@@ -994,11 +1004,12 @@ describe("simulation", function()
 					detail.recipeID = nil
 					row.scripts.OnClick(row, "LeftButton")
 				end
-				local room = 800 - 100 - 72 - 50
-				Pick(8)
-				assert(room - detail.height >= 6 * 21, "8 reagents leave the list " .. room - detail.height .. " high")
 				Pick(2)
-				assert(detail.height > 150 and detail.height < room - 6 * 21, "2 reagents fit without scrolling: " .. detail.height)
+				local height = detail.height
+				placed = 0
+				Pick(8)
+				assert(placed == 0 and detail.height == height, "8 reagents after 2 changed the boxes: " .. placed .. " changes")
+				assert(height >= 108 + 25.5 + 2 * 45 + 39 + 20, "3 reagents fit without scrolling: " .. height)
 			end)
 			schematic.reagentSlotSchematics = {}
 			assert(ok, err)
