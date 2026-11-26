@@ -317,8 +317,8 @@ function ns.GetTaughtRecipe(itemID)
 	return false
 end
 
--- Items whose data was requested and has not answered, by the time of the request. A failed or silent load is asked again on a later LinkPending, up to MAX_LINK_ATTEMPTS times a session; some items never answer (docs/client-notes.md, "Recipe items"), so a request older than LOAD_TIMEOUT seconds counts as failed. Unmeasured: kept long enough for a slow server.
-local MAX_LINK_ATTEMPTS = 3
+-- Items whose data was requested and has not answered, by the time of the request. A failed or silent load is asked again on a later LinkPending, up to MAX_ITEM_ATTEMPTS times a session; some items never answer (docs/client-notes.md, "Recipe items"), so a request older than LOAD_TIMEOUT seconds counts as failed. Unmeasured: kept long enough for a slow server.
+ns.MAX_ITEM_ATTEMPTS = 3 -- also the cap on Heard's re-reads of an item that never answers
 local LOAD_TIMEOUT = 10
 local awaitedItems, linkAttempts = {}, {}
 
@@ -372,7 +372,7 @@ function ns.GetRecipeItems(recipeID)
 	return joined
 end
 
--- Links recorded recipe items to the recipes they teach; true only when no item is outstanding. An item is outstanding while its data loads or is unanswered, until it has been tried MAX_LINK_ATTEMPTS times.
+-- Links recorded recipe items to the recipes they teach; true only when no item is outstanding. An item is outstanding while its data loads or is unanswered, until it has been tried MAX_ITEM_ATTEMPTS times.
 function ns.LinkPending()
 	local db = ns.db
 	local complete = true
@@ -381,7 +381,7 @@ function ns.LinkPending()
 			db.pendingItems[itemID] = nil
 		elseif awaitedItems[itemID] and GetTime() - awaitedItems[itemID] < LOAD_TIMEOUT then
 			complete = false
-		elseif not item.none and (linkAttempts[itemID] or 0) < MAX_LINK_ATTEMPTS then
+		elseif not item.none and (linkAttempts[itemID] or 0) < ns.MAX_ITEM_ATTEMPTS then
 			awaitedItems[itemID] = nil
 			local recipeID = ns.GetTaughtRecipe(itemID)
 			if recipeID == nil then

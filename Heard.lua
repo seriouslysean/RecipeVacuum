@@ -247,6 +247,7 @@ end
 -- A recipe item the player sees, in the bags or on any item tooltip, is met at Self Found: not where it came from
 -- (docs/data.md, "Come across"). An item whose data is still loading is not an answer: it is read again on the next sighting.
 local itemsDone = {} -- [itemID] = true once read this session, a recipe or not
+local itemAttempts = {} -- [itemID] = reads that got no answer; some recipe items never answer (docs/client-notes.md, "Recipe items")
 
 local function NoteSeenItem(itemID)
 	if itemsDone[itemID] then
@@ -256,7 +257,14 @@ local function NoteSeenItem(itemID)
 		itemsDone[itemID] = true
 		return
 	end
-	local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID] or ns.GetTaughtRecipe(itemID)
+	local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]
+	-- A load answer for a deferred item still gets through; a fresh sighting past the cap does not ask the client again.
+	if recipeID == nil then
+		if (itemAttempts[itemID] or 0) >= ns.MAX_ITEM_ATTEMPTS and not deferred[itemID] then
+			return
+		end
+		recipeID = ns.GetTaughtRecipe(itemID)
+	end
 	local window = deferred[itemID] or Target()
 	if recipeID ~= nil then
 		itemsDone[itemID] = true
@@ -264,8 +272,14 @@ local function NoteSeenItem(itemID)
 		if recipeID then
 			Note("recipes", recipeID, LEVEL.SELF, window)
 		end
-	elseif window then
-		deferred[itemID] = window -- read again when its data loads, for the window that saw it
+	else
+		itemAttempts[itemID] = (itemAttempts[itemID] or 0) + 1
+		if itemAttempts[itemID] >= ns.MAX_ITEM_ATTEMPTS then
+			ns.Trace("SEEN item %d unanswered %d times, not asked again this session", itemID, itemAttempts[itemID])
+		end
+		if window then
+			deferred[itemID] = window -- read again when its data loads, for the window that saw it
+		end
 	end
 end
 

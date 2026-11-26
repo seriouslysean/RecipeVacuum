@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 46
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 47
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -156,19 +156,38 @@ end
 -- Working builds. A module calls these from its own debug-only block, so a release never does; the library
 -- file itself is the same in every build. One listener and one record serve every module.
 
--- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
-function lib:EnableWorkingBuild()
-	C_CVar.SetCVar("scriptErrors", "1")
+-- Temporary values, never saved (docs/standards.md, "Game settings"): asked on only, and put back when something reverts them.
+local WORKING_CVARS = {
+	scriptErrors = "1",
 	-- Logs/taint.log names the access that tainted a blocked call, which no event or stack shows; level 2
 	-- is what Forever addon maintainers ask for when the gamepad UI blames an addon.
-	C_CVar.SetCVar("taintLog", "2")
+	taintLog = "2",
+}
+
+local function ApplyWorkingCVars()
+	for name, value in pairs(WORKING_CVARS) do
+		if C_CVar.GetCVar(name) ~= value then
+			C_CVar.SetTempCVar(name, value)
+			lib:LogAll(("working build: %s set to %s for this session"):format(name, value))
+		end
+	end
+end
+
+-- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
+function lib:EnableWorkingBuild()
+	ApplyWorkingCVars()
 	if self.blockedListener then
 		return
 	end
 	self.blockedListener = CreateFrame("Frame")
 	self.blockedListener:RegisterEvent("ADDON_ACTION_BLOCKED")
 	self.blockedListener:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+	self.blockedListener:RegisterEvent("CVAR_UPDATE")
 	self.blockedListener:SetScript("OnEvent", function(_, event, addon, action)
+		if event == "CVAR_UPDATE" then
+			if WORKING_CVARS[addon] then ApplyWorkingCVars() end -- another addon reverted one
+			return
+		end
 		local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
 		lib:Print(line)
 		-- Shared context: every log keeps it, with the call stack, to read after a reload.

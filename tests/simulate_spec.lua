@@ -848,6 +848,15 @@ describe("simulation", function()
 				assert(#said == 1, "the wait running out afterwards says nothing more")
 				C_Timer.After = after
 			end)
+			-- Fails if a recipe item that never answers a data request is asked for again on every bag change.
+			it("an item that never answers is asked for a few times, not on every bag change", function()
+				local asked, request, container = 0, C_Item.RequestLoadItemDataByID, C_Container
+				C_Item.RequestLoadItemDataByID = function() asked = asked + 1 end
+				C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end, GetContainerItemID = function() return 2199 end }
+				for _ = 1, 10 do frames[#frames].script(frames[#frames], "BAG_UPDATE_DELAYED") end
+				C_Item.RequestLoadItemDataByID, C_Container = request, container
+				assert(asked == h.MAX_ITEM_ATTEMPTS, "asked " .. asked .. " times for an item that never answers")
+			end)
 			it("closing the bags says the line when only the bags saw the recipe", function()
 				said = {}
 				h.scanned[2106] = 7006
