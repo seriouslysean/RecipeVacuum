@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Copies the working build to the Steam Deck for in-game testing, after the checks pass, and stamps the copied TOC's
+# version with the commit ("dev-ef2d97d", "-dirty" with uncommitted changes) so the panel title says which build it is.
+# The release packager fills the version from the tag instead; the repository's TOC keeps its @project-version@ token.
+#   scripts/deploy-deck [ssh-host]
+set -euo pipefail
+
+host=${1:-deck-host}
+addons='/home/deck/.local/share/Steam/steamapps/compatdata/4077668031/pfx/drive_c/Program Files (x86)/World of Warcraft/_forever_/Interface/AddOns'
+name=$(basename "$PWD")
+scripts/check
+stamp="dev-$(git rev-parse --short HEAD)"
+[[ -z $(git status --porcelain) ]] || stamp="$stamp-dirty"
+rsync -a --delete --exclude='.*' --exclude=AGENTS.md --exclude=CLAUDE.md --exclude=HANDOFF.md --exclude=docs \
+	--exclude=tests --exclude=tools --exclude=scripts --exclude=research_notes --exclude=reports \
+	--exclude='Libs/JigBoltgripToolkit/tests' -e "ssh -o BatchMode=yes -o ConnectTimeout=8" ./ "$host:$addons/$name/"
+ssh -o BatchMode=yes "$host" "sed -i 's/^## Version: .*/## Version: $stamp/' \"$addons/$name/$name.toc\""
+echo "deployed $name $stamp to $host"

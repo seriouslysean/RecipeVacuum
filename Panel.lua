@@ -1060,7 +1060,10 @@ local function CreatePanel()
 	-- the window's bar and still reads as a different thing. Its art is one 451 px image; sliced, its ends keep their size at our width
 	-- and only the middle stretches. Its own Update draws the fill; profession 0 has no fill of its own, so Update picks DefaultBlue.
 	rankBar = CreateFrame("Frame", nil, panel, "ProfessionsRankBarTemplate")
-	rankBar.ownerManagesEvents = true -- it shows discovery, not the window's skill, so the skill events must not drive it
+	-- It shows discovery, not the window's skill: its OnShow already registered the skill events when it was made (Blizzard_ProfessionsRankBar.lua,
+	-- OnShow), and they would redraw it as the window's profession, in that profession's fill.
+	rankBar.ownerManagesEvents = true
+	rankBar:UnregisterAllEvents()
 	rankBar:SetFrameStrata(panel:GetFrameStrata()) -- the template's BACKGROUND strata sits under the frame's art
 	rankBar.ExpansionDropdownButton:Hide() -- its menu picks the window's expansion
 	rankBar:SetWidth(BAR_WIDTH)

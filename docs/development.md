@@ -26,6 +26,10 @@ The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/
 - `luacheck` reports any global the code reads that is not listed in `.luacheckrc` (`read_globals`), so a misspelled API name fails the check. Add a name there when the code starts using a new one.
 - `.editorconfig` sets indentation and line endings for every editor.
 
+## Testing on the Steam Deck
+
+`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the commit (`dev-ef2d97d`, `-dirty` with uncommitted changes), so the panel title shows which build is loaded. The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
+
 ## Embedded libraries
 
 Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packaging time, so a release cannot pick up a different version by itself.
