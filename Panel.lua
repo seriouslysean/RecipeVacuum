@@ -372,7 +372,9 @@ local function CreateHeading()
 	heading.RankBar:Hide() -- Blizzard's skill line progress bar; a band has none
 	-- The count after the name, smaller and dim as Blizzard's rows show theirs, so it is not part of the title font.
 	heading.Count = heading:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	-- The template's own OnEnter and OnLeave stay: they only light the title and the marker.
+	-- The template's own OnEnter and OnLeave stay: they only light the title and the marker. A heading the d-pad reaches is
+	-- scrolled into view as a row is.
+	heading:HookScript("OnEnter", function(self) ns.ScrollRowIntoView(self) end)
 	heading:SetScript("OnClick", function(self)
 		toggled[BandKey(self.band)] = not IsOpen(self.band)
 		ns.Trace("UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
