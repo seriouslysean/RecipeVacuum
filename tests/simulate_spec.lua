@@ -936,9 +936,9 @@ describe("simulation", function()
 			local names = Names()
 			assert(#names == 2 and names[1] == "Plans: Near" and names[2] == "Plans: Sourced", "lists only recipes with a known source or come across within the level")
 		end)
-		-- Fails if a recipe lands in the wrong rank band, the lowest of two sources is not taken, a band above the character's skill starts open,
-		-- or a band below it starts closed. Open bands list their recipes; closed ones only their heading.
-		it("recipes land in their rank band and bands above the skill start collapsed", function()
+		-- Fails if a recipe lands in the wrong rank band, the lowest of two sources is not taken, or any band starts closed: every band
+		-- starts open, as Blizzard's categories do.
+		it("recipes land in their rank band and every band starts open", function()
 			pns.db.met.recipes[105] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
@@ -946,9 +946,9 @@ describe("simulation", function()
 			-- 101: trainer 30 and the seed 90, so 30; 102 at the band's top (75); 103 just past it; 105 has none, so its trivial level 105; 107 at 200.
 			pns.seed = { taught = {}, learnSkill = { [101] = 90, [102] = 75, [103] = 76, [107] = 200 } }
 			local cases = {
-				{ skill = 1, bands = { 1, 2, 3 }, shown = { "Plans: Near", "Plans: Sourced" } },
-				{ skill = 75, bands = { 1, 2, 3 }, shown = { "Plans: Near", "Plans: Sourced" } },
-				{ skill = 76, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
+				{ skill = 1, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: High", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
+				{ skill = 75, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: High", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
+				{ skill = 76, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: High", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
 				{ skill = 300, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: High", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
 			}
 			for _, case in ipairs(cases) do

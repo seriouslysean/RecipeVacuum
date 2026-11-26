@@ -393,11 +393,11 @@ local function BandKey(band)
 	return professionInfo.professionID .. ":" .. band
 end
 
--- A band is open when the player chose so; otherwise when it holds the character's skill or lies below it.
+-- A band is open unless the player closed it this session.
 local function IsOpen(band)
 	local chosen = toggled[BandKey(band)]
 	if chosen ~= nil then return chosen end
-	return band <= ns.BandOf(professionInfo.skillLevel or 0)
+	return true -- every band starts open, as the window's categories do; one the player closes stays closed for the session
 end
 
 local function CreateHeading()
