@@ -657,7 +657,6 @@ areaCapture:SetScript("OnEvent", function(_, event)
 end)
 -- Layout measuring: Blizzard's profession window and our panel, each element relative to its pane's own top-left in the pane's own
 -- scale, read only (docs/development.md, "Working build"; tools/layout-diff.lua prints the differences).
-local LAYOUT_KEEP = 5 -- records kept in the saved file
 
 local function Number(value)
 	if type(value) == "number" and not issecretvalue(value) then return value end
@@ -894,11 +893,11 @@ local function RecordLayout()
 	record.version = C_AddOns.GetAddOnMetadata(addonName, "Version")
 	record.windowScale, record.panelScale = ProfessionsFrame:GetEffectiveScale(), parts.panel:GetEffectiveScale()
 	ns.db.devLayout = ns.db.devLayout or {}
-	ns.db.devLayout[date("%Y-%m-%d %H:%M:%S ") .. record.profession] = record
-	local keys = {}
-	for key in pairs(ns.db.devLayout) do keys[#keys + 1] = key end
-	table.sort(keys)
-	for index = 1, #keys - LAYOUT_KEEP do ns.db.devLayout[keys[index]] = nil end
+	-- One record per profession and recipe, by name, the newest replacing an older one of the same view, so every view opened
+	-- stays to be read (owner, 2026-11-26).
+	record.recipe = parts.detail.Name and parts.detail.Name:GetText() or "?"
+	record.when = date("%Y-%m-%d %H:%M:%S")
+	ns.db.devLayout[record.profession .. " / " .. record.recipe] = record
 	Append(("LAYOUT recorded %d measures for %s"):format(#record.pairs, record.profession))
 	return record
 end

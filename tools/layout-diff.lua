@@ -1,17 +1,27 @@
--- Prints Blizzard's profession window against our panel from the newest `layout` record (docs/development.md, "Working build").
--- Every number is in pixels from its pane's own top-left; differences over 1 px are flagged. No arguments but the file.
-local path = arg[1]
-assert(path, "usage: luajit tools/layout-diff.lua <SavedVariables/RecipeVacuum.lua>")
+-- Prints Blizzard's profession window against our panel from a `layout` record (docs/development.md, "Working build").
+-- Every number is in pixels from its pane's own top-left; differences over 1 px are flagged. Records are kept one per
+-- "Profession / Recipe"; with no name the newest is shown, and --list names them all.
+--   luajit tools/layout-diff.lua <SavedVariables/RecipeVacuum.lua> [--list | "Engineering / Reagent Bot"]
+local path, wanted = arg[1], arg[2]
+assert(path, "usage: luajit tools/layout-diff.lua <SavedVariables/RecipeVacuum.lua> [--list | name]")
 local TOLERANCE = 1
 dofile(path)
-local layouts = assert(RecipeVacuumDB and RecipeVacuumDB.devLayout, "no devLayout in this file; run /recipevacuum layout in game, then /reload")
-local newest
-for key in pairs(layouts) do
-	if not newest or key > newest then newest = key end
+local layouts = assert(RecipeVacuumDB and RecipeVacuumDB.devLayout, "no devLayout in this file; open a profession in a working build, then /reload")
+local names, newest = {}, nil
+for key, record in pairs(layouts) do
+	names[#names + 1] = key
+	local when = record.when or key
+	if not newest or when > (layouts[newest].when or newest) then newest = key end
 end
-assert(newest, "devLayout is empty")
-local record = layouts[newest]
-print(("%s | build %s | scales: window %.3f, panel %.3f"):format(newest, tostring(record.build), record.windowScale or 0, record.panelScale or 0))
+table.sort(names)
+if wanted == "--list" then
+	for _, key in ipairs(names) do print(("%s  %s  %s"):format(layouts[key].when or "?", tostring(layouts[key].version), key)) end
+	return
+end
+local name = wanted or newest
+local record = assert(name and layouts[name], "no record named " .. tostring(name) .. "; --list shows them")
+print(("%s | %s | %s | build %s | scales: window %.3f, panel %.3f"):format(name, tostring(record.when), tostring(record.version),
+	tostring(record.build), record.windowScale or 0, record.panelScale or 0))
 
 local FIELDS = { "left", "top", "width", "height", "stringWidth", "stringHeight", "lines", "fontSize", "wrapWidth" }
 local TEXT = { "fontObject", "fontFlags", "justifyH", "justifyV", "atlas", "texture", "wordWrap" }
