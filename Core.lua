@@ -80,7 +80,7 @@ function ns.NoteNPCFaction(npcID, faction)
 	if npc and faction then npc.faction = faction end
 end
 
--- One migration per schema number, in order (as other addons do); never remove one.
+-- One migration per schema number, in order; never remove one.
 local migrations = {}
 
 -- Schema 2 reads schema 1 vendors and trainers keyed by lowercased recipe name.

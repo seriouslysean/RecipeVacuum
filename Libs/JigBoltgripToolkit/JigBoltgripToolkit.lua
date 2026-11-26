@@ -48,9 +48,8 @@ local function ShowLink(title, url)
 	lib:ShowText(title, url)
 end
 
--- Links from standard TOC fields (X-Website as other addons, X-Curse-Project-ID
--- as Can I Mog It and another addon). LaunchURL and CopyToClipboard are restricted, so a button opens the
--- copy window with the address selected, as another addon Discord link does.
+-- Links from the standard TOC fields X-Website and X-Curse-Project-ID. LaunchURL and CopyToClipboard
+-- are restricted, so a button opens the copy window with the address selected.
 local CURSEFORGE_PROJECT_URL = "https://www.curseforge.com/projects/"
 
 local function ModuleLinks(addonName)
@@ -804,7 +803,7 @@ function lib:IsTextShown()
 end
 
 -- One table of entries drives the chat help and the Commands rows (fields in docs/standards.md, "Options").
--- Troubleshooting entries show in chat help only, as another addon does. Full slash names, not aliases,
+-- Troubleshooting entries show in chat help only. Full slash names, not aliases,
 -- since clashes resolve unpredictably (ChatFrameUtil.lua imports SlashCmdList).
 lib.commands = lib.commands or {}
 

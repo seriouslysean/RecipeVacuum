@@ -2,7 +2,7 @@ local addonName, ns = ...
 local L = ns.L
 
 -- The player-facing list of unlearned recipes: a panel of our own beside the Professions window, never a write into Blizzard's list (docs/client-notes.md, "Gamepad").
--- Built as Field Guide Forever's list is (UI/List.lua): a Blizzard scroll frame and one real Button per row, so the Gamepad UI can focus rows and scroll them.
+-- A Blizzard scroll frame and one real Button per row, so the Gamepad UI can focus rows and scroll them (docs/client-notes.md, "Panel").
 -- Rows and headings are Blizzard's own recipe list templates, so they look as its list does (docs/client-notes.md, "Panel").
 
 -- Blizzard_ProfessionsCrafting.xml:138-139: the window's recipe list sits 5 px in from its frame's left and bottom.

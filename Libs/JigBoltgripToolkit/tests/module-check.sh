@@ -6,6 +6,8 @@
 # The step runner calls each check function by name.
 # shellcheck disable=SC2329
 set -uo pipefail
+# luarocks --local installs luacheck and busted here, which a login shell does not put on PATH.
+[[ -d $HOME/.luarocks/bin ]] && PATH="$HOME/.luarocks/bin:$PATH"
 
 failed=0
 step() {

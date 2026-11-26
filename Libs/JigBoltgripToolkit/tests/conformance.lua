@@ -286,7 +286,8 @@ local SENTENCE_WORDS = 16 -- a simple sentence
 local RULES = {}
 function RULES.titleCase(text)
 	local first = true
-	for word in text:gmatch("[%a']+") do
+	-- A hyphenated name is one word, so a gnomish "-o-" name (Alarm-o-Bot, the game's own) passes on its first letter.
+	for word in text:gmatch("[%a'%-]+") do
 		if not (word:find("^%u") or (not first and SMALL_WORDS[word])) then return "is not in Title Case" end
 		first = false
 	end

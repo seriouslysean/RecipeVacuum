@@ -8,7 +8,7 @@ Link the repository into the Forever client, then `/reload` after each change:
 ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeVacuum"
 ```
 
-`luacheck` and `busted` come from LuaRocks (`luarocks --lua-version 5.1 install busted`, the community's test runner, as other addons use) and `luajit` from Homebrew; all match the client's Lua 5.1.
+`luacheck` and `busted` come from LuaRocks (`luarocks --lua-version 5.1 install busted`) and `luajit` from Homebrew; all match the client's Lua 5.1.
 
 ## Checks
 
@@ -36,7 +36,7 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | CallbackHandler-1.0 | MINOR 8 | Ace3 |
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
 | AceComm-3.0 | MINOR 14 | Ace3 |
-| AceLocale-3.0 | MINOR 6 | Ace3 commit 075bafb (master; newer than the last release tag, r981, and what other addons such as Scrap ship, so it is the copy that runs) |
+| AceLocale-3.0 | MINOR 6 | Ace3 commit 075bafb (master; newer than the last release tag, r981, so it is the copy that runs) |
 | JigBoltgripToolkit-1.0 | MINOR 43 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
