@@ -41,10 +41,10 @@ The short form of the shared standards, as they apply here.
 | `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions |
 | `Finds.lua` | Revisions, wire rows, validation, merge, export |
 | `Sharing.lua` | Automatic sharing with guild, group and friends (AceComm) |
-| `Unlearned.lua` | Which recipes the character hasn't learned, by category (`ns.GetUnlearnedRecipes`); no UI |
+| `Unlearned.lua` | Which recipes the character hasn't learned, by category (`ns.GetUnlearnedRecipes`), and the panel's flat list in skill-up order (`ns.GetListedRecipes`); no UI |
 | `Ranks.lua` | Profession ranks: sources from trainers, book use and quest turn-ins, and the mark beside the link button |
 | `RecipePanel.lua` | Map pins for sources (`ns.MapTargets`, `ns.ShowOnMap`) |
-| `Panel.lua` | The unlearned recipes panel beside the Professions window |
+| `Panel.lua` | The unlearned recipes panel beside the Professions window: follows its search and filters, builds rows a few a frame |
 | `Settings.lua` | Options page and player commands |
 | `Troubleshooting.lua` | Development commands and their log; checkout builds only |
 | `Libs/JigBoltgripToolkit` | Shared toolkit page, commands, help and copy window |

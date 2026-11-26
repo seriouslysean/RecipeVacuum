@@ -131,3 +131,31 @@ function ns.GetUnlearnedRecipes(professionInfo)
 	end
 	return categories
 end
+
+-- What the panel lists for a profession: the unlearned recipes that pass the show rule (ns.IsListed), in one flat
+-- list in skill-up order. The second result is true once the client's data was complete, so the list will not change.
+-- Built once per cached categories table, which is replaced whenever the sources or the character's recipes change.
+local listed = {}
+
+function ns.GetListedRecipes(professionInfo)
+	local categories = ns.GetUnlearnedRecipes(professionInfo)
+	if not categories then
+		return nil
+	end
+	local professionID = professionInfo.professionID
+	local entry = listed[professionID]
+	if not (entry and entry.categories == categories) then
+		local list = {}
+		for _, category in ipairs(categories) do
+			for _, recipeInfo in ipairs(category.recipes) do
+				if ns.IsListed(recipeInfo) then
+					table.insert(list, recipeInfo)
+				end
+			end
+		end
+		table.sort(list, SortRecipes)
+		entry = { categories = categories, list = list }
+		listed[professionID] = entry
+	end
+	return entry.list, cache[professionID] ~= nil
+end

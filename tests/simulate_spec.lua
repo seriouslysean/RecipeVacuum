@@ -734,6 +734,93 @@ describe("simulation", function()
 		end)
 	end)
 
+	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
+	describe("panel", function()
+		local pns, queue, buttons, traces, init, Fake
+		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
+		local function Names()
+			local names = {}
+			for _, button in ipairs(buttons) do if button:IsShown() then names[#names + 1] = button.Name.text end end
+			table.sort(names)
+			return names
+		end
+		local realCreateFrame
+		it("loads on a stand-in window", function()
+			pns = boot(nil)
+			realCreateFrame = CreateFrame
+			queue, buttons, traces = {}, {}, {}
+			local meta = {}
+			meta.__index = function(_, key)
+				if key == "IsShown" then return function(o) local parent = rawget(o, "parent"); return rawget(o, "shown") ~= false and (not parent or parent:IsShown()) end end
+				if key == "Show" or key == "Hide" then return function(o) o.shown = key == "Show" end end
+				if key == "SetShown" then return function(o, v) o.shown = v end end
+				if key == "SetText" then return function(o, v) o.text = v end end
+				if key == "GetText" then return function(o) return rawget(o, "text") or "" end end
+				if key == "SetScript" or key == "HookScript" then return function(o, name, fn) local scripts = rawget(o, "scripts") or {}; o.scripts = scripts; scripts[name] = fn end end
+				if key == "CreateFontString" or key == "CreateTexture" then return function(o) return Fake(o) end end
+				return function() end
+			end
+			function Fake(parent) return setmetatable({ parent = parent }, meta) end
+			CreateFrame = function(kind, _, parent)
+				local f = Fake(parent)
+				if kind == "Button" then f.shown = true; buttons[#buttons + 1] = f end
+				return f
+			end
+			RunNextFrame = function(fn) queue[#queue + 1] = fn end
+			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
+			local color = { GetRGB = function() return 1, 1, 1 end }
+			DIFFICULT_DIFFICULTY_COLOR, FAIR_DIFFICULTY_COLOR, EASY_DIFFICULTY_COLOR, TRIVIAL_DIFFICULTY_COLOR, DISABLED_FONT_COLOR = color, color, color, color, color
+			CaseAccentInsensitiveParse = function(text) return text:lower() end
+			GetUIPanel = function() return nil end
+			hooksecurefunc = function(owner, name, fn)
+				if type(owner) == "string" then return end
+				local original = owner[name]
+				owner[name] = function(...) original(...); fn(...) end
+			end
+			C_Texture = { GetAtlasInfo = function() return nil end }
+			debugprofilestop = os.clock
+			ProfessionsFrame = Fake()
+			ProfessionsFrame.CraftingPage = Fake(ProfessionsFrame)
+			ProfessionsFrame.CraftingPage.Init = function() end
+			ProfessionsFrame.CraftingPage.RecipeList = { SearchBox = Fake() }
+			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end }
+			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
+			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen" }
+			C_TradeSkillUI = { IsTradeSkillReady = function() return true end,
+			  GetAllRecipeIDs = function() return { 101, 102, 103, 104 } end,
+			  GetRecipeInfo = function(id) return { recipeID = id, name = recipes[id], categoryID = 1, learned = false, maxTrivialLevel = id, icon = 1 } end,
+			  IsRecipeInSkillLine = function() return true end,
+			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
+			  GetOnlyShowMakeableRecipes = function() return false end, GetShowUnlearned = function() return true end,
+			  GetOnlyShowSkillUpRecipes = function() return false end, GetOnlyShowFirstCraftRecipes = function() return false end,
+			  GetRecipeSchematic = function() return nil end }
+			load("Unlearned.lua", pns)
+			pns.GetRecipeFaction = function() return false end -- read from tooltip data
+			pns.GetRecipeLock = function() return false end
+			pns.db.found.recipes[101] = { { kind = "trainer", count = 1 } }
+			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
+			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
+			pns.Trace = function(text, ...) traces[#traces + 1] = text:format(...) end
+			load("Panel.lua", pns)
+			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
+			init = function() ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164 }) end
+		end)
+		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the owner's window froze for 6 s.
+		it("several Init calls in one frame build the list once", function()
+			for _ = 1, 5 do init() end
+			Flush()
+			local builds = 0
+			for _, line in ipairs(traces) do if line:find("UI panel shown", 1, true) then builds = builds + 1 end end
+			assert(builds == 1, "several Init calls in one frame build the list once")
+		end)
+		-- Fails if recipes with no source and never come across, or come across beyond the level, are listed: 518 rows for Blacksmithing.
+		it("lists only recipes with a known source or come across within the level", function()
+			local names = Names()
+			assert(#names == 2 and names[1] == "Plans: Near" and names[2] == "Plans: Sourced", "lists only recipes with a known source or come across within the level")
+			CreateFrame = realCreateFrame
+		end)
+	end)
+
 	-- 7. Reload is stable
 	it("reload keeps schema and revision", function()
 		local savedDB = a.db

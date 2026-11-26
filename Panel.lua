@@ -2,37 +2,67 @@ local _, ns = ...
 local L = ns.L
 
 -- The player-facing list of unlearned recipes: a panel of our own beside the Professions window, never a write into Blizzard's list (docs/client-notes.md, "Gamepad").
--- Built as Field Guide Forever's list is (UI/List.lua): a Blizzard scroll frame and a fixed pool of our own Buttons, so the Gamepad UI can focus rows and scroll them.
+-- Built as Field Guide Forever's list is (UI/List.lua): a Blizzard scroll frame and one real Button per row, so the Gamepad UI can focus rows and scroll them.
+-- What the panel follows from the window, and why it builds a few rows a frame, is in docs/client-notes.md, "Panel".
 
-local PANEL_WIDTH = 220 -- about 230 px are free beside the tab column at 1280x800 (docs/client-notes.md, "Panel")
+local PANEL_WIDTH = 270 -- about 230 px are free beside the tab column at 1280x800; the quest tracker may be overlapped a little
 local PANEL_GAP = 2 -- space between the tab column and the panel
 -- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
 local TAB_TOP_OFFSET = 60
-local TITLE_HEIGHT = 28
-local LIST_INSET_X, LIST_INSET_TOP, LIST_INSET_BOTTOM = 4, 6, 6
+local TITLE_HEIGHT = 40 -- the title and the count under it
+local CONTENT_PAD = 4
 local SCROLLBAR_WIDTH = 22 -- room for UIPanelScrollFrameTemplate's bar to the right of the list
-local ROW_HEIGHT = 20
+-- Blizzard's recipe row is 20 high (Blizzard_ProfessionsRecipeList.xml); two more hold an icon without crowding it.
+local ROW_HEIGHT = 22
+local ICON_SIZE = 20
 local ROW_PAD = 4
-local HEADER_COLOR = NORMAL_FONT_COLOR
-local RETRY_SECONDS = 1 -- the recipe index loads after the window opens
-local MAX_RETRIES = 10
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
+-- Rows are made in steps of at most this much time and this many rows, so no frame from the panel nears 16 ms.
+local BUILD_BUDGET_MS = 4
+local ROWS_PER_STEP = 40
+local RETRY_SECONDS = 1 -- once: the client may still be loading names and factions after the window opens
+-- The inset template's border atlases (Blizzard_SharedXML NineSliceLayouts.lua, InsetFrameTemplate) give its content margins.
+local INSET_EDGES = {
+	left = { atlas = "!UI-Frame-InnerLeftTile", key = "width" },
+	right = { atlas = "!UI-Frame-InnerRightTile", key = "width" },
+	top = { atlas = "_UI-Frame-InnerTopTile", key = "height" },
+	bottom = { atlas = "_UI-Frame-InnerBotTile", key = "height" },
+}
 
-local panel, scroll, child, empty
+-- Blizzard's own difficulty colors, by the recipe's difficulty for the player's skill (Blizzard_ProfessionsRecipeList.lua).
+-- A trivial recipe has no entry there, and is drawn in the game's trivial color.
+local DIFFICULTY_COLORS = {
+	[Enum.TradeskillRelativeDifficulty.Optimal] = DIFFICULT_DIFFICULTY_COLOR,
+	[Enum.TradeskillRelativeDifficulty.Medium] = FAIR_DIFFICULTY_COLOR,
+	[Enum.TradeskillRelativeDifficulty.Easy] = EASY_DIFFICULTY_COLOR,
+}
+
+local panel, scroll, child, empty, countText
 local rows = {}
-local entries = {} -- flat list: { header = name } or { recipe = recipeInfo }
+local entries = {} -- the recipes shown, in order
 local professionInfo
-local retries = 0
+local wanted = false -- a character's own crafting page is open
+local requested = false
+local retried = false
+local generation = 0 -- a newer build ends the steps of an older one
+local nextEntry, buildMs, buildSteps
 
 local function CreateRow(index)
 	local row = CreateFrame("Button", nil, child)
 	row:SetHeight(ROW_HEIGHT)
 	row:SetHighlightAtlas("Options_List_Hover", "ADD") -- the highlight Blizzard's settings lists use
 
+	row.Icon = row:CreateTexture(nil, "ARTWORK")
+	row.Icon:SetSize(ICON_SIZE, ICON_SIZE)
+	row.Icon:SetPoint("LEFT", ROW_PAD, 0)
+
 	row.Name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	row.Name:SetPoint("LEFT", ROW_PAD, 0)
+	row.Name:SetPoint("LEFT", row.Icon, "RIGHT", ROW_PAD, 0)
 	row.Name:SetJustifyH("LEFT")
 	row.Name:SetWordWrap(false)
+
+	-- The skill the list is ordered by, before the marks.
+	row.Skill = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 
 	-- Marks stack from the right edge, in display order from the left.
 	local marks = {}
@@ -53,8 +83,18 @@ local function CreateRow(index)
 		for slot = 1, self.markCount do
 			ns.SetMarkStrength(marks[slot], true)
 		end
+		-- The game's own tooltip for what the recipe makes, so other addons' tooltip hooks run, then our source lines.
+		local recipeID = self.recipe.recipeID
+		local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
+		local itemID = schematic and schematic.outputItemID
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		ns.AddSourceLines(GameTooltip, self.recipe, true)
+		if itemID then
+			GameTooltip:SetItemByID(itemID)
+		else
+			GameTooltip:SetSpellByID(recipeID)
+		end
+		GameTooltip_AddBlankLineToTooltip(GameTooltip)
+		ns.AddSourceLines(GameTooltip, self.recipe, true, true)
 		GameTooltip:Show()
 	end)
 	row:SetScript("OnLeave", function(self)
@@ -76,24 +116,22 @@ local function CreateRow(index)
 	return row
 end
 
-local function ShowRow(row, entry)
-	row.recipe = entry.recipe
-	row:SetEnabled(entry.recipe ~= nil)
-	if entry.header then
-		row.Name:SetFontObject("GameFontNormal")
-		row.Name:SetTextColor(HEADER_COLOR:GetRGB())
-		row.Name:SetText(entry.header)
-		row.Name:SetPoint("RIGHT", row, "RIGHT", -ROW_PAD, 0)
-		row.markCount = 0
-		for _, mark in ipairs(row.marks) do
-			mark.Texture:Hide()
-		end
-		return
+-- Grey when the recipe cannot be learned by this character, else the game's color for how it rates against their skill.
+local function NameColor(recipeInfo)
+	if recipeInfo.disabled or recipeInfo.lockReason then
+		return DISABLED_FONT_COLOR
 	end
-	row.Name:SetFontObject("GameFontHighlightSmall")
-	row.Name:SetTextColor(1, 1, 1)
-	row.Name:SetText(entry.recipe.name)
-	row.markCount = ns.GetMarks(entry.recipe, row.markNames)
+	return DIFFICULTY_COLORS[recipeInfo.relativeDifficulty] or TRIVIAL_DIFFICULTY_COLOR
+end
+
+local function ShowRow(row, recipeInfo)
+	row.recipe = recipeInfo
+	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
+	row.Icon:SetTexture(recipeInfo.icon)
+	row.Name:SetText(recipeInfo.name)
+	row.Name:SetTextColor(NameColor(recipeInfo):GetRGB())
+	row.Skill:SetText(recipeInfo.maxTrivialLevel)
+	row.markCount = ns.GetMarks(recipeInfo, row.markNames)
 	for slot, mark in ipairs(row.marks) do
 		local name = row.markNames[slot]
 		mark.Texture:SetShown(name ~= nil)
@@ -102,52 +140,101 @@ local function ShowRow(row, entry)
 			ns.SetMarkStrength(mark, false)
 		end
 	end
-	-- The name stops where the leftmost mark begins.
-	row.Name:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
+	-- The skill number sits left of the marks, and the name stops where the number begins.
+	row.Skill:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
+	row.Name:SetPoint("RIGHT", row.Skill, "LEFT", -ROW_PAD, 0)
+end
+
+local function Finish()
+	for index = #entries + 1, #rows do
+		rows[index]:Hide()
+	end
+	ns.Trace("UI panel shown with %d rows, built in %.1f ms over %d frames", #entries, buildMs, buildSteps)
+	--@debug@
+	ns.PerfMs("panel build", buildMs)
+	--@end-debug@
 end
 
 -- One row per entry, all in the scroll child: the Gamepad UI moves between rows that exist and scrolls the
 -- frame to reach one out of view, so a screenful of relabelled rows left it stuck at the last one shown.
--- Rows are kept and reused across professions.
-local function Redraw()
-	for index, entry in ipairs(entries) do
-		local row = rows[index] or CreateRow(index)
-		local top = -(index - 1) * ROW_HEIGHT
+-- Rows are kept and reused across professions, and made a few a frame so opening the window never stalls.
+local function BuildStep(buildGeneration)
+	if buildGeneration ~= generation or not panel:IsShown() then return end
+	local started = debugprofilestop()
+	local made = 0
+	while nextEntry <= #entries and made < ROWS_PER_STEP and (made == 0 or debugprofilestop() - started < BUILD_BUDGET_MS) do
+		local row = rows[nextEntry] or CreateRow(nextEntry)
+		local top = -(nextEntry - 1) * ROW_HEIGHT
 		row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, top)
 		row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, top)
-		ShowRow(row, entry)
+		ShowRow(row, entries[nextEntry])
 		row:Show()
+		nextEntry = nextEntry + 1
+		made = made + 1
 	end
+	buildMs = buildMs + (debugprofilestop() - started)
+	buildSteps = buildSteps + 1
+	if nextEntry <= #entries then
+		RunNextFrame(function() BuildStep(buildGeneration) end)
+	else
+		Finish()
+	end
+end
+
+-- The window's own filters, read where they can apply to a recipe not yet learned (docs/client-notes.md, "Panel").
+local function CollectEntries(list)
+	wipe(entries)
+	-- Nothing unlearned is makeable, and a window set to hide unlearned recipes hides these too.
+	if C_TradeSkillUI.GetOnlyShowMakeableRecipes() or not C_TradeSkillUI.GetShowUnlearned() then
+		return
+	end
+	local search = CaseAccentInsensitiveParse(ProfessionsFrame.CraftingPage.RecipeList.SearchBox:GetText())
+	local skillUpOnly = C_TradeSkillUI.GetOnlyShowSkillUpRecipes()
+	local firstCraftOnly = C_TradeSkillUI.GetOnlyShowFirstCraftRecipes()
+	for _, recipeInfo in ipairs(list) do
+		if (search == "" or recipeInfo.searchName:find(search, 1, true))
+			and not (skillUpOnly and not recipeInfo.canSkillUp)
+			and not (firstCraftOnly and not recipeInfo.firstCraft) then
+			entries[#entries + 1] = recipeInfo
+		end
+	end
+end
+
+local Request -- defined below; Update schedules its one retry through it
+
+local function Update()
+	requested = false
+	if not (panel and panel:IsShown() and professionInfo) then return end
+	local list, complete = ns.GetListedRecipes(professionInfo)
+	-- Not ready: the client's list update comes back through the events below.
+	if not list then return end
+	if not complete and not retried then
+		retried = true
+		C_Timer.After(RETRY_SECONDS, Request)
+	end
+	CollectEntries(list)
+	generation = generation + 1
+	nextEntry, buildMs, buildSteps = 1, 0, 0
+	child:SetHeight(math.max(#entries * ROW_HEIGHT, 1))
+	empty:SetShown(#entries == 0)
+	countText:SetText((#entries == 1 and L["%d recipe"] or L["%d recipes"]):format(#entries))
+	scroll:SetVerticalScroll(0)
 	for index = #entries + 1, #rows do
 		rows[index]:Hide()
 	end
+	BuildStep(generation)
 end
 
-local function Rebuild(categories)
-	wipe(entries)
-	for _, category in ipairs(categories) do
-		entries[#entries + 1] = { header = category.info.name }
-		for _, recipeInfo in ipairs(category.recipes) do
-			entries[#entries + 1] = { recipe = recipeInfo }
-		end
-	end
-	child:SetHeight(math.max(#entries * ROW_HEIGHT, 1))
-	empty:SetShown(#entries == 0)
-	scroll:SetVerticalScroll(0)
-	Redraw()
-	ns.Trace("UI panel shown with %d rows", #entries)
+-- However many times the window rebuilds its page in a frame, the panel rebuilds once, on the next.
+Request = function()
+	if requested then return end
+	requested = true
+	RunNextFrame(Update)
 end
 
-local function Refresh()
-	if not (panel and panel:IsShown() and professionInfo) then return end
-	local categories = ns.GetUnlearnedRecipes(professionInfo)
-	if categories then
-		retries = 0
-		Rebuild(categories)
-	elseif retries < MAX_RETRIES then
-		retries = retries + 1
-		C_Timer.After(RETRY_SECONDS, Refresh)
-	end
+local function EdgeSize(edge)
+	local info = C_Texture.GetAtlasInfo(edge.atlas)
+	return info and info[edge.key] or 0
 end
 
 local function CreatePanel()
@@ -158,16 +245,21 @@ local function CreatePanel()
 	panel:SetPoint("TOPLEFT", window.ProfessionsOverviewTab, "TOPRIGHT", PANEL_GAP, TAB_TOP_OFFSET)
 	panel:Hide()
 
+	local left, right = EdgeSize(INSET_EDGES.left) + CONTENT_PAD, EdgeSize(INSET_EDGES.right) + CONTENT_PAD
+	local top, bottom = EdgeSize(INSET_EDGES.top) + CONTENT_PAD, EdgeSize(INSET_EDGES.bottom) + CONTENT_PAD
+
 	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	title:SetPoint("TOP", 0, -ROW_PAD * 2)
+	title:SetPoint("TOP", 0, -top)
 	title:SetText(L["Unlearned Recipes"])
+	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	countText:SetPoint("TOP", title, "BOTTOM", 0, -2)
 
 	-- UIPanelScrollFrameTemplate, as Field Guide Forever's list; a ScrollBox would hold our data in Blizzard's secure code.
 	scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", LIST_INSET_X, -(TITLE_HEIGHT + LIST_INSET_TOP))
-	scroll:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_INSET_BOTTOM)
+	scroll:SetPoint("TOPLEFT", left, -(top + TITLE_HEIGHT))
+	scroll:SetPoint("BOTTOMRIGHT", -(right + SCROLLBAR_WIDTH), bottom)
 	child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(PANEL_WIDTH - LIST_INSET_X - SCROLLBAR_WIDTH, 1)
+	child:SetSize(PANEL_WIDTH - left - right - SCROLLBAR_WIDTH, 1)
 	scroll:SetScrollChild(child)
 
 	empty = panel:CreateFontString(nil, "ARTWORK", "GameFontDisable")
@@ -177,33 +269,51 @@ local function CreatePanel()
 
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
-		Refresh()
+		Request()
 	end)
 	return panel
 end
 
--- Read-only post-hook: the window's own crafting page tells which profession is open.
-local function OnInit(_, info)
-	panel = panel or CreatePanel()
-	professionInfo = info
-	-- Only this character's own professions have recipes to learn.
-	panel:SetShown(Professions.InLocalCraftingMode())
-	retries = 0
-	Refresh()
+-- Another window opened beside Professions takes the center slot; the panel steps aside for it. Read after
+-- Blizzard has laid its windows out. The Gamepad UI shows one window at a time, so this never triggers there.
+local function UpdateVisibility()
+	if not panel then return end
+	local center = GetUIPanel("center")
+	panel:SetShown(wanted and not (center and center ~= ProfessionsFrame))
 end
 
-local learnedFrame = CreateFrame("Frame")
-learnedFrame:RegisterEvent("NEW_RECIPE_LEARNED")
-learnedFrame:SetScript("OnEvent", function()
-	retries = 0
-	Refresh()
-end)
+-- Read-only post-hook: the window's own crafting page tells which profession is open. It runs once per
+-- rebuild of the page, and several times when the window opens, so it only asks for one rebuild of ours.
+local function OnInit(_, info)
+	panel = panel or CreatePanel()
+	if not (professionInfo and professionInfo.professionID == info.professionID) then
+		retried = false
+	end
+	professionInfo = info
+	-- Only this character's own professions have recipes to learn.
+	wanted = Professions.InLocalCraftingMode()
+	UpdateVisibility()
+	Request()
+end
+
+-- The events that change what the window lists: its own list update (also sent by a filter change), the data
+-- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
+local eventFrame = CreateFrame("Frame")
+for _, event in ipairs({ "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED" }) do
+	eventFrame:RegisterEvent(event)
+end
+eventFrame:SetScript("OnEvent", Request)
+
+hooksecurefunc("UpdateUIPanelPositions", UpdateVisibility)
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	local page = ProfessionsFrame.CraftingPage
 	hooksecurefunc(page, "Init", OnInit)
+	-- The window's search box drives the same filter the list uses.
+	page.RecipeList.SearchBox:HookScript("OnTextChanged", Request)
 	-- The overview page has no profession to list.
 	page:HookScript("OnHide", function()
-		if panel then panel:Hide() end
+		wanted = false
+		UpdateVisibility()
 	end)
 end)

@@ -12,6 +12,8 @@ L["Map pin set! %s marked on your map!"] = true
 -- Panel (Panel.lua)
 L["Unlearned Recipes"] = true
 L["Nothing left to learn."] = true
+L["%d recipe"] = true
+L["%d recipes"] = true
 
 -- Options (Settings.lua)
 L["Recipe Sources"] = true

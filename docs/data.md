@@ -90,7 +90,11 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 | The guild's profession view | Friends |
 | A linked profession the player opens | The level its link was seen at this session, else Public |
 
-A recipe with no known source counts as come across once it has been seen within the chosen level (`recipeInfo.met`); the panel to come decides how those are listed.
+A recipe with no known source counts as come across once it has been seen within the chosen level (`recipeInfo.met`).
+
+## Show rule
+
+The panel lists an unlearned recipe when it has a known source within the chosen level, or was come across within it (`ns.IsListed`). A recipe with neither is left out; that drops the later-expansion recipes the client holds (518 for Blacksmithing in the owner's log) with no list of them kept. Other faction's recipes are left out before this (`Unlearned.lua`).
 
 Seeing an item a recipe makes is not coming across the recipe: it says nothing about the recipe or where to learn it, and the player's own loot would count. Crafted items are ignored.
 

@@ -244,6 +244,12 @@ function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = types
 end
 
+-- The panel's show rule (docs/data.md, "Show rule"): a recipe with a known source within the player's level, or come across within it.
+-- A recipe with neither is left out, which drops the client's later-expansion recipes without a list of them.
+function ns.IsListed(recipeInfo)
+	return recipeInfo.sourceTypes ~= nil or (recipeInfo.met ~= nil and recipeInfo.met <= ns.db.sourceLevel)
+end
+
 -- The recipe an item teaches, by ID (docs/data.md, "Recipe items").
 
 -- From the seed or this session's scan.
@@ -603,8 +609,11 @@ function ns.AddEntryLines(tooltip, entries, detailed)
 	end
 end
 
-function ns.AddSourceLines(tooltip, recipeInfo, detailed)
-	GameTooltip_SetTitle(tooltip, recipeInfo.name)
+-- appended: the tooltip already shows the game's own tooltip for what the recipe makes, so other addons' lines are in it.
+function ns.AddSourceLines(tooltip, recipeInfo, detailed, appended)
+	if not appended then
+		GameTooltip_SetTitle(tooltip, recipeInfo.name)
+	end
 	-- Blizzard's row disabled reason (Blizzard_ProfessionsRecipeList.lua, LockedIcon OnEnter).
 	if recipeInfo.lockReason then
 		GameTooltip_AddDisabledLine(tooltip, MarkText("locked", recipeInfo.lockReason))
