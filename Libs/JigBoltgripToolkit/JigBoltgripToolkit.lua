@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 35
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 36
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -322,6 +322,11 @@ end
 
 -- Starts the module's log once its saved table is loaded; resumes a watch left on.
 function lib:StartLog(module, saved, handlers)
+	-- Without its saved table a module keeps no log; a working build must not break over it.
+	if type(saved) ~= "table" then
+		self:Print(("%s: no saved table for the log yet; nothing is logged this session."):format(tostring(module.title)))
+		return
+	end
 	local log = self.logs[module.addon]
 	if not log then
 		log = {}
