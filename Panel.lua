@@ -48,8 +48,9 @@ local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
-local BAR_ART_HEIGHT = 13 -- the bar's own height; the border art is taller
-local BAR_BORDER_OVERHANG, BAR_BORDER_HEIGHT = 205 - 196, 29 -- the border art is 9 px wider than its bar
+-- The Collections bar is 13 high with 29 of border art; stretched to the height of the window's skill bar beside it.
+local BAR_ART_HEIGHT = 18
+local BAR_BORDER_OVERHANG, BAR_BORDER_HEIGHT = 205 - 196, 29 * 18 / 13 -- the border art is 9 px wider and 16 taller than its bar
 local RANK_BAR_HEIGHT = 18 -- the window's rank bar, whose line ours keeps
 -- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
 -- takes the same share of its size.
