@@ -9,18 +9,28 @@ local PANEL_WIDTH = 270 -- about 230 px are free beside the tab column at 1280x8
 local PANEL_GAP = 2 -- space between the tab column and the panel
 -- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
 local TAB_TOP_OFFSET = 60
-local TITLE_HEIGHT = 40 -- the title and the count under it
+local TITLE_HEIGHT = 40 -- fallback band height until the crafting page's list can be read
 local TITLE_GAP = 4
 local CONTENT_PAD = 4
-local SCROLLBAR_WIDTH = 22 -- room for UIPanelScrollFrameTemplate's bar to the right of the list
+-- Blizzard_ProfessionsRecipeList.xml:61-66 (ProfessionsRecipeListTemplate.ScrollBox): the list's left inset, the
+-- column right of it that the scroll bar fills, the gap above it (search row) and the gap below it.
+local LIST_LEFT = 8
+local SCROLLBAR_WIDTH = 20
+local LIST_TOP_INSET = 35
+local LIST_BOTTOM_INSET = 5
 -- Blizzard_ProfessionsRecipeList.lua: view spacing, indent and pad; the element extents (20 per recipe, 20 + 5 per category).
 local ROW_HEIGHT = 20
 local HEADING_HEIGHT = 25
 local ROW_SPACING = 1
 local ROW_INDENT = 10
-local LIST_PAD = 5
+local LIST_PAD = 5 -- top, bottom and right pad of the list's view (:15, CreateScrollBoxListTreeListView)
 local ROW_PAD = 4
-local SKILL_WIDTH = 22 -- room for a three-digit skill, right-aligned so the numbers line up
+-- Blizzard_ProfessionsRecipeList.xml:140-145,167-172: a row's SkillUps slot (26 x 15, 9 left of the row) and the
+-- label's 4 px gap after it. The skill number takes that slot, right-aligned so the numbers line up.
+local SKILL_WIDTH = 26
+local SKILL_HEIGHT = 15
+local SKILL_X = -9
+local LABEL_GAP = 4
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -36,7 +46,8 @@ local INSET_EDGES = {
 	bottom = { atlas = "_UI-Frame-InnerBotTile", key = "height" },
 }
 
-local panel, scroll, child, empty, countText
+local panel, scroll, child, empty, countText, titleBand, title
+local placedTop, placedBottom
 local rows, headings = {}, {}
 local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
 local slots = {} -- the frame of each item once built
@@ -56,11 +67,11 @@ local function CreateRow()
 
 	-- The skill the list is ordered by comes first: it is what the list is about.
 	row.Skill = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	row.Skill:SetPoint("LEFT", ROW_PAD, 0)
-	row.Skill:SetWidth(SKILL_WIDTH)
+	row.Skill:SetPoint("LEFT", SKILL_X, 0)
+	row.Skill:SetSize(SKILL_WIDTH, SKILL_HEIGHT)
 	row.Skill:SetJustifyH("RIGHT")
 	row.Label:ClearAllPoints()
-	row.Label:SetPoint("LEFT", row.Skill, "RIGHT", ROW_PAD, 0)
+	row.Label:SetPoint("LEFT", row.Skill, "RIGHT", LABEL_GAP, 0)
 	row.Label:SetWordWrap(false)
 
 	-- Marks stack from the right edge, in display order from the left.
@@ -116,6 +127,11 @@ local function CreateRow()
 	end)
 	rows[#rows + 1] = row
 	return row
+end
+
+local function EdgeSize(edge)
+	local info = C_Texture.GetAtlasInfo(edge.atlas)
+	return info and info[edge.key] or 0
 end
 
 local Request -- defined below; a heading click asks for a rebuild through it
@@ -206,13 +222,13 @@ local function BuildStep(buildGeneration)
 		if item.recipe then
 			frame = rows[item.rowIndex] or CreateRow()
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", ROW_INDENT, -item.top)
-			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -item.top)
+			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
 			frame:SetHeight(ROW_HEIGHT)
 			ShowRow(frame, item.recipe)
 		else
 			frame = headings[item.headingIndex] or CreateHeading()
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -item.top)
-			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -item.top)
+			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
 			frame:SetHeight(HEADING_HEIGHT)
 			ShowHeading(frame, item)
 		end
@@ -277,9 +293,29 @@ local function LayOut(found, search)
 	return newItems, table.concat(parts, ","), rowCount, headingCount, top + LIST_PAD
 end
 
+-- The list sits where the crafting page's own list does: same top for the first heading, same bottom. Read when
+-- shown (the window can be a different size) and only re-anchored when the offsets change. The space above it is
+-- the title band, beside Blizzard's rank bar and search row (docs/client-notes.md, "Panel").
+local function PlaceList()
+	local theirs = ProfessionsFrame.CraftingPage.RecipeList
+	local panelTop, panelBottom, listTop, listBottom = panel:GetTop(), panel:GetBottom(), theirs:GetTop(), theirs:GetBottom()
+	if not (panelTop and panelBottom and listTop and listBottom) then return end
+	local top = panelTop - listTop + LIST_TOP_INSET
+	local bottom = listBottom - panelBottom + LIST_BOTTOM_INSET
+	if top == placedTop and bottom == placedBottom then return end
+	placedTop, placedBottom = top, bottom
+	scroll:SetPoint("TOPLEFT", panel, "TOPLEFT", LIST_LEFT, -top)
+	scroll:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, bottom)
+	titleBand:SetHeight(math.max(top - EdgeSize(INSET_EDGES.top), 1))
+	-- The title and the count under it, as one block centered in the band.
+	local block = title:GetStringHeight() + TITLE_GAP + countText:GetStringHeight()
+	title:SetPoint("CENTER", titleBand, "CENTER", 0, (block - title:GetStringHeight()) / 2)
+end
+
 local function Update()
 	requested = false
 	if not (panel and panel:IsShown() and professionInfo) then return end
+	PlaceList()
 	local list, complete = ns.GetListedRecipes(professionInfo)
 	-- Not ready: the client's list update comes back through the events below.
 	if not list then return end
@@ -321,11 +357,6 @@ Request = function()
 	RunNextFrame(Update)
 end
 
-local function EdgeSize(edge)
-	local info = C_Texture.GetAtlasInfo(edge.atlas)
-	return info and info[edge.key] or 0
-end
-
 local function CreatePanel()
 	local window = ProfessionsFrame
 	-- Under the window, so it shows and hides with it and the Gamepad UI treats it as part of it.
@@ -335,26 +366,32 @@ local function CreatePanel()
 	panel:Hide()
 
 	local left, right = EdgeSize(INSET_EDGES.left) + CONTENT_PAD, EdgeSize(INSET_EDGES.right) + CONTENT_PAD
-	local top, bottom = EdgeSize(INSET_EDGES.top) + CONTENT_PAD, EdgeSize(INSET_EDGES.bottom) + CONTENT_PAD
+	local top = EdgeSize(INSET_EDGES.top)
+
+	-- The band above the list: the panel's top edge down to the list's first heading.
+	titleBand = CreateFrame("Frame", nil, panel)
+	titleBand:SetPoint("TOPLEFT", panel, "TOPLEFT", left, -top)
+	titleBand:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -right, -top)
+	titleBand:SetHeight(TITLE_HEIGHT)
 
 	-- The name and, smaller and dim like a model number, the version; a working build has no version to show.
-	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	title:SetPoint("TOPLEFT", left, -top)
+	title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+	title:SetPoint("CENTER", titleBand, "CENTER")
 	title:SetText(ns.title)
 	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
 	local model = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	model:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", TITLE_GAP, 0)
 	model:SetText(version and not version:find("@", 1, true) and version or L["dev"])
 	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	countText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -TITLE_GAP)
+	countText:SetPoint("TOP", title, "BOTTOM", 0, -TITLE_GAP)
 
 	-- UIPanelScrollFrameTemplate, as Field Guide Forever's list; a ScrollBox would hold our data in Blizzard's secure code.
 	scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", left, -(top + TITLE_HEIGHT))
-	scroll:SetPoint("BOTTOMRIGHT", -(right + SCROLLBAR_WIDTH), bottom)
+	scroll:SetPoint("TOPLEFT", LIST_LEFT, -(top + TITLE_HEIGHT))
+	scroll:SetPoint("BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
 	scroll.scrollBarHideable = true -- the template's own switch: the bar shows only when the list is taller than the view
 	child = CreateFrame("Frame", nil, scroll)
-	child:SetSize(PANEL_WIDTH - left - right - SCROLLBAR_WIDTH, 1)
+	child:SetSize(PANEL_WIDTH - LIST_LEFT - SCROLLBAR_WIDTH, 1)
 	scroll:SetScrollChild(child)
 
 	empty = panel:CreateFontString(nil, "ARTWORK", "GameFontDisable")
@@ -364,6 +401,7 @@ local function CreatePanel()
 
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
+		placedTop = nil -- the window may have changed size
 		Request()
 	end)
 	return panel

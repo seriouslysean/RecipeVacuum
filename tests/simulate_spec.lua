@@ -800,7 +800,8 @@ describe("simulation", function()
 			ProfessionsFrame = Fake()
 			ProfessionsFrame.CraftingPage = Fake(ProfessionsFrame)
 			ProfessionsFrame.CraftingPage.Init = function() end
-			ProfessionsFrame.CraftingPage.RecipeList = { SearchBox = Fake() }
+			ProfessionsFrame.CraftingPage.RecipeList = Fake(ProfessionsFrame.CraftingPage)
+			ProfessionsFrame.CraftingPage.RecipeList.SearchBox = Fake()
 			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end }
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
 			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
