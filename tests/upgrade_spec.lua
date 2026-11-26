@@ -47,7 +47,7 @@ describe("upgrade of an old save", function()
 		end
 		for itemID, recipeID in pairs(RecipeVacuumDB.itemRecipe or {}) do oldLinks[itemID] = recipeID end
 
-		local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end }
+		local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, ScheduleFindOffer = function() end }
 		for _, f in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Finds.lua" }) do assert(loadfile(repo .. "/" .. f))("RecipeVacuum", ns) end
 		for _, fn in ipairs(loaded) do fn() end
 		db = ns.db

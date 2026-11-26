@@ -114,7 +114,7 @@ describe("simulation", function()
 		function boot(saved)
 		  RecipeVacuumDB = nil; loaded = {}; frames = {}
 		  if saved then dofile(saved) end
-		  local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
+		  local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 		  for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, ns) end
 		  ns.SourcesChanged = function() end
 		  for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
@@ -675,7 +675,7 @@ describe("simulation", function()
 			pendingItems = { [7778] = {} }, npcs = {}, objects = {} }
 		RecipeVacuumDB = nil
 		loaded = {}; frames = {}
-		local nsd = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end,
+		local nsd = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end,
 			ScheduleFindOffer = function() end, SourcesChanged = function() end, seed = { build = 71037, taught = { [7777] = 888, [7778] = 888 } } }
 		RecipeVacuumDB = seedSave
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, nsd) end
@@ -1141,7 +1141,7 @@ describe("simulation", function()
 	it("reload keeps schema and revision", function()
 		local savedDB = a.db
 		RecipeVacuumDB = savedDB; loaded = {}
-		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
+		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
 		assert(c.db.schema == 12 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
