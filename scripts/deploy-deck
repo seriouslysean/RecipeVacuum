@@ -1,18 +1,5 @@
 #!/usr/bin/env bash
-# Copies the working build to the Steam Deck for in-game testing, after the checks pass, and stamps the copied TOC's version
-# with the copy's time and its commit ("1126.1403 bf8fe64-dirty"): the panel title shows the time, which changes on every
-# copy and reads in a screenshot; the session log shows both (docs/development.md, "Testing on the Steam Deck"). The release
-# packager fills the version from the tag instead; the repository's TOC keeps its @project-version@ token.
+# Copies this module's working build to the Steam Deck; the steps are the toolkit's shared copy.
 #   scripts/deploy-deck [ssh-host]
 set -euo pipefail
-
-host=${1:-deck-host}
-addons='/home/deck/.local/share/Steam/steamapps/compatdata/4077668031/pfx/drive_c/Program Files (x86)/World of Warcraft/_forever_/Interface/AddOns'
-name=$(basename "$PWD")
-scripts/check
-stamp="$(date +%m%d.%H%M) $(git describe --tags --always --dirty --abbrev=7)"
-rsync -a --delete --exclude='.*' --exclude=AGENTS.md --exclude=CLAUDE.md --exclude=HANDOFF.md --exclude=docs \
-	--exclude=tests --exclude=tools --exclude=scripts --exclude=research_notes --exclude=reports \
-	--exclude='Libs/JigBoltgripToolkit/tests' -e "ssh -o BatchMode=yes -o ConnectTimeout=8" ./ "$host:$addons/$name/"
-ssh -o BatchMode=yes "$host" "sed -i 's/^## Version: .*/## Version: $stamp/' \"$addons/$name/$name.toc\""
-echo "deployed $name $stamp to $host"
+exec Libs/JigBoltgripToolkit/tests/deploy-deck.sh "$@"

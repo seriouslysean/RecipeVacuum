@@ -211,13 +211,18 @@ local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("
 check("the embedded kit has no XML", listing == "")
 local toolkitCheckout = addonDir .. "/../JigBoltgripToolkit"
 for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua", "tests/module-check.sh",
-	"tests/agents-opening.md" }) do
+	"tests/deploy-deck.sh", "tests/agents-opening.md" }) do
 	local theirs = Read(toolkitCheckout .. "/" .. file)
 	if theirs then
 		check("the embedded " .. file .. " is the toolkit's", Read(kitDir .. "/" .. file) == theirs)
 	else
 		print("SKIP the embedded " .. file .. " against the toolkit: no checkout beside the addon")
 	end
+end
+-- The Deck copy is the kit's for every module, so builds are copied and labeled one way: scripts/deploy-deck is the skeleton's.
+local deploy = Read(toolkitCheckout .. "/skeleton/scripts/deploy-deck")
+if deploy then
+	check("scripts/deploy-deck is the toolkit skeleton's", Read(addonDir .. "/scripts/deploy-deck") == deploy)
 end
 
 -- The repository's agent notes open with the toolkit's section, word for word, so every module's

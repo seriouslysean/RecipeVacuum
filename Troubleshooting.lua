@@ -268,7 +268,7 @@ local function UseKeptScan()
 	end
 end
 
-function ns.ResumeWatch()
+function ns.StartWorkingLog()
 	UseKeptScan()
 	toolkit:StartLog(ns.device, ns.db, WatchHandlers())
 end
