@@ -180,8 +180,9 @@ end
 -- (docs/data.md, "Rank spells"); the skill range when no rank spell is known.
 function ns.BandTitle(professionID, band)
 	local ranks = ns.seed and ns.seed.rankSpell and ns.seed.rankSpell[professionID]
-	local name = ranks and ranks[band] and C_Spell.GetSpellName(ranks[band])
-	if name then
+	-- A rank spell is named after its profession; the rank (Apprentice, Journeyman) is the spell's subtext.
+	local name = ranks and ranks[band] and C_Spell.GetSpellSubtext(ranks[band])
+	if name and name ~= "" then
 		return name
 	end
 	local first = (band - 1) * ns.RANK_BAND + 1

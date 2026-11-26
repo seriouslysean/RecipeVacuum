@@ -842,12 +842,12 @@ describe("simulation", function()
 			assert(Builds() == 1, "several Init calls in one frame build the list once")
 		end)
 		-- Fails if a heading says "Skill 76 to 150" where the game names the rank, or breaks where no rank spell is known.
-		it("a band heading is the profession's rank spell name, or the skill range without one", function()
+		it("a band heading is the rank spell's subtext, or the skill range without one", function()
 			local seed, spells = pns.seed, C_Spell
 			pns.seed = { rankSpell = { [164] = { [2] = 3100 } } }
-			C_Spell = { GetSpellName = function(id) return id == 3100 and "Journeyman Blacksmith" or nil end }
+			C_Spell = { GetSpellSubtext = function(id) return id == 3100 and "Journeyman" or nil end }
 			local ok, err = pcall(function()
-				assert(pns.BandTitle(164, 2) == "Journeyman Blacksmith", "the rank spell's name")
+				assert(pns.BandTitle(164, 2) == "Journeyman", "the rank spell's subtext")
 				assert(pns.BandTitle(164, 3) == "Skill 151 to 225", "a step with no spell")
 				assert(pns.BandTitle(999, 2) == "Skill 76 to 150", "a profession with no spells")
 			end)
