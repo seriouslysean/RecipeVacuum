@@ -136,6 +136,38 @@ for _, file in ipairs(files) do
 end
 check("the kit is looked up once and kept on the namespace", kitLookups <= 1, ("%d lookups"):format(kitLookups))
 
+-- The addon's own name comes from the TOC (`local addonName = ...`), never a string, except in a named
+-- constant that is a contract (a message prefix, an export format); its saved variables are read in the one
+-- file that keeps them on the namespace.
+local tocText = Read(tocPath)
+local savedNames = {}
+for name in (tocText:match("## SavedVariables[%w]*:%s*([^\r\n]+)") or ""):gmatch("[%w_]+") do savedNames[#savedNames + 1] = name end
+local nameProblems, savedReaders = {}, {}
+for _, file in ipairs(files) do
+	if file:find("%.lua$") and not file:find("^Locales/") then
+		local number = 0
+		for line in ((Read(addonDir .. "/" .. file) or "") .. "\n"):gmatch("(.-)\n") do
+			number = number + 1
+			local code = line:gsub("%-%-.*$", "")
+			if code:find('"' .. addonName, 1, true) and not code:find("^%s*local [%u_]+%s*=") then
+				nameProblems[#nameProblems + 1] = ("%s:%d"):format(file, number)
+			end
+			for _, name in ipairs(savedNames) do
+				if code:find("%f[%w_]" .. name .. "%f[^%w_]") then savedReaders[name .. " " .. file] = true end
+			end
+		end
+	end
+end
+check("the addon's name is taken from the TOC, not written as a string", #nameProblems == 0, table.concat(nameProblems, ", "))
+for _, name in ipairs(savedNames) do
+	local readers = {}
+	for key in pairs(savedReaders) do
+		local saved, file = key:match("^(%S+) (.+)$")
+		if saved == name then readers[#readers + 1] = file end
+	end
+	check(("%s is read in one file and kept on the namespace"):format(name), #readers <= 1, table.concat(readers, ", "))
+end
+
 -- 2. The embedded library: no XML, and the same file as the toolkit's own checkout when one sits beside the addon.
 local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("*a")
 check("the embedded kit has no XML", listing == "")
