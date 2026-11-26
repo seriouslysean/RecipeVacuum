@@ -56,7 +56,10 @@ local PORTRAIT_SIZE, PORTRAIT_LEFT = 62, 5
 -- band between them (docs/client-notes.md, "Panel").
 local RANK_BAR_CLEARANCE = 4
 local RANK_BAR_LEFT = PORTRAIT_SIZE - PORTRAIT_LEFT + RANK_BAR_CLEARANCE
-local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET - RANK_BAR_CLEARANCE
+-- The rank mark (Ranks.lua) sits right of the bar, so the bar gives up its width and the gap.
+local RANK_MARK_SIZE = 20
+local RANK_MARK_GAP = 4
+local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET - RANK_BAR_CLEARANCE - RANK_MARK_GAP - RANK_MARK_SIZE
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -172,6 +175,12 @@ local function SyncNav()
 	navPending = false
 	ClearNav()
 	if not (panel and panel:IsShown() and detail:IsShown()) then return end
+	-- The rank mark is above the list: up from the first item reaches it, down from it returns.
+	local mark = ns.rankMark
+	if mark and mark:IsShown() and slots[1] then
+		SetNav(slots[1], SMART_NAV_INPUT_DIRECTION.UP, mark)
+		SetNav(mark, SMART_NAV_INPUT_DIRECTION.DOWN, slots[1])
+	end
 	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
 	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
 	local first, chosen, rowCount = nil, nil, 0
@@ -209,6 +218,21 @@ local function SyncNav()
 		end
 	end
 	ns.Trace("UI nav override set: %d rows to the details, %d controls back", rowCount, count)
+end
+
+ns.SyncPanelNav = SyncNav
+
+-- ANCHOR_RIGHT would clamp the tooltip over the panel at the screen's edge; with no room on the right it goes to the left
+-- of the panel, level with the hovered frame (docs/client-notes.md, "Panel").
+local TOOLTIP_ROOM = 340 -- a typical item tooltip's width
+function ns.OwnTooltip(owner)
+	GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+	GameTooltip:ClearAllPoints()
+	if UIParent:GetRight() - panel:GetRight() < TOOLTIP_ROOM then
+		GameTooltip:SetPoint("TOPRIGHT", owner, "TOPLEFT", -(owner:GetLeft() - panel:GetLeft()), 0)
+	else
+		GameTooltip:SetPoint("TOPLEFT", owner, "TOPLEFT", panel:GetRight() - owner:GetLeft(), 0)
+	end
 end
 
 local function CreateRow()
@@ -250,7 +274,7 @@ local function CreateRow()
 		local recipeID = self.recipe.recipeID
 		local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
 		local itemID = schematic and schematic.outputItemID
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		ns.OwnTooltip(self)
 		if itemID then
 			GameTooltip:SetItemByID(itemID)
 		else
@@ -544,7 +568,7 @@ end
 local function MakeReagentRow()
 	local button = CreateFrame("ItemButton", nil, detail, "ProfessionsButtonTemplate")
 	button:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		ns.OwnTooltip(self)
 		GameTooltip:SetItemByID(self.itemID)
 		GameTooltip:Show()
 	end)
@@ -595,7 +619,7 @@ local function MakeSourceButton()
 		ClosePlaces()
 	end)
 	button:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		ns.OwnTooltip(self)
 		GameTooltip_SetTitle(GameTooltip, self.source.place)
 		GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
 		GameTooltip:Show()
@@ -606,7 +630,7 @@ end
 
 -- Every source, one line each: "who, type" left and its place right (none for a source with no place). The hint only when a press pins.
 local function ShowMapTooltip(self)
-	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+	ns.OwnTooltip(self)
 	for _, source in ipairs(self.sources) do
 		GameTooltip:AddDoubleLine(source.label, source.place or "", HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
@@ -1049,7 +1073,7 @@ local function CreatePanel()
 	rankBar:SetPoint("CENTER", panel, "TOPLEFT", RANK_BAR_LEFT + RANK_BAR_WIDTH / 2, -(CONTENT_TOP + RANK_BAR_HEIGHT / 2))
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		ns.OwnTooltip(self)
 		GameTooltip_AddNormalLine(GameTooltip, L["Recipes found out of all the ones you can still learn in this profession."])
 		GameTooltip:Show()
 	end)
@@ -1071,7 +1095,7 @@ local function CreatePanel()
 	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", OUTPUT_LEFT, RING_RISE - OUTPUT_RING_INSET)
 	detail.Output:SetFrameLevel(ICON_LEVEL)
 	detail.Output:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		ns.OwnTooltip(self)
 		if detail.itemID then GameTooltip:SetItemByID(detail.itemID) else GameTooltip:SetSpellByID(detail.recipeID) end
 		GameTooltip:Show()
 	end)
@@ -1134,6 +1158,11 @@ local function CreatePanel()
 	return panel
 end
 
+-- Where the rank mark goes: Ranks.lua owns the button, the panel owns the layout. Nil until the panel exists.
+function ns.PanelRankSlot()
+	return panel, rankBar, RANK_MARK_SIZE, RANK_MARK_GAP
+end
+
 -- Another window opened beside Professions takes the center slot; the panel steps aside for it. Read after
 -- Blizzard has laid its windows out. The Gamepad UI shows one window at a time, so this never triggers there.
 local function UpdateVisibility()
@@ -1148,6 +1177,7 @@ local function OnInit(_, info)
 	if not panel then
 		panel = CreatePanel()
 		Prewarm()
+		ns.UpdateRankMark() -- Ranks.lua's own hook ran before the panel existed
 	end
 	if not (professionInfo and professionInfo.professionID == info.professionID) then
 		waitUntil = nil

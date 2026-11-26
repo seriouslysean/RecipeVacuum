@@ -2,10 +2,9 @@ local _, ns = ...
 local L = ns.L
 
 -- Ranks come only from what the client shows, so no rank list ships (docs/data.md, "Ranks").
--- The mark beside the link button names a recorded source with a place and pins it on the map.
-local MARK_SIZE = 20
-local MARK_GAP = 4 -- space after the link button
-local LINK_X, LINK_Y = -2, -4 -- the link button's anchor offsets on the rank bar (Blizzard_ProfessionsCrafting.xml)
+-- The mark right of the panel's discovery bar names a recorded source with a place and pins it on the map.
+-- The panel owns its place (ns.PanelRankSlot); a child of Blizzard's page would taint its gamepad navigation.
+
 -- A cap that rises this soon after a book use or quest turn-in is taken as caused by it; the client sends
 -- SKILL_LINES_CHANGED right after the rank is learned. Unmeasured: kept short so play in between is not blamed.
 local CAUSE_SECONDS = 5
@@ -192,7 +191,7 @@ end
 local mark
 
 local function OnEnter(button)
-	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+	ns.OwnTooltip(button)
 	GameTooltip_SetTitle(GameTooltip, RankName(button.rank))
 	ns.AddEntryLines(GameTooltip, button.rank.entries)
 	local count = #button.rank.targets
@@ -209,11 +208,15 @@ local function OnClick(button)
 	ns.ShowOnMap(targets[1])
 end
 
-local function Update()
-	local page = ProfessionsFrame.CraftingPage
+-- Run after Blizzard's page rebuilds, and by the panel once it exists (its hook runs after this one on the first Init).
+function ns.UpdateRankMark()
+	local parent, anchor, size, gap = ns.PanelRankSlot()
+	if not parent then return end
 	if not mark then
-		mark = CreateFrame("Button", nil, page)
-		mark:SetSize(MARK_SIZE, MARK_SIZE)
+		mark = CreateFrame("Button", nil, parent)
+		ns.rankMark = mark
+		mark:SetSize(size, size)
+		mark:SetPoint("LEFT", anchor, "RIGHT", gap, 0)
 		local icon = mark:CreateTexture(nil, "ARTWORK")
 		icon:SetAllPoints()
 		icon:SetAtlas(ns.sourceTypes.trainer.atlas) -- the same book as the trainer mark
@@ -223,17 +226,14 @@ local function Update()
 		mark:SetScript("OnLeave", GameTooltip_Hide)
 		mark:SetScript("OnClick", OnClick)
 	end
-	-- After the link button, or where it would sit when it is hidden.
-	mark:ClearAllPoints()
-	if page.LinkButton:IsShown() then
-		mark:SetPoint("LEFT", page.LinkButton, "RIGHT", MARK_GAP, 0)
-	else
-		mark:SetPoint("LEFT", page.RankBar, "RIGHT", LINK_X, LINK_Y)
+	local rank = Professions.InLocalCraftingMode() and NextRank() or nil
+	if rank ~= nil or mark.rank ~= nil then
+		mark.rank = rank
+		mark:SetShown(rank ~= nil)
+		ns.SyncPanelNav() -- the d-pad reaches the mark only while it shows
 	end
-	mark.rank = Professions.InLocalCraftingMode() and NextRank() or nil
-	mark:SetShown(mark.rank ~= nil)
 end
 
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
-	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", Update)
+	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", ns.UpdateRankMark)
 end)

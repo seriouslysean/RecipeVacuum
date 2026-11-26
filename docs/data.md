@@ -154,7 +154,7 @@ Profession ranks come only from what the client shows; no rank list ships (owner
 
 Migration 10 (2026-11-25, Astra review): trainer rank records made before the skill-step check could name a rank already known, under a child skill line. They cannot be told apart now, so all trainer records were removed and the next visits record them again; book and quest records stay, and sources left empty are dropped. A rank is titled with the game's own name for what is learned (a book, the trainer's rank, or the quest; owner, 2026-11-25), read at hover because item and quest names can arrive after the window opens.
 
-The mark shows when the open profession's cap has a source with a place; the other faction's are left out. Ranks are kept per account and not shared yet. Unverified in game: the 5-second window, a trainer the character has outgrown, and a quest rank (Nat Pagle).
+The mark sits right of the panel's discovery bar (docs/client-notes.md, "Panel"); it shows when the open profession's cap has a source with a place; the other faction's are left out. Ranks are kept per account and not shared yet. Unverified in game: the 5-second window, a trainer the character has outgrown, and a quest rank (Nat Pagle).
 
 ## Schema
 
