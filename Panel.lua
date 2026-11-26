@@ -59,19 +59,26 @@ local WAIT_SECONDS = 1 -- at most: the client may still be loading names and fac
 -- Frames made ahead of need, out of combat, a few a frame (docs/client-notes.md, "Panel"), so a profession only fills frames that exist.
 local POOL_ROWS = 60
 local POOL_HEADINGS = 8
--- The details below the list, built as Blizzard_ProfessionsRecipeSchematicForm.xml lays its recipe out (docs/client-notes.md, "Panel").
-local DETAIL_PAD = 8
+-- The details below the list, in the window's recipe schematic as Blizzard_ProfessionsTemplates/Blizzard_ProfessionsRecipeSchematicForm.xml
+-- lays it out (the :NN references below are that file's) (docs/client-notes.md, "Panel"). Unscaled: the form's own 28 px margins leave 214 px of the panel's 270.
+local DETAIL_SIDE = 28 -- the output icon's left offset (:36); the reagents line up with it
+local OUTPUT_TOP = 33 -- the output icon's offset below the form's top (:36)
 local DETAIL_GAP = 2 -- between the list and the details, as the window's list and recipe pane (Blizzard_ProfessionsCrafting.xml:164)
 local OUTPUT_SIZE = 47 -- ProfessionsOutputButtonTemplate (Blizzard_ProfessionsTemplates.xml:282)
-local OUTPUT_TEXT_GAP = 14 -- the name's gap right of the output icon (Blizzard_ProfessionsRecipeSchematicForm.xml:193)
+local OUTPUT_TEXT_GAP = 14 -- the name's gap right of the output icon (:193)
+local OUTPUT_TEXT_RISE = 17 -- and its rise above the icon's middle (:193)
 local OUTPUT_SUB_GAP = 5 -- the required skill under the name (:214)
+local REAGENTS_GAP = 26 -- the label's gap under the icon: 5 from the layout (:680) + 1 for the empty description (:1468) + 20 (:1283)
+local REAGENTS_LABEL_HEIGHT = 20 -- ProfessionsReagentContainerTemplate's label (Blizzard_ProfessionsTemplates.xml:305)
 local REAGENT_SIZE = 39 -- ProfessionsButtonTemplate (Blizzard_ProfessionsTemplates.xml:42)
-local REAGENT_ROW = 43
-local REAGENT_TEXT_GAP = 7
+local REAGENT_SLOT = 50 -- ProfessionsReagentSlotBaseTemplate's height (Blizzard_ProfessionsRecipeReagentSlotBase.xml:7)
+local REAGENT_SPACING = 5 -- slot spacing (Blizzard_ProfessionsRecipeSchematicForm.lua:1299)
+local REAGENT_LEFT = 1 -- the grid's offset in its container (Blizzard_Professions.lua:1397)
+local REAGENT_TEXT_GAP = 7 -- the slot's name starts 46 px in, the button is 39 (Blizzard_ProfessionsRecipeReagentSlotBase.xml:22)
 local SECTION_GAP = 8
-local LABEL_HEIGHT = 16
+local BUTTON_INSET = 7 -- the window's Create button sits 7 px from its page's bottom (Blizzard_ProfessionsCrafting.lua:1036); same from the sides
 local SOURCE_HEIGHT = 22
-local PLACE_INDENT = 10 -- the opened places sit this far in under Show Map
+local PLACE_INDENT = 10 -- the opened places sit this far in
 local SOURCE_GAP = 2
 local PLAIN_HEIGHT = 16
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
@@ -97,6 +104,70 @@ local waitQueued = false
 local generation = 0 -- a newer build ends the steps of an older one
 local shownSignature, builtProfession
 local nextItem, buildMs, buildSteps, recipeCount, bandCount
+
+-- Right from a row goes to the details and left from the details goes back to the row, through Blizzard's own jump overrides
+-- (Blizzard_GamepadSmartNavigation/Utility.lua:414-500; docs/client-notes.md, "Gamepad"). An override set from addon code is
+-- honoured only out of combat (SmartNavigation.lua:1503-1520) and setting one in combat is refused, so none is touched then.
+local navSet = {} -- [frame] = the direction its override was set for
+local navPending = false -- a change waited for the end of combat
+local function NavAvailable()
+	return SMART_NAV_INPUT_DIRECTION and SmartNavigation_AddJumpNavigationOverride and SmartNavigation_ClearJumpNavigationOverridesInDirection
+end
+
+local function ClearNav()
+	if not NavAvailable() then return end
+	if InCombatLockdown() then
+		navPending = true
+		return
+	end
+	for frame, direction in pairs(navSet) do
+		SmartNavigation_ClearJumpNavigationOverridesInDirection(frame, direction)
+	end
+	wipe(navSet)
+end
+
+local function SetNav(frame, direction, target)
+	SmartNavigation_AddJumpNavigationOverride(frame, direction, target)
+	navSet[frame] = direction
+end
+
+-- Only the rows of the open list lead to the details, and every control in the details leads back to the selected row (the
+-- first one when none is). Run whenever the selection, the rows or the details change.
+local function SyncNav()
+	if not NavAvailable() then return end
+	if InCombatLockdown() then
+		navPending = true
+		return
+	end
+	navPending = false
+	ClearNav()
+	if not (panel and panel:IsShown() and detail:IsShown()) then return end
+	local into = mapButton and mapButton:IsShown() and mapButton or detail.Output
+	local first, chosen, rowCount = nil, nil, 0
+	for index = 1, math.min((nextItem or 1) - 1, #items) do
+		local item = items[index]
+		if item.recipe then
+			SetNav(slots[index], SMART_NAV_INPUT_DIRECTION.RIGHT, into)
+			rowCount = rowCount + 1
+			first = first or slots[index]
+			if selected and item.recipe.recipeID == selected.recipeID then chosen = slots[index] end
+		end
+	end
+	local back = chosen or first
+	if not back then return end
+	local controls = { detail.Output, mapButton }
+	for _, list in ipairs({ reagentRows, sourceButtons }) do
+		for _, button in ipairs(list) do controls[#controls + 1] = button end
+	end
+	local count = 0
+	for _, control in ipairs(controls) do
+		if control:IsShown() then
+			SetNav(control, SMART_NAV_INPUT_DIRECTION.LEFT, back)
+			count = count + 1
+		end
+	end
+	ns.Trace("UI nav override set: %d rows to the details, %d controls back", rowCount, count)
+end
 
 local function CreateRow()
 	local row = CreateFrame("Button", nil, child, ROW_TEMPLATE)
@@ -246,6 +317,7 @@ end
 local function Finish()
 	empty:SetShown(#items == 0)
 	scroll:SetAlpha(1) -- the whole list at once
+	SyncNav()
 	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
 	--@debug@
 	ns.PerfMs("panel build", buildMs)
@@ -394,7 +466,7 @@ local function MakeReagentRow()
 	button:SetScript("OnLeave", GameTooltip_Hide)
 	button.Text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
 	button.Text:SetPoint("LEFT", button, "RIGHT", REAGENT_TEXT_GAP, 0)
-	button.Text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_PAD - REAGENT_SIZE - REAGENT_TEXT_GAP)
+	button.Text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_SIDE - REAGENT_LEFT - REAGENT_SIZE - REAGENT_TEXT_GAP)
 	button.Text:SetJustifyH("LEFT")
 	return button
 end
@@ -403,7 +475,7 @@ local FillDetail -- defined below; a press on a place redraws the details
 
 local function MakeSourceButton()
 	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
-	button:SetSize(PANEL_INNER_WIDTH - 2 * DETAIL_PAD - PLACE_INDENT, SOURCE_HEIGHT)
+	button:SetSize(PANEL_INNER_WIDTH - 2 * BUTTON_INSET - PLACE_INDENT, SOURCE_HEIGHT)
 	-- One source's pin, exactly: a button pins what it names, then the list closes (docs/client-notes.md, "Panel").
 	button:SetScript("OnClick", function(self)
 		ns.Trace("UI source pressed: %s", self.source.label)
@@ -425,7 +497,8 @@ end
 -- button. Our own Buttons throughout: a Blizzard menu would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
 	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
-	button:SetSize(PANEL_INNER_WIDTH - 2 * DETAIL_PAD, SOURCE_HEIGHT)
+	button:SetSize(PANEL_INNER_WIDTH - 2 * BUTTON_INSET, SOURCE_HEIGHT)
+	button:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", BUTTON_INSET, BUTTON_INSET) -- the window's action buttons sit at the bottom of their page
 	button:SetText(SHOW_MAP)
 	button:SetScript("OnClick", function(self)
 		if self.single then
@@ -449,7 +522,7 @@ end
 
 local function MakePlainText()
 	local text = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-	text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_PAD)
+	text:SetWidth(PANEL_INNER_WIDTH - 2 * DETAIL_SIDE)
 	text:SetJustifyH("LEFT")
 	text:SetHeight(PLAIN_HEIGHT)
 	return text
@@ -492,6 +565,7 @@ local function HideDetail()
 	detailSignature = nil
 	detail:Hide()
 	PlaceList()
+	SyncNav()
 end
 
 -- Draws the selected recipe in the details. The height is exactly the content, so the list above takes the rest.
@@ -517,21 +591,23 @@ FillDetail = function()
 		local color = (professionInfo.skillLevel or 0) >= skill and HIGHLIGHT_FONT_COLOR or RED_FONT_COLOR
 		detail.Sub:SetText(color:WrapTextInColorCode(ITEM_MIN_SKILL:format(professionInfo.professionName, skill)))
 	end
-	local top = DETAIL_PAD
-	local header = math.max(OUTPUT_SIZE, detail.Name:GetStringHeight() + (skill and OUTPUT_SUB_GAP + detail.Sub:GetStringHeight() or 0))
-	top = top + header
+	-- The window's schematic background for this profession (Blizzard_ProfessionsCrafting.lua:1032).
+	detail.Background:SetAtlas(Professions.GetProfessionBackgroundAtlas(professionInfo) or "Professions-background-summarylist", TextureKitConstants.IgnoreAtlasSize)
+	-- Top-down from the icon, as the schematic form flows; Show Map is last, at the bottom of the box.
+	local top = OUTPUT_TOP + OUTPUT_SIZE
 
 	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
 	if #data.reagents > 0 then
-		top = top + SECTION_GAP
-		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
-		top = top + LABEL_HEIGHT
+		top = top + REAGENTS_GAP
+		detail.ReagentsLabel:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -top)
+		top = top + REAGENTS_LABEL_HEIGHT
 	end
 	for index, entry in ipairs(data.reagents) do
 		local button = Pooled(reagentRows, index, MakeReagentRow)
 		button.itemID = entry.itemID
-		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+		-- The button is centered in its slot, as the slot template places it (Blizzard_ProfessionsRecipeReagentSlotBase.xml:33).
+		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE + REAGENT_LEFT, -(top + (REAGENT_SLOT - REAGENT_SIZE) / 2))
 		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
 		local quality = C_Item.GetItemQualityByID(entry.itemID)
 		if quality then button:SetSlotQuality(quality) else button.IconBorder:Hide() end
@@ -540,7 +616,7 @@ FillDetail = function()
 		button:Show()
 		button.Text:Show()
 		missing = missing or not entry.name
-		top = top + REAGENT_ROW
+		top = top + REAGENT_SLOT + REAGENT_SPACING
 	end
 	for index = #data.reagents + 1, #reagentRows do
 		reagentRows[index]:Hide()
@@ -550,7 +626,7 @@ FillDetail = function()
 	if #data.plain + #data.places > 0 then top = top + SECTION_GAP end
 	for index, source in ipairs(data.plain) do
 		local text = Pooled(plainTexts, index, MakePlainText)
-		text:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
+		text:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -top)
 		text:SetText(source.label)
 		text:Show()
 		top = top + PLAIN_HEIGHT + SOURCE_GAP
@@ -560,25 +636,24 @@ FillDetail = function()
 	mapButton = mapButton or MakeMapButton()
 	local several = #data.places > 1
 	mapButton:SetShown(#data.places > 0)
-	if #data.places > 0 then
-		mapButton.single = not several and data.places[1] or nil
-		mapButton:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -top)
-		top = top + SOURCE_HEIGHT + SOURCE_GAP
-	end
+	if #data.places > 0 then mapButton.single = not several and data.places[1] or nil end
+	-- Opened, the places stack above the button, so it stays where it is when pressed.
 	local shown = several and mapOpen and #data.places or 0
 	for index = 1, shown do
 		local button = Pooled(sourceButtons, index, MakeSourceButton)
 		button.source = data.places[index]
-		button:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD + PLACE_INDENT, -top)
+		button:SetPoint("TOPLEFT", detail, "TOPLEFT", BUTTON_INSET + PLACE_INDENT, -top)
 		button:SetText(button.source.label)
 		button:Show()
 		top = top + SOURCE_HEIGHT + SOURCE_GAP
 	end
 	for index = shown + 1, #sourceButtons do sourceButtons[index]:Hide() end
+	if #data.places > 0 then top = top + SOURCE_HEIGHT end
 
-	detail:SetHeight(top + DETAIL_PAD)
+	detail:SetHeight(top + BUTTON_INSET)
 	detail:Show()
 	PlaceList()
+	SyncNav()
 	if missing then
 		itemWatch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 	else
@@ -609,6 +684,7 @@ SelectRecipe = function(recipeInfo)
 		if items[index].recipe then slots[index]:SetSelected(items[index].recipe.recipeID == recipeInfo.recipeID) end
 	end
 	FillDetail()
+	SyncNav() -- the details may be unchanged while the row to go back to is not
 	RunNextFrame(function() if selected then KeepInView() end end)
 end
 
@@ -660,6 +736,7 @@ local function Update()
 	shownSignature = signature
 	recipeCount, bandCount = rowCount, headingCount
 	generation = generation + 1
+	ClearNav() -- the rows are reused for other recipes; the build's end sets them again
 	nextItem, buildMs, buildSteps = 1, 0, 0
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
@@ -748,21 +825,20 @@ local function CreatePanel()
 	detail = CreateFrame("Frame", nil, panel, "InsetFrameTemplate")
 	detail.Bg:Hide()
 	detail.Background = detail:CreateTexture(nil, "BACKGROUND")
-	detail.Background:SetAtlas("Professions-background-summarylist")
 	detail.Background:SetAllPoints()
 	detail:Hide()
 	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
-	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_PAD, -DETAIL_PAD)
+	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", DETAIL_SIDE, -OUTPUT_TOP)
 	detail.Output:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		if detail.itemID then GameTooltip:SetItemByID(detail.itemID) else GameTooltip:SetSpellByID(detail.recipeID) end
 		GameTooltip:Show()
 	end)
 	detail.Output:SetScript("OnLeave", GameTooltip_Hide)
-	local textWidth = PANEL_INNER_WIDTH - 2 * DETAIL_PAD - OUTPUT_SIZE - OUTPUT_TEXT_GAP
+	local textWidth = PANEL_INNER_WIDTH - 2 * DETAIL_SIDE - OUTPUT_SIZE - OUTPUT_TEXT_GAP
 	detail.Name = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
-	detail.Name:SetPoint("TOPLEFT", detail.Output, "TOPRIGHT", OUTPUT_TEXT_GAP, 0)
-	detail.Name:SetSize(textWidth, 0)
+	detail.Name:SetPoint("LEFT", detail.Output, "RIGHT", OUTPUT_TEXT_GAP, OUTPUT_TEXT_RISE)
+	detail.Name:SetWidth(textWidth)
 	detail.Name:SetJustifyH("LEFT")
 	detail.Name:SetJustifyV("TOP")
 	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameTooltipText")
@@ -802,6 +878,7 @@ local function CreatePanel()
 	empty:SetText(L["Nothing left to learn."])
 	empty:Hide()
 
+	panel:HookScript("OnHide", ClearNav)
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
 		placedKey = nil -- the window may have changed size
@@ -841,10 +918,16 @@ end
 -- The events that change what the window lists: its own list update (also sent by a filter change), the data
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
 local eventFrame = CreateFrame("Frame")
-for _, event in ipairs({ "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED" }) do
+for _, event in ipairs({ "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED" }) do
 	eventFrame:RegisterEvent(event)
 end
-eventFrame:SetScript("OnEvent", Request)
+eventFrame:SetScript("OnEvent", function(_, event)
+	if event == "PLAYER_REGEN_ENABLED" then
+		if navPending then SyncNav() end
+	else
+		Request()
+	end
+end)
 
 hooksecurefunc("UpdateUIPanelPositions", UpdateVisibility)
 
