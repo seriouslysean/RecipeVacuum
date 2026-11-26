@@ -28,7 +28,7 @@ The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/
 
 ## Testing on the Steam Deck
 
-`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the commit (`dev-ef2d97d`, `-dirty` with uncommitted changes), so the panel title shows which build is loaded. The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
+`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the copy's time and commit (`1126.1403 bf8fe64-dirty`, from `date +%m%d.%H%M` and `git describe --tags --always --dirty`). The panel title shows the time, which changes on every copy and reads in a screenshot; the session log line has both, so a capture maps back to its code. No counter is kept (owner, 2026-11-26, after a Grok antagonist pass: a per-clone counter numbers copies, not code, and needs a ledger). The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
 
 ## Embedded libraries
 

@@ -1103,7 +1103,8 @@ local function CreatePanel()
 	-- The name and, dim like a model number, the version; a working build has no version to show. The template's
 	-- title is one string, so the version is a color escape in it rather than a second font string.
 	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
-	version = version and not version:find("@", 1, true) and version or L["dev"]
+	-- A Deck copy's version is "<time> <commit>"; the title shows the time, the log both.
+	version = version and not version:find("@", 1, true) and version:match("^%S+") or L["dev"]
 	panel:SetTitle(ns.title .. " " .. DISABLED_FONT_COLOR:WrapTextInColorCode(version))
 	-- One place for the icon: the TOC's IconTexture, which the addon list shows too.
 	panel:SetPortraitToAsset(C_AddOns.GetAddOnMetadata(addonName, "IconTexture"))
