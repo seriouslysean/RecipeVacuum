@@ -496,3 +496,9 @@ loot:SetScript("OnEvent", function(_, event, unit, target)
 		--@end-debug@
 	end
 end)
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, frame)
+ns.toolkit:WatchEvents(ns.device, loot)
+--@end-debug@

@@ -569,3 +569,9 @@ function ns.ShareSelfTest(report)
 	report(("Whispering %d replies to %s; the result follows"):format(#messages, me))
 end
 --@end-debug@
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, failures)
+ns.toolkit:WatchEvents(ns.device, frame)
+--@end-debug@

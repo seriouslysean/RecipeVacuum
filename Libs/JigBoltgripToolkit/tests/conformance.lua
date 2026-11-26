@@ -143,6 +143,17 @@ for _, file in ipairs(files) do
 end
 check("the kit is looked up once and kept on the namespace", kitLookups <= 1, ("%d lookups"):format(kitLookups))
 
+-- Every frame a module registers events on is watched by the kit's event log in working builds (docs/standards.md, "Working
+-- build helpers"): a file that registers events also calls WatchEvents.
+local unwatched = {}
+for _, file in ipairs(files) do
+	local text = (Read(addonDir .. "/" .. file) or ""):gsub("%-%-[^\n]*", "")
+	if file:find("%.lua$") and text:find(":RegisterEvent%(") and not text:find("WatchEvents%(") then
+		unwatched[#unwatched + 1] = file
+	end
+end
+check("every file that registers events watches them for the working-build log", #unwatched == 0, table.concat(unwatched, ", "))
+
 -- The addon's own name comes from the TOC (`local addonName = ...`), never a string, except in a named
 -- constant that is a contract (a message prefix, an export format); its saved variables are read in the one
 -- file that keeps them on the namespace.

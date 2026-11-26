@@ -838,3 +838,8 @@ function ns.ClearRecipeLocks()
 	wipe(recipeSpecs)
 	wipe(specialized)
 end
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, itemLoads)
+--@end-debug@

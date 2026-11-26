@@ -100,6 +100,7 @@ describe("simulation", function()
 		  function f:RegisterEvent(e) self.events[e] = true end
 		  function f:UnregisterEvent(e) self.events[e] = nil end
 		  function f:SetScript(_, fn) self.script = fn end
+		  function f:HookScript() end -- the kit's working-build event log hooks every frame
 		  frames[#frames + 1] = f; return f end
 		GetNumLootItems = function() return #loot end
 		GetLootSlotType = function(i) return loot[i].type end

@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 45
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 46
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -384,6 +384,31 @@ function lib:Trace(module, line)
 	if log and log.watching then
 		self:Log(module, line)
 	end
+end
+
+-- Every event a module's frame receives, counted and written once a second as "EVENT name xN", so the log shows what fired around
+-- a problem without each handler tracing it. Working builds call it from their debug block; the count costs nothing while not logging.
+function lib:WatchEvents(module, frame)
+	local counts, flushing = {}, false
+	local function Flush()
+		flushing = false
+		local names = {}
+		for name in pairs(counts) do names[#names + 1] = name end
+		table.sort(names)
+		for _, name in ipairs(names) do
+			lib:Trace(module, counts[name] > 1 and ("EVENT %s x%d"):format(name, counts[name]) or "EVENT " .. name)
+		end
+		counts = {}
+	end
+	frame:HookScript("OnEvent", function(_, event)
+		local log = lib.logs[module.addon]
+		if not (log and log.watching) then return end
+		counts[event] = (counts[event] or 0) + 1
+		if not flushing then
+			flushing = true
+			C_Timer.After(1, Flush)
+		end
+	end)
 end
 
 -- A dated line already carries its own date, so it is not stamped again.

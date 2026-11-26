@@ -1464,6 +1464,9 @@ local function CreatePanel()
 	end)
 	reagentScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -REAGENTS_VIEW_TOP)
 	itemWatch = CreateFrame("Frame")
+	--@debug@
+	ns.toolkit:WatchEvents(ns.device, itemWatch)
+	--@end-debug@
 	itemWatch:SetScript("OnEvent", function() detailSignature = nil; FillDetail() end)
 
 	scroll, child = CreateSlimScroll(listArea, function(frame, barShown)
@@ -1562,4 +1565,9 @@ function ns.DevPanelParts()
 	return { panel = panel, listArea = listArea, scroll = scroll, rankBar = rankBar, detail = detail, rows = rows, headings = headings,
 		reagentRows = reagentRows, mapButton = mapButton, mapMore = mapMore }
 end
+--@end-debug@
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, eventFrame)
 --@end-debug@

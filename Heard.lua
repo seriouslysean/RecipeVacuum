@@ -318,3 +318,8 @@ frame:SetScript("OnEvent", function(_, event, message, loaded)
 	end
 	ReadShownProfession()
 end)
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, frame)
+--@end-debug@

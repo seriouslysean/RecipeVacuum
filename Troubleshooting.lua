@@ -947,4 +947,6 @@ local filesDone = debugprofilestop()
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	ns.PerfMs("saved variables load", debugprofilestop() - filesDone)
 end)
+-- Every event these frames receive goes into the working-build log.
+for _, watched in ipairs({ openTimer, perfWriter, areaCapture }) do toolkit:WatchEvents(ns.device, watched) end
 --@end-debug@

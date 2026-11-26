@@ -224,3 +224,8 @@ function ns.BandTitle(professionID, band, onLoad)
 	local first = (band - 1) * ns.RANK_BAND + 1
 	return L["Skill %d to %d"]:format(first, first + ns.RANK_BAND - 1)
 end
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, cacheFrame)
+--@end-debug@

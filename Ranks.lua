@@ -227,3 +227,8 @@ end
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", ns.UpdateRankMark)
 end)
+
+--@debug@
+-- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
+ns.toolkit:WatchEvents(ns.device, watcher)
+--@end-debug@
