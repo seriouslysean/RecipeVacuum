@@ -173,6 +173,39 @@ end
 
 -- The list walks in order; its rows lead right to the details, and every control there leads back to the selected row (the
 -- first one when none is). Run whenever the selection, the rows or the details change.
+-- The list row the cursor was last on; the way back from the details leads to it.
+local lastFocused
+
+local function DetailControls()
+	local controls = { detail.Output }
+	if mapButton then controls[#controls + 1] = mapButton end
+	if mapMore then controls[#controls + 1] = mapMore end
+	for _, list in ipairs({ reagentRows, sourceButtons }) do
+		for _, button in ipairs(list) do controls[#controls + 1] = button end
+	end
+	return controls
+end
+
+-- Left from any control in the details, and up from the made item at their top, lead back to this list frame: left to itself,
+-- up lands on whichever row is nearest above, scrolled out of view or not.
+local function PointBack(back)
+	local count = 0
+	for _, control in ipairs(DetailControls()) do
+		if control:IsShown() then
+			SetNav(control, SMART_NAV_INPUT_DIRECTION.LEFT, back)
+			if control == detail.Output then SetNav(control, SMART_NAV_INPUT_DIRECTION.UP, back) end
+			count = count + 1
+		end
+	end
+	return count
+end
+
+-- A list row or heading the cursor reaches becomes the way back, so leaving the details returns to where the player was.
+function ns.NoteListFocus(frame)
+	lastFocused = frame
+	if detail:IsShown() and NavAvailable() and not InCombatLockdown() then PointBack(frame) end
+end
+
 local function SyncNav()
 	if not NavAvailable() then return end
 	if InCombatLockdown() then
@@ -199,17 +232,17 @@ local function SyncNav()
 	if previous then SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous) end
 	if not selected then return end
 	local into = detail.Output -- right enters the details at their top, the made item
-	local first, chosen, rowCount = nil, nil, 0
+	local first, rowCount = nil, 0
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		local item = items[index]
 		if item.recipe then
 			SetNav(slots[index], SMART_NAV_INPUT_DIRECTION.RIGHT, into)
 			rowCount = rowCount + 1
 			first = first or slots[index]
-			if selected and item.recipe.recipeID == selected.recipeID then chosen = slots[index] end
 		end
 	end
-	local back = chosen or first
+	-- Back from the details is the list row last highlighted, else the first.
+	local back = lastFocused and lastFocused:IsShown() and lastFocused or first
 	if not back then return end
 	-- Reagents walk in order and end at Show Map: a reagent scrolled out of view is farther than something on screen, so left to
 	-- itself the d-pad would leave the details.
@@ -229,20 +262,11 @@ local function SyncNav()
 			SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous)
 		end
 	end
-	local controls = { detail.Output, mapButton, mapMore }
-	for _, list in ipairs({ reagentRows, sourceButtons }) do
-		for _, button in ipairs(list) do controls[#controls + 1] = button end
-	end
-	local count = 0
-	for _, control in ipairs(controls) do
+	local count = PointBack(back)
+	for _, control in ipairs(DetailControls()) do
 		if control:IsShown() then
-			SetNav(control, SMART_NAV_INPUT_DIRECTION.LEFT, back)
 			-- Nothing lies right of the details; left to itself, the d-pad would reach up and right into the list.
 			SetNav(control, SMART_NAV_INPUT_DIRECTION.RIGHT, control)
-			-- Up from the made item, the top of the details, also leads back to the chosen row: left to itself it lands on
-			-- whichever row is nearest above, scrolled out of view or not.
-			if control == detail.Output then SetNav(control, SMART_NAV_INPUT_DIRECTION.UP, back) end
-			count = count + 1
 		end
 	end
 	-- The open list is reached down from its button and walked with up and down; left from an entry goes back (above).
@@ -322,6 +346,7 @@ local function CreateRow()
 	row:SetScript("OnEnter", function(self)
 		if not self.recipe then return end
 		ns.ScrollRowIntoView(self)
+		ns.NoteListFocus(self)
 		self.Label:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 		self.Count:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 		for slot = 1, self.markCount do
@@ -382,7 +407,10 @@ local function CreateHeading()
 	heading.Count = heading:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	-- The template's own OnEnter and OnLeave stay: they only light the title and the marker. A heading the d-pad reaches is
 	-- scrolled into view as a row is.
-	heading:HookScript("OnEnter", function(self) ns.ScrollRowIntoView(self) end)
+	heading:HookScript("OnEnter", function(self)
+		ns.ScrollRowIntoView(self)
+		ns.NoteListFocus(self)
+	end)
 	heading:SetScript("OnClick", function(self)
 		toggled[BandKey(self.band)] = not IsOpen(self.band)
 		ns.Trace("UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
@@ -1108,6 +1136,7 @@ local function Update()
 	recipeCount, bandCount = rowCount, headingCount
 	generation = generation + 1
 	ClearNav() -- the rows are reused for other recipes; the build's end sets them again
+	lastFocused = nil
 	nextItem, buildMs, buildSteps = 1, 0, 0
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
