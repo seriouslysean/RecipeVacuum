@@ -1,5 +1,5 @@
 local _, ns = ...
-local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
+local L = ns.L
 
 -- Every line the Vacuum says; read docs/voice.md before adding one.
 ns.voice = {

@@ -272,13 +272,14 @@ end
 
 -- Export an array, not a table with sparse numeric keys: C_EncodingUtil.SerializeJSON rejects those.
 ns.EXPORT_FORMAT_VERSION = 3
+local EXPORT_FORMAT = "RecipeVacuum" -- the export's format name, which readers match on
 
 function ns.ExportFinds()
 	local rows = ns.FindsSince(0, math.huge)
 	local json = C_EncodingUtil.SerializeJSON({
-		format = "RecipeVacuum", version = ns.EXPORT_FORMAT_VERSION, exportBuild = ns.BUILD, locale = GetLocale(),
+		format = EXPORT_FORMAT, version = ns.EXPORT_FORMAT_VERSION, exportBuild = ns.BUILD, locale = GetLocale(),
 		observations = rows,
 	})
-	LibStub("JigBoltgripToolkit-1.0"):ShowText(
+	ns.toolkit:ShowText(
 		ns.title .. ": " .. ns.voice.exportTitle, json)
 end

@@ -1,5 +1,8 @@
 local addonName, ns = ...
-local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
+-- The libraries, looked up once; every file uses these.
+ns.toolkit = LibStub("JigBoltgripToolkit-1.0")
+ns.L = LibStub("AceLocale-3.0"):GetLocale(addonName)
+local L, toolkit = ns.L, ns.toolkit
 
 -- Saved data layout and migrations: docs/data.md.
 local SCHEMA = 10
@@ -12,7 +15,7 @@ ns.MAX_WIRE_NUMBER = 2^32
 
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 -- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
-ns.LEVEL = LibStub("JigBoltgripToolkit-1.0").SOURCE_LEVEL
+ns.LEVEL = toolkit.SOURCE_LEVEL
 ns.levelHeard = { L["only you"], L["you and your friends"], L["everyone nearby"] }
 
 function ns.NewLayer()
@@ -42,7 +45,6 @@ local defaults = {
 
 -- Chat goes through the toolkit library, which owns the line's shape and colors (docs/voice.md).
 -- ns.Say is a voiced line: "Boltgrip's Recipe Vacuum <noise>. <report>". ns.Log is a plain one.
-local toolkit = LibStub("JigBoltgripToolkit-1.0")
 ns.device = { addon = addonName, title = ns.title, class = "DRUID" } -- the class whose color the Vacuum's name takes in chat
 
 function ns.Say(noise, report)

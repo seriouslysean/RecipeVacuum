@@ -1,5 +1,5 @@
 local addonName, ns = ...
-local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
+local L = ns.L
 
 local LEVEL = ns.LEVEL
 
@@ -15,7 +15,7 @@ end })
 
 -- Called once saved variables load. Sections follow Blizzard's pages; labels are capitalized as Blizzard's are.
 function ns.InitSettings()
-	local toolkit = LibStub("JigBoltgripToolkit-1.0")
+	local toolkit = ns.toolkit
 	local module = toolkit:RegisterModule(addonName, ns.device.class)
 	ns.module = module
 	toolkit:BuildOptions(module, ns.db, {

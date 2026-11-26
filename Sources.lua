@@ -1,5 +1,5 @@
 local _, ns = ...
-local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
+local L = ns.L
 
 -- Bumped on every change to the known sources, so cached results can tell they are stale.
 ns.sourcesVersion = 0

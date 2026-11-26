@@ -181,6 +181,7 @@ GetLocale = GetLocale or function() return "enUS" end -- the client's language
 geterrorhandler = geterrorhandler or function() return error end
 dofile((UNLEARNED:gsub("Unlearned%.lua$", "Libs/AceLocale-3.0/AceLocale-3.0.lua")))
 assert(loadfile((UNLEARNED:gsub("Unlearned%.lua$", "Locales/enUS.lua"))))("RecipeVacuum", ns)
+ns.L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum") -- set by Core.lua in the game
 assert(loadfile((UNLEARNED:gsub("Unlearned%.lua$", "Sources.lua"))))("RecipeVacuum", ns)
 ns.GetRecipeFaction = function() return "Alliance" end -- no tooltip data offline
 ns.GetRecipeLock = function() return false end

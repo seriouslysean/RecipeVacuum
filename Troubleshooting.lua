@@ -1,11 +1,11 @@
 -- Development commands and their log: the whole file exists only in a checkout build and is stripped from releases (docs/development.md, "Working build").
-local _, ns = ...
+local addonName, ns = ...
 
 --@debug@
 
 local UseScan -- defined below
 -- Lua errors shown and blocked actions reported, and timing, from the toolkit's working-build helpers.
-local toolkit = LibStub("JigBoltgripToolkit-1.0")
+local toolkit = ns.toolkit
 toolkit:EnableWorkingBuild()
 
 -- Timing is kept by the library per module; ns.device stands in for the module until settings load.
@@ -744,7 +744,7 @@ end
 -- Saved variables load time: the client reads them after the addon's last file (this one) and before
 -- ADDON_LOADED, so the gap between the two is that read (plus any other addon's files in between).
 local filesDone = debugprofilestop()
-EventUtil.ContinueOnAddOnLoaded("RecipeVacuum", function()
+EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	ns.PerfMs("saved variables load", debugprofilestop() - filesDone)
 end)
 --@end-debug@

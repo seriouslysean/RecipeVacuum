@@ -1,5 +1,5 @@
 local _, ns = ...
-local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
+local L = ns.L
 
 -- Recipes come across without a known source: chat links, nearby loot, shown professions (docs/data.md, "Come across").
 -- Only the recipe and its level are kept, never who or which channel.

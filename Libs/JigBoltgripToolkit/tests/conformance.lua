@@ -82,6 +82,10 @@ local FORBIDDEN = {
 	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)" },
 	{ "SetCVar%(%s*\"scriptErrors\"", "working builds start with the kit's EnableWorkingBuild" },
 }
+-- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps
+-- them on the namespace, and the locale files take the addon's name from the TOC.
+table.insert(FORBIDDEN, { "[GN][ew][tw]Locale%(%s*\"", "a locale table is named by the addon's name from the TOC, not a string" })
+
 -- Player text outside working-build blocks goes through the addon's locale table, so it can be translated
 -- (owner, 2026-11-25: "I want the strings pulled out for localization").
 local LITERAL_TEXT = { "%f[%w_]label%s*=%s*\"%a", "%f[%w_]tooltip%s*=%s*\"%a", "%f[%w_]note%s*=%s*\"%a",
@@ -125,6 +129,12 @@ for _, file in ipairs(files) do
 		check(file .. ": comments give the reason only", #comments == 0, table.concat(comments, "; "))
 	end
 end
+
+local kitLookups = 0
+for _, file in ipairs(files) do
+	kitLookups = kitLookups + select(2, (Read(addonDir .. "/" .. file) or ""):gsub('LibStub%("JigBoltgripToolkit%-1%.0"%)', ""))
+end
+check("the kit is looked up once and kept on the namespace", kitLookups <= 1, ("%d lookups"):format(kitLookups))
 
 -- 2. The embedded library: no XML, and the same file as the toolkit's own checkout when one sits beside the addon.
 local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("*a")

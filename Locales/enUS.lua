@@ -1,6 +1,7 @@
 -- AceLocale-3.0: the key is the English text, and `true` means "the key as written". Only player text is
 -- here (docs/development.md, "Translations").
-local L = LibStub("AceLocale-3.0"):NewLocale("RecipeVacuum", "enUS", true)
+local addonName = ...
+local L = LibStub("AceLocale-3.0"):NewLocale(addonName, "enUS", true)
 
 -- The voiced line (Voice.lua): noise, then the report.
 L["whirs and rattles"] = true

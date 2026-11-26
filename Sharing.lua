@@ -1,7 +1,7 @@
 local _, ns = ...
 local comm = {}
 LibStub("AceComm-3.0"):Embed(comm)
-local toolkit = LibStub("JigBoltgripToolkit-1.0")
+local toolkit = ns.toolkit
 
 -- Each exchange step, to the working build's log (the toolkit's Trace; nothing in a release).
 local function Trace(text, ...)
