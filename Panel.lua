@@ -1,25 +1,29 @@
-local _, ns = ...
+local addonName, ns = ...
 local L = ns.L
 
 -- The player-facing list of unlearned recipes: a panel of our own beside the Professions window, never a write into Blizzard's list (docs/client-notes.md, "Gamepad").
 -- Built as Field Guide Forever's list is (UI/List.lua): a Blizzard scroll frame and one real Button per row, so the Gamepad UI can focus rows and scroll them.
--- What the panel follows from the window, and why it builds a few rows a frame, is in docs/client-notes.md, "Panel".
+-- Rows and headings are Blizzard's own recipe list templates, so they look as its list does (docs/client-notes.md, "Panel").
 
 local PANEL_WIDTH = 270 -- about 230 px are free beside the tab column at 1280x800; the quest tracker may be overlapped a little
 local PANEL_GAP = 2 -- space between the tab column and the panel
 -- The overview tab sits this far below the window's top (Blizzard_ProfessionsFrame.xml), so the panel lifts by the same.
 local TAB_TOP_OFFSET = 60
-local TITLE_HEIGHT = 66 -- the title, the step button under it and the count under that
-local STEP_BUTTON_WIDTH = 110
-local STEP_BUTTON_HEIGHT = 22 -- UIPanelButtonTemplate's own height
-local STEP_BUTTON_GAP = 4
+local TITLE_HEIGHT = 40 -- the title and the count under it
+local TITLE_GAP = 4
 local CONTENT_PAD = 4
 local SCROLLBAR_WIDTH = 22 -- room for UIPanelScrollFrameTemplate's bar to the right of the list
--- Blizzard's recipe row is 20 high (Blizzard_ProfessionsRecipeList.xml); two more hold an icon without crowding it.
-local ROW_HEIGHT = 22
-local ICON_SIZE = 20
+-- Blizzard_ProfessionsRecipeList.lua: view spacing, indent and pad; the element extents (20 per recipe, 20 + 5 per category).
+local ROW_HEIGHT = 20
+local HEADING_HEIGHT = 25
+local ROW_SPACING = 1
+local ROW_INDENT = 10
+local LIST_PAD = 5
 local ROW_PAD = 4
+local SKILL_WIDTH = 22 -- room for a three-digit skill, right-aligned so the numbers line up
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
+local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
+local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
 -- Rows are made in steps of at most this much time and this many rows, so no frame from the panel nears 16 ms.
 local BUILD_BUDGET_MS = 4
 local ROWS_PER_STEP = 40
@@ -32,38 +36,32 @@ local INSET_EDGES = {
 	bottom = { atlas = "_UI-Frame-InnerBotTile", key = "height" },
 }
 
-local SKILL_WIDTH = 22 -- room for a three-digit skill, right-aligned so the numbers line up
-
-local panel, scroll, child, empty, countText, stepButton
-local rows = {}
-local entries = {} -- the recipes shown, in order
+local panel, scroll, child, empty, countText
+local rows, headings = {}, {}
+local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
+local slots = {} -- the frame of each item once built
+local toggled = {} -- [professionID .. ":" .. band] = open, for the session only: the player's own choices
 local professionInfo
 local wanted = false -- a character's own crafting page is open
 local requested = false
 local retried = false
 local generation = 0 -- a newer build ends the steps of an older one
-local nextEntry, buildMs, buildSteps, foundCount
+local shownSignature, builtProfession
+local nextItem, buildMs, buildSteps, recipeCount, bandCount
 
-local function CreateRow(index)
-	local row = CreateFrame("Button", nil, child)
-	row:SetHeight(ROW_HEIGHT)
-	row:SetHighlightAtlas("Options_List_Hover", "ADD") -- the highlight Blizzard's settings lists use
+local function CreateRow()
+	local row = CreateFrame("Button", nil, child, ROW_TEMPLATE)
+	row.Count:Hide()
+	row.SkillUps:Hide()
 
 	-- The skill the list is ordered by comes first: it is what the list is about.
 	row.Skill = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
 	row.Skill:SetPoint("LEFT", ROW_PAD, 0)
 	row.Skill:SetWidth(SKILL_WIDTH)
 	row.Skill:SetJustifyH("RIGHT")
-
-	row.Icon = row:CreateTexture(nil, "ARTWORK")
-	row.Icon:SetSize(ICON_SIZE, ICON_SIZE)
-	row.Icon:SetPoint("LEFT", row.Skill, "RIGHT", ROW_PAD, 0)
-
-	row.Name = row:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-	row.Name:SetPoint("LEFT", row.Icon, "RIGHT", ROW_PAD, 0)
-	row.Name:SetJustifyH("LEFT")
-	row.Name:SetWordWrap(false)
-
+	row.Label:ClearAllPoints()
+	row.Label:SetPoint("LEFT", row.Skill, "RIGHT", ROW_PAD, 0)
+	row.Label:SetWordWrap(false)
 
 	-- Marks stack from the right edge, in display order from the left.
 	local marks = {}
@@ -79,8 +77,10 @@ local function CreateRow(index)
 	end
 	row.markNames = {}
 
+	-- Ours in place of Blizzard's, which would select a recipe in its own list.
 	row:SetScript("OnEnter", function(self)
 		if not self.recipe then return end
+		self.Label:SetVertexColor(HIGHLIGHT_FONT_COLOR:GetRGB())
 		for slot = 1, self.markCount do
 			ns.SetMarkStrength(marks[slot], true)
 		end
@@ -99,22 +99,49 @@ local function CreateRow(index)
 		GameTooltip:Show()
 	end)
 	row:SetScript("OnLeave", function(self)
+		if self.recipe then self.Label:SetVertexColor(self.color:GetRGB()) end
 		for slot = 1, self.markCount or 0 do
 			ns.SetMarkStrength(marks[slot], false)
 		end
 		GameTooltip_Hide()
 	end)
 	-- One click pins the nearest source; a menu would taint (docs/client-notes.md, "Gamepad").
-	row:SetScript("OnClick", function(self)
-		if not self.recipe then return end
+	row:SetScript("OnClick", function(self, button)
+		if not self.recipe or button == "RightButton" then return end
 		local target = ns.MapTargets(self.recipe)[1]
 		ns.Trace("UI row clicked: recipe %d, %s", self.recipe.recipeID, target and "pinned" or "no place to pin")
 		if target then
 			ns.ShowOnMap(target)
 		end
 	end)
-	rows[index] = row
+	rows[#rows + 1] = row
 	return row
+end
+
+local Request -- defined below; a heading click asks for a rebuild through it
+
+local function BandKey(band)
+	return professionInfo.professionID .. ":" .. band
+end
+
+-- A band is open when the player chose so; otherwise when it holds the character's skill or lies below it.
+local function IsOpen(band)
+	local chosen = toggled[BandKey(band)]
+	if chosen ~= nil then return chosen end
+	return band <= ns.BandOf(professionInfo.skillLevel or 0)
+end
+
+local function CreateHeading()
+	local heading = CreateFrame("Button", nil, child, HEADING_TEMPLATE)
+	heading.RankBar:Hide() -- Blizzard's skill line progress bar; a band has none
+	-- The template's own OnEnter and OnLeave stay: they only light the title and the marker.
+	heading:SetScript("OnClick", function(self)
+		toggled[BandKey(self.band)] = not IsOpen(self.band)
+		ns.Trace("UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
+		Request()
+	end)
+	headings[#headings + 1] = heading
+	return heading
 end
 
 -- White when the character's skill can learn it now, grey when not yet or not at all. Skill-up colors would
@@ -127,12 +154,13 @@ local function NameColor(recipeInfo)
 	return HIGHLIGHT_FONT_COLOR
 end
 
+-- Everything a row shows that does not move it, so a skill rise or new source updates a row without a rebuild.
 local function ShowRow(row, recipeInfo)
 	row.recipe = recipeInfo
 	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
-	row.Icon:SetTexture(recipeInfo.icon)
-	row.Name:SetText(recipeInfo.name)
-	row.Name:SetTextColor(NameColor(recipeInfo):GetRGB())
+	row.Label:SetText(recipeInfo.name)
+	row.color = NameColor(recipeInfo)
+	if not row:IsMouseMotionFocus() then row.Label:SetVertexColor(row.color:GetRGB()) end
 	row.Skill:SetText(ns.SkillOf(recipeInfo))
 	row.markCount = ns.GetMarks(recipeInfo, row.markNames)
 	for slot, mark in ipairs(row.marks) do
@@ -144,39 +172,58 @@ local function ShowRow(row, recipeInfo)
 		end
 	end
 	-- The name stops where the marks begin.
-	row.Name:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
+	row.Label:SetPoint("RIGHT", row.marks[math.max(row.markCount, 1)].Texture, "LEFT", -ROW_PAD, 0)
+end
+
+local function ShowHeading(heading, item)
+	heading.band = item.band
+	local first = (item.band - 1) * ns.RANK_BAND + 1
+	local text = L["Skill %d to %d"]:format(first, first + ns.RANK_BAND - 1)
+	if not item.open then
+		text = text .. L[" (%d)"]:format(item.count)
+	end
+	heading:SetHeaderText(text)
+	heading:UpdateCollapsedState(not item.open)
 end
 
 local function Finish()
-	for index = #entries + 1, #rows do
-		rows[index]:Hide()
-	end
-	ns.Trace("UI panel shown with %d rows of %d found, built in %.1f ms over %d frames", #entries, foundCount, buildMs, buildSteps)
+	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
 	--@debug@
 	ns.PerfMs("panel build", buildMs)
 	--@end-debug@
 end
 
--- One row per entry, all in the scroll child: the Gamepad UI moves between rows that exist and scrolls the
+-- One frame per item, all in the scroll child: the Gamepad UI moves between frames that exist and scrolls the
 -- frame to reach one out of view, so a screenful of relabelled rows left it stuck at the last one shown.
--- Rows are kept and reused across professions, and made a few a frame so opening the window never stalls.
+-- Frames are kept and reused across professions, and made a few a frame so opening the window never stalls.
 local function BuildStep(buildGeneration)
 	if buildGeneration ~= generation or not panel:IsShown() then return end
 	local started = debugprofilestop()
 	local made = 0
-	while nextEntry <= #entries and made < ROWS_PER_STEP and (made == 0 or debugprofilestop() - started < BUILD_BUDGET_MS) do
-		local row = rows[nextEntry] or CreateRow(nextEntry)
-		local top = -(nextEntry - 1) * ROW_HEIGHT
-		row:SetPoint("TOPLEFT", child, "TOPLEFT", 0, top)
-		row:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, top)
-		ShowRow(row, entries[nextEntry])
-		row:Show()
-		nextEntry = nextEntry + 1
+	while nextItem <= #items and made < ROWS_PER_STEP and (made == 0 or debugprofilestop() - started < BUILD_BUDGET_MS) do
+		local item = items[nextItem]
+		local frame
+		if item.recipe then
+			frame = rows[item.rowIndex] or CreateRow()
+			frame:SetPoint("TOPLEFT", child, "TOPLEFT", ROW_INDENT, -item.top)
+			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -item.top)
+			frame:SetHeight(ROW_HEIGHT)
+			ShowRow(frame, item.recipe)
+		else
+			frame = headings[item.headingIndex] or CreateHeading()
+			frame:SetPoint("TOPLEFT", child, "TOPLEFT", 0, -item.top)
+			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, -item.top)
+			frame:SetHeight(HEADING_HEIGHT)
+			ShowHeading(frame, item)
+		end
+		frame:Show()
+		slots[nextItem] = frame
+		nextItem = nextItem + 1
 		made = made + 1
 	end
 	buildMs = buildMs + (debugprofilestop() - started)
 	buildSteps = buildSteps + 1
-	if nextEntry <= #entries then
+	if nextItem <= #items then
 		RunNextFrame(function() BuildStep(buildGeneration) end)
 	else
 		Finish()
@@ -184,9 +231,8 @@ local function BuildStep(buildGeneration)
 end
 
 -- The window's own filters, read where they can apply to a recipe not yet learned (docs/client-notes.md, "Panel").
-local function CollectEntries(list)
-	wipe(entries)
-	local step = ns.CurrentStep()
+local function CollectRecipes(list)
+	local found = {}
 	-- "Have materials" and "Show unlearned" are left out: nothing here is makeable, and Forever turns Show
 	-- unlearned off by default, which emptied the panel. Skill-up reads the difficulty color, since a recipe
 	-- not yet learned never reports that it can skill up.
@@ -194,16 +240,42 @@ local function CollectEntries(list)
 	local skillUpOnly = C_TradeSkillUI.GetOnlyShowSkillUpRecipes()
 	local firstCraftOnly = C_TradeSkillUI.GetOnlyShowFirstCraftRecipes()
 	for _, recipeInfo in ipairs(list) do
-		if ns.FitsStep(recipeInfo, step, professionInfo)
-			and (search == "" or recipeInfo.searchName:find(search, 1, true))
+		if (search == "" or recipeInfo.searchName:find(search, 1, true))
 			and not (skillUpOnly and recipeInfo.relativeDifficulty == Enum.TradeskillRelativeDifficulty.Trivial)
 			and not (firstCraftOnly and not recipeInfo.firstCraft) then
-			entries[#entries + 1] = recipeInfo
+			found[#found + 1] = recipeInfo
 		end
 	end
+	return found, search
 end
 
-local Request -- defined below; Update schedules its one retry through it
+-- The list as items with their tops, and a signature of what it shows: the recipes in order, which bands are open
+-- and the search. Equal signatures need no rebuild and no re-anchoring (docs/client-notes.md, "Panel").
+local function LayOut(found, search)
+	local newItems, parts, top = {}, { professionInfo.professionID, search }, LIST_PAD
+	local rowCount, headingCount = 0, 0
+	local index = 1
+	while index <= #found do
+		local band = ns.BandOf(ns.SkillOf(found[index]))
+		local last = index
+		while found[last + 1] and ns.BandOf(ns.SkillOf(found[last + 1])) == band do last = last + 1 end
+		local open = IsOpen(band)
+		headingCount = headingCount + 1
+		newItems[#newItems + 1] = { band = band, open = open, count = last - index + 1, top = top, headingIndex = headingCount }
+		parts[#parts + 1] = (open and "+" or "-") .. band .. "x" .. (last - index + 1)
+		top = top + HEADING_HEIGHT + ROW_SPACING
+		if open then
+			for at = index, last do
+				rowCount = rowCount + 1
+				newItems[#newItems + 1] = { recipe = found[at], top = top, rowIndex = rowCount }
+				parts[#parts + 1] = found[at].recipeID
+				top = top + ROW_HEIGHT + ROW_SPACING
+			end
+		end
+		index = last + 1
+	end
+	return newItems, table.concat(parts, ","), rowCount, headingCount, top + LIST_PAD
+end
 
 local function Update()
 	requested = false
@@ -215,49 +287,38 @@ local function Update()
 		retried = true
 		C_Timer.After(RETRY_SECONDS, Request)
 	end
-	CollectEntries(list)
-	foundCount = #list
-	stepButton:SetText(ns.CurrentStep().name)
-	generation = generation + 1
-	nextEntry, buildMs, buildSteps = 1, 0, 0
-	child:SetHeight(math.max(#entries * ROW_HEIGHT, 1))
-	empty:SetShown(#entries == 0)
-	countText:SetText(L["%d of %d found"]:format(#entries, foundCount))
-	scroll:SetVerticalScroll(0)
-	for index = #entries + 1, #rows do
-		rows[index]:Hide()
+	local found, search = CollectRecipes(list)
+	local newItems, signature, rowCount, headingCount, height = LayOut(found, search)
+	local built = nextItem or 1
+	items = newItems
+	if signature == shownSignature then
+		-- Same content: refresh what is shown in place and leave every frame where it is.
+		for index = 1, math.min(built - 1, #items) do
+			if items[index].recipe then ShowRow(slots[index], items[index].recipe) end
+		end
+		return
 	end
+	shownSignature = signature
+	recipeCount, bandCount = rowCount, headingCount
+	generation = generation + 1
+	nextItem, buildMs, buildSteps = 1, 0, 0
+	child:SetHeight(math.max(height, 1))
+	empty:SetShown(#items == 0)
+	countText:SetText(L["%d found"]:format(#found))
+	if builtProfession ~= professionInfo.professionID then
+		builtProfession = professionInfo.professionID
+		scroll:SetVerticalScroll(0)
+	end
+	for index = rowCount + 1, #rows do rows[index]:Hide() end
+	for index = headingCount + 1, #headings do headings[index]:Hide() end
 	BuildStep(generation)
 end
 
--- However many times the window rebuilds its page in a frame, the panel rebuilds once, on the next.
+-- However many times the window rebuilds its page in a frame, the panel asks once, on the next.
 Request = function()
 	if requested then return end
 	requested = true
 	RunNextFrame(Update)
-end
-
--- Names every step with its sentence and marks the current one; a plain tooltip, since a menu would taint.
-local function ShowStepTooltip(button)
-	local _, current = ns.CurrentStep()
-	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-	GameTooltip_SetTitle(GameTooltip, L["Recipes to Show"])
-	for index, step in ipairs(ns.steps) do
-		GameTooltip_AddColoredLine(GameTooltip, index == current and L["%s (current)"]:format(step.name) or step.name,
-			index == current and GREEN_FONT_COLOR or NORMAL_FONT_COLOR)
-		GameTooltip_AddColoredLine(GameTooltip, step.tip, HIGHLIGHT_FONT_COLOR)
-	end
-	GameTooltip:Show()
-end
-
--- One click, or A on the gamepad, takes the next step and wraps; a real Button, as the Gamepad UI needs.
-local function StepClicked(button)
-	local _, current = ns.CurrentStep()
-	local step = ns.steps[current % #ns.steps + 1]
-	ns.db.panelStep = step.key
-	ns.Trace("UI step changed to %s", step.key)
-	Request()
-	if GameTooltip:GetOwner() == button then ShowStepTooltip(button) end
 end
 
 local function EdgeSize(edge)
@@ -276,23 +337,22 @@ local function CreatePanel()
 	local left, right = EdgeSize(INSET_EDGES.left) + CONTENT_PAD, EdgeSize(INSET_EDGES.right) + CONTENT_PAD
 	local top, bottom = EdgeSize(INSET_EDGES.top) + CONTENT_PAD, EdgeSize(INSET_EDGES.bottom) + CONTENT_PAD
 
+	-- The name and, smaller and dim like a model number, the version; a working build has no version to show.
 	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-	title:SetPoint("TOP", 0, -top)
-	title:SetText(L["Unlearned Recipes"])
+	title:SetPoint("TOPLEFT", left, -top)
+	title:SetText(ns.title)
+	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
+	local model = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+	model:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", TITLE_GAP, 0)
+	model:SetText(version and not version:find("@", 1, true) and version or L["dev"])
 	countText = panel:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-
-	stepButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	stepButton:SetSize(STEP_BUTTON_WIDTH, STEP_BUTTON_HEIGHT)
-	stepButton:SetPoint("TOP", title, "BOTTOM", 0, -STEP_BUTTON_GAP)
-	stepButton:SetScript("OnClick", StepClicked)
-	stepButton:SetScript("OnEnter", ShowStepTooltip)
-	stepButton:SetScript("OnLeave", GameTooltip_Hide)
-	countText:SetPoint("TOP", stepButton, "BOTTOM", 0, -STEP_BUTTON_GAP)
+	countText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -TITLE_GAP)
 
 	-- UIPanelScrollFrameTemplate, as Field Guide Forever's list; a ScrollBox would hold our data in Blizzard's secure code.
 	scroll = CreateFrame("ScrollFrame", nil, panel, "UIPanelScrollFrameTemplate")
 	scroll:SetPoint("TOPLEFT", left, -(top + TITLE_HEIGHT))
 	scroll:SetPoint("BOTTOMRIGHT", -(right + SCROLLBAR_WIDTH), bottom)
+	scroll.scrollBarHideable = true -- the template's own switch: the bar shows only when the list is taller than the view
 	child = CreateFrame("Frame", nil, scroll)
 	child:SetSize(PANEL_WIDTH - left - right - SCROLLBAR_WIDTH, 1)
 	scroll:SetScrollChild(child)

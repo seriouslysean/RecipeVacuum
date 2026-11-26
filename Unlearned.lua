@@ -1,5 +1,4 @@
 local _, ns = ...
-local L = ns.L
 
 -- Works out which recipes a character has not learned, grouped by category, for Recipe Vacuum's own panel. It writes nothing into Blizzard's frames (docs/client-notes.md, "Gamepad").
 
@@ -168,26 +167,9 @@ function ns.GetListedRecipes(professionInfo)
 	return entry.list, cache[professionID] ~= nil
 end
 
--- The panel's steps, in the order its button cycles (docs/data.md, "Show rule"). `cap` names the professionInfo field a
--- recipe's required skill must not pass; a recipe with no known requirement fits only the step that has no cap.
-ns.steps = {
-	{ key = "now", name = L["Now"], tip = L["Recipes your skill can learn right now."], cap = "skillLevel" },
-	{ key = "rank", name = L["This Rank"], tip = L["Recipes you can learn up to this rank's skill cap."], cap = "maxSkillLevel" },
-	{ key = "all", name = L["All Found"], tip = L["Every recipe you have found."] },
-}
-local DEFAULT_STEP = 2
+-- The panel groups recipes by the rank caps of a profession (75, 150, 225, 300); band 1 is skill 1 to 75.
+ns.RANK_BAND = 75
 
--- The saved step and its place in ns.steps; the default when the saved key names none.
-function ns.CurrentStep()
-	for index, step in ipairs(ns.steps) do
-		if step.key == ns.db.panelStep then return step, index end
-	end
-	return ns.steps[DEFAULT_STEP], DEFAULT_STEP
-end
-
--- Whether a found recipe belongs to a step, for the open profession's skill.
-function ns.FitsStep(recipeInfo, step, professionInfo)
-	if not step.cap then return true end
-	local required = recipeInfo.requiredSkill
-	return required ~= nil and required <= (professionInfo[step.cap] or 0)
+function ns.BandOf(skill)
+	return math.max(1, math.ceil(skill / ns.RANK_BAND))
 end

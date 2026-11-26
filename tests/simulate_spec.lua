@@ -125,13 +125,13 @@ describe("simulation", function()
 
 	-- 1. Schema 3 -> 4 on the owner's real save
 	local a, db, before, beforeRecipes, beforeItems, beforeRevision
-	it("schema is 11", function()
+	it("schema is 12", function()
 		dofile(savedFile); before = RecipeVacuumDB
 		beforeRecipes, beforeItems = count(before.found)
 		beforeRevision = before.exchange.revision
 		a = boot(savedFile)
 		db = a.db
-		assert(db.schema == 11, "schema is 11")
+		assert(db.schema == 12, "schema is 12")
 	end)
 	it("trainerNames dropped", function()
 		assert(db.found.trainerNames == nil and db.shared.trainerNames == nil, "trainerNames dropped")
@@ -740,9 +740,20 @@ describe("simulation", function()
 		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
 		local function Names()
 			local names = {}
-			for _, button in ipairs(buttons) do if button:IsShown() and rawget(button, "recipe") then names[#names + 1] = button.Name.text end end
+			for _, button in ipairs(buttons) do if button:IsShown() and rawget(button, "recipe") then names[#names + 1] = button.Label.text end end
 			table.sort(names)
 			return names
+		end
+		local function Bands()
+			local bands = {}
+			for _, button in ipairs(buttons) do if button:IsShown() and rawget(button, "band") then bands[#bands + 1] = button.band end end
+			table.sort(bands)
+			return bands
+		end
+		local function Builds()
+			local builds = 0
+			for _, line in ipairs(traces) do if line:find("UI panel shown", 1, true) then builds = builds + 1 end end
+			return builds
 		end
 		local realCreateFrame
 		it("loads on a stand-in window", function()
@@ -761,11 +772,18 @@ describe("simulation", function()
 				return function() end
 			end
 			function Fake(parent) return setmetatable({ parent = parent }, meta) end
-			CreateFrame = function(kind, _, parent)
+			-- The parts Blizzard's recipe list templates create (Blizzard_ProfessionsRecipeList.xml).
+			local parts = {
+				ProfessionsRecipeListRecipeTemplate = { "Label", "Count", "SkillUps", "LockedIcon" },
+				ProfessionsRecipeListCategoryTemplate = { "RankBar" },
+			}
+			CreateFrame = function(kind, _, parent, template)
 				local f = Fake(parent)
 				if kind == "Button" then f.shown = true; buttons[#buttons + 1] = f end
+				for _, key in ipairs(parts[template] or {}) do f[key] = Fake(f) end
 				return f
 			end
+			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end }
 			RunNextFrame = function(fn) queue[#queue + 1] = fn end
 			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
 			local color = { GetRGB = function() return 1, 1, 1 end }
@@ -786,10 +804,10 @@ describe("simulation", function()
 			Professions = { InLocalCraftingMode = function() return true end, GetFirstRecipe = function(r) return r end }
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
 			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
-			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion" }
+			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion", [107] = "Plans: High" }
 			inLine = { [106] = 999 } -- every other recipe is in the open skill line
 			C_TradeSkillUI = { IsTradeSkillReady = function() return true end,
-			  GetAllRecipeIDs = function() return { 101, 102, 103, 104, 105, 106 } end,
+			  GetAllRecipeIDs = function() return { 101, 102, 103, 104, 105, 106, 107 } end,
 			  GetRecipeInfo = function(id) return { recipeID = id, name = recipes[id], categoryID = 1, learned = false, maxTrivialLevel = id, icon = 1 } end,
 			  IsRecipeInSkillLine = function(id, line) return (inLine[id] or line) == line end,
 			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
@@ -802,56 +820,70 @@ describe("simulation", function()
 			pns.db.found.recipes[101] = { { kind = "trainer", count = 1, skill = 30 } }
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
-			pns.db.panelStep = "all"
 			pns.Trace = function(text, ...) traces[#traces + 1] = text:format(...) end
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
-			init = function() ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = 40, maxSkillLevel = 75 }) end
+			init = function(skill) ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = skill or 40, maxSkillLevel = 75 }) end
 		end)
 		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the owner's window froze for 6 s.
 		it("several Init calls in one frame build the list once", function()
 			for _ = 1, 5 do init() end
 			Flush()
-			local builds = 0
-			for _, line in ipairs(traces) do if line:find("UI panel shown", 1, true) then builds = builds + 1 end end
-			assert(builds == 1, "several Init calls in one frame build the list once")
+			assert(Builds() == 1, "several Init calls in one frame build the list once")
 		end)
 		-- Fails if recipes with no source and never come across, or come across beyond the level, are listed: 518 rows for Blacksmithing.
 		it("lists only recipes with a known source or come across within the level", function()
+			init(300)
+			Flush()
 			local names = Names()
 			assert(#names == 2 and names[1] == "Plans: Near" and names[2] == "Plans: Sourced", "lists only recipes with a known source or come across within the level")
 		end)
-		-- Fails if a step shows a recipe above its skill, hides one within it, takes the higher of two sources, or lists an unknown skill outside All Found.
-		it("each step shows exactly the found recipes whose required skill fits it", function()
+		-- Fails if a recipe lands in the wrong rank band, the lowest of two sources is not taken, a band above the character's skill starts open,
+		-- or a band below it starts closed. Open bands list their recipes; closed ones only their heading.
+		it("recipes land in their rank band and bands above the skill start collapsed", function()
 			pns.db.met.recipes[105] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.FRIENDS
-			-- 101: trainer 30 and the seed 90, so the lowest is 30; 102 at the cap; 103 above it; 105 has none.
-			pns.seed = { taught = {}, learnSkill = { [101] = 90, [102] = 75, [103] = 76 } }
-			local steps = {
-				{ "now", { "Plans: Sourced" } },
-				{ "rank", { "Plans: Near", "Plans: Sourced" } },
-				{ "all", { "Plans: Far", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
-			}
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
-			for _, row in ipairs(steps) do
-				pns.db.panelStep = row[1]
+			pns.db.met.recipes[107] = pns.LEVEL.FRIENDS
+			-- 101: trainer 30 and the seed 90, so 30; 102 at the band's top (75); 103 just past it; 105 has none, so its trivial level 105; 107 at 200.
+			pns.seed = { taught = {}, learnSkill = { [101] = 90, [102] = 75, [103] = 76, [107] = 200 } }
+			local cases = {
+				{ skill = 1, bands = { 1, 2, 3 }, shown = { "Plans: Near", "Plans: Sourced" } },
+				{ skill = 75, bands = { 1, 2, 3 }, shown = { "Plans: Near", "Plans: Sourced" } },
+				{ skill = 76, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
+				{ skill = 300, bands = { 1, 2, 3 }, shown = { "Plans: Far", "Plans: High", "Plans: Near", "Plans: No Skill", "Plans: Sourced" } },
+			}
+			for _, case in ipairs(cases) do
 				pns.ClearUnlearnedCache()
-				init()
+				init(case.skill)
 				Flush()
-				assert(table.concat(Names(), ",") == table.concat(row[2], ","), "step " .. row[1] .. " shows " .. table.concat(Names(), ","))
+				assert(table.concat(Names(), ",") == table.concat(case.shown, ","), "skill " .. case.skill .. " shows " .. table.concat(Names(), ","))
+				assert(table.concat(Bands(), ",") == table.concat(case.bands, ","), "skill " .. case.skill .. " has bands " .. table.concat(Bands(), ","))
 			end
+		end)
+		-- Fails if events or Init calls with the same content rebuild the list: the owner's log showed "UI panel shown" every 2 to 30 seconds with
+		-- no input, which re-anchored the rows under the gamepad cursor. A skill rise inside a band and a refreshed cache change no content.
+		it("an event with unchanged content does not rebuild", function()
+			pns.ClearUnlearnedCache()
+			init(300)
+			Flush()
+			local builds = Builds()
+			for skill = 301, 303 do
+				pns.ClearUnlearnedCache()
+				init(skill)
+				init(skill)
+				Flush()
+			end
+			assert(Builds() == builds, "an event with unchanged content does not rebuild")
 		end)
 		-- Fails if a recipe of another expansion's skill line shows, however found: 518 Blacksmithing rows came from the client's whole list.
 		it("a recipe outside the open skill line never shows", function()
 			pns.db.found.recipes[106] = { { kind = "trainer", count = 1, skill = 10 } }
 			pns.seed.learnSkill[106] = 10
-			for _, key in ipairs({ "now", "rank", "all" }) do
-				pns.db.panelStep = key
-				pns.ClearUnlearnedCache()
-				init()
-				Flush()
-				for _, name in ipairs(Names()) do assert(name ~= "Plans: Later Expansion", "step " .. key .. " shows a recipe of another skill line") end
-			end
+			pns.ClearUnlearnedCache()
+			init(300)
+			Flush()
+			for _, name in ipairs(Names()) do assert(name ~= "Plans: Later Expansion", "shows a recipe of another skill line") end
 			CreateFrame = realCreateFrame
 		end)
 	end)
@@ -863,6 +895,6 @@ describe("simulation", function()
 		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-		assert(c.db.schema == 11 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
+		assert(c.db.schema == 12 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
 	end)
 end)

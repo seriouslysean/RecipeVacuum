@@ -10,17 +10,11 @@ L["Intake complete! %d recipes from %s!"] = true
 L["Map pin set! %s marked on your map!"] = true
 
 -- Panel (Panel.lua)
-L["Unlearned Recipes"] = true
 L["Nothing left to learn."] = true
-L["%d of %d found"] = true
-L["Now"] = true
-L["This Rank"] = true
-L["All Found"] = true
-L["Recipes to Show"] = true
-L["%s (current)"] = true
-L["Recipes your skill can learn right now."] = true
-L["Recipes you can learn up to this rank's skill cap."] = true
-L["Every recipe you have found."] = true
+L["%d found"] = true
+L["Skill %d to %d"] = true
+L[" (%d)"] = true
+L["dev"] = true
 
 -- Options (Settings.lua)
 L["Recipe Sources"] = true

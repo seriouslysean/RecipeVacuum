@@ -5,7 +5,7 @@ ns.L = LibStub("AceLocale-3.0"):GetLocale(addonName)
 local L, toolkit = ns.L, ns.toolkit
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 11
+local SCHEMA = 12
 
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
@@ -24,7 +24,6 @@ end
 -- Option defaults live in Settings.lua.
 local defaults = {
 	sourceLevel = ns.LEVEL.FRIENDS,
-	panelStep = "rank", -- the unlearned recipes panel's step (Unlearned.lua, ns.steps)
 	shareFinds = true, -- send own finds to party, guild and friends; separate from what the level shows
 	met = { recipes = {}, items = {} }, -- come across without a source: [recipeID or recipe itemID] = ns.LEVEL
 	npcs = {},
@@ -204,6 +203,11 @@ end
 -- Schema 11 drops the options and first-run flag of the rows once added to Blizzard's recipe list (docs/client-notes.md, "Gamepad").
 migrations[11] = function(db)
 	db.showUnlearned, db.showUnavailable, db.sourceFilter, db.levelTipSeen = nil, nil, nil, nil
+end
+
+-- Schema 12 drops the panel's step choice; the panel groups by rank band instead (docs/client-notes.md, "Panel").
+migrations[12] = function(db)
+	db.panelStep = nil
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
