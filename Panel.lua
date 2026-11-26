@@ -47,6 +47,9 @@ local SKILL_WIDTH = 26
 local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
+-- A row's label room, less the marks and the count: the row's width (the list's, less its indent and pad) after the label's left edge
+-- and a pad at each end. Computed, not read back from the frames: GetLeft on a just-anchored row forces a layout pass over the whole list.
+local LABEL_ROOM = LIST_WIDTH - ROW_INDENT - LIST_PAD - (SKILL_X + SKILL_WIDTH + LABEL_GAP) - 2 * ROW_PAD
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
 local BAR_CAP = 16 -- each end of the skill bar art kept at its own size: past its 3 px clipped corners, where the art is even
 local BAR_FILL_LEFT, BAR_FILL_TOP, BAR_FILL_INSET = 5, 3, 12 -- Blizzard_ProfessionsRankBar.xml: the fill at 5, -3, 441 of 453
@@ -130,6 +133,18 @@ local placeMenu -- the floating list of places under mapMore
 local mapOpen -- that list is open; a press toggles it, focus never does
 local shownDiscovery
 local rows, headings = {}, {}
+-- Text widths a row reuses: a name's and a count's never change, and reading one asks the client to measure the text.
+local textWidths = { names = {}, counts = {} }
+local Lap -- a working build times the parts of a row's work (docs/client-notes.md, "Panel")
+local lapMs, lapStart = {}, 0
+--@debug@
+Lap = function(part)
+	local now = debugprofilestop()
+	if part then lapMs[part] = (lapMs[part] or 0) + now - lapStart end
+	lapStart = now
+end
+--@end-debug@
+Lap = Lap or function() end
 local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
 local slots = {} -- the frame of each item once built
 local toggled = {} -- [professionID .. ":" .. band] = open, for the session only: the player's own choices
@@ -344,7 +359,7 @@ local function CreateRow()
 			texture:SetPoint("RIGHT", marks[slot - 1].Texture, "LEFT", -ROW_PAD, 0)
 		end
 	end
-	row.markNames = {}
+	row.markNames, row.shownMarks = {}, {}
 
 	-- Ours in place of Blizzard's, which would select a recipe in its own list.
 	row:SetScript("OnEnter", function(self)
@@ -459,38 +474,76 @@ local function CraftableCount(recipeID)
 	return count
 end
 
--- Everything a row shows that does not move it, so a skill rise or new source updates a row without a rebuild.
+-- Everything a row shows that does not move it, so a skill rise or new source updates a row without a rebuild. Only what changed is
+-- written, and the label's width is worked out from known widths (LABEL_ROOM), so a refresh of an unchanged row is a few reads.
 local function ShowRow(row, recipeInfo)
+	Lap()
 	row.recipe = recipeInfo
 	row:SetSelected(selected ~= nil and selected.recipeID == recipeInfo.recipeID) -- the template's own selected look
+	Lap("selected")
 	recipeInfo.lockReason = ns.GetRecipeLock(recipeInfo.recipeID) or nil
-	row.Label:SetText(recipeInfo.name)
+	Lap("lock")
+	local name = recipeInfo.name
+	if row.shownName ~= name then
+		row.Label:SetText(name)
+		row.shownName = name
+	end
 	row.color = NameColor(recipeInfo)
 	if not row:IsMouseMotionFocus() then
 		row.Label:SetVertexColor(row.color:GetRGB())
 		row.Count:SetVertexColor(row.color:GetRGB())
 	end
+	Lap("name")
 	local count = CraftableCount(recipeInfo.recipeID)
-	row.Count:SetShown(count > 0)
-	if count > 0 then row.Count:SetFormattedText(" [%d] ", count) end
+	Lap("count")
+	if row.shownCount ~= count then
+		row.shownCount = count
+		row.Count:SetShown(count > 0)
+		if count > 0 then row.Count:SetFormattedText(" [%d] ", count) end
+	end
 	row.Skill:SetText(ns.SkillOf(recipeInfo))
 	-- The number shows the skill-up the recipe would give once learned; a recipe too high for the character stays dim like its name.
 	local skillColor = row.color ~= DISABLED_FONT_COLOR and ns.SkillUpColor(recipeInfo.recipeID, professionInfo and professionInfo.skillLevel or 0)
 	row.Skill:SetTextColor((skillColor or row.color):GetRGB())
-	row.markCount = ns.GetMarks(recipeInfo, row.markNames)
+	Lap("skill")
+	local markCount = ns.GetMarks(recipeInfo, row.markNames)
+	row.markCount = markCount
+	local marksWidth = 0
 	for slot, mark in ipairs(row.marks) do
-		local name = row.markNames[slot]
-		mark.Texture:SetShown(name ~= nil)
-		if name then
-			ns.ApplyMark(mark, name)
-			ns.SetMarkStrength(mark, false)
+		local markName = row.markNames[slot]
+		if markName ~= row.shownMarks[slot] then
+			row.shownMarks[slot] = markName
+			mark.Texture:SetShown(markName ~= nil)
+			if markName then
+				ns.ApplyMark(mark, markName)
+				ns.SetMarkStrength(mark, false)
+			end
+		end
+		if markName then marksWidth = marksWidth + ns.MarkWidth(markName) + (slot > 1 and ROW_PAD or 0) end
+	end
+	Lap("marks")
+	-- The name stops where the count and the marks begin, as Blizzard's row trims its label for the count.
+	local widths = textWidths
+	local countWidth = 0
+	if count > 0 then
+		countWidth = widths.counts[count]
+		if not countWidth then
+			countWidth = row.Count:GetStringWidth()
+			widths.counts[count] = countWidth
 		end
 	end
-	-- The name stops where the count and the marks begin, as Blizzard's row trims its label for the count.
-	local room = row.marks[math.max(row.markCount, 1)].Texture:GetLeft()
-	room = room and room - ROW_PAD - row.Label:GetLeft() - (count > 0 and row.Count:GetStringWidth() or 0)
-	row.Label:SetWidth(0)
-	row.Label:SetWidth(room and math.min(room, row.Label:GetStringWidth()) or row.Label:GetStringWidth())
+	local nameWidth = widths.names[name]
+	if not nameWidth then
+		row.Label:SetWidth(0)
+		nameWidth = row.Label:GetStringWidth()
+		widths.names[name] = nameWidth
+	end
+	local width = math.min(LABEL_ROOM - marksWidth - countWidth, nameWidth)
+	if row.shownWidth ~= width then
+		row.shownWidth = width
+		row.Label:SetWidth(width)
+	end
+	Lap("width")
 end
 
 local function ShowHeading(heading, item)
@@ -516,6 +569,12 @@ local function Finish()
 	SyncNav()
 	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
 	--@debug@
+	local parts = {}
+	for part, ms in pairs(lapMs) do parts[#parts + 1] = ("%s %.1f"):format(part, ms) end
+	table.sort(parts)
+	ns.Trace("UI build parts, ms (worstStep is the longest frame): %s", table.concat(parts, ", "))
+	--@end-debug@
+	--@debug@
 	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected and selected.recipeID) end
 	--@end-debug@
 	--@debug@
@@ -540,10 +599,13 @@ local function BuildStep(buildGeneration)
 		local frame
 		if item.recipe then
 			if not rows[item.rowIndex] then made = made + 1 end
+			Lap()
 			frame = rows[item.rowIndex] or CreateRow()
+			Lap("create")
 			frame:SetPoint("TOPLEFT", child, "TOPLEFT", ROW_INDENT, -item.top)
 			frame:SetPoint("TOPRIGHT", child, "TOPRIGHT", -LIST_PAD, -item.top)
 			frame:SetHeight(ROW_HEIGHT)
+			Lap("place")
 			ShowRow(frame, item.recipe)
 		else
 			if not headings[item.headingIndex] then made = made + 1 end
@@ -553,11 +615,16 @@ local function BuildStep(buildGeneration)
 			frame:SetHeight(HEADING_HEIGHT)
 			ShowHeading(frame, item)
 		end
+		Lap()
 		frame:Show()
+		Lap("show")
 		slots[nextItem] = frame
 		nextItem = nextItem + 1
 	end
 	buildMs = buildMs + (debugprofilestop() - started)
+	--@debug@
+	lapMs.worstStep = math.max(lapMs.worstStep or 0, debugprofilestop() - started)
+	--@end-debug@
 	buildSteps = buildSteps + 1
 	if nextItem <= #items then
 		RunNextFrame(function() BuildStep(buildGeneration) end)
@@ -1097,6 +1164,21 @@ local function ReconcileSelection(found)
 	selected = kept
 end
 
+-- The in-place refresh, in steps within the build's budget like the build itself; a newer refresh or a rebuild takes over.
+local refreshToken = 0
+local function RefreshStep(token, index, last)
+	if token ~= refreshToken then return end
+	local started = debugprofilestop()
+	while index <= last and debugprofilestop() - started < BUILD_BUDGET_MS do
+		if items[index].recipe then ShowRow(slots[index], items[index].recipe) end
+		index = index + 1
+	end
+	--@debug@
+	ns.PerfMs("panel refresh step", debugprofilestop() - started)
+	--@end-debug@
+	if index <= last then RunNextFrame(function() RefreshStep(token, index, last) end) end
+end
+
 local function Update()
 	requested = false
 	-- Runs while the panel is hidden too: a find, a learned recipe or a search can bring it back.
@@ -1153,17 +1235,18 @@ local function Update()
 	items = newItems
 	if signature == shownSignature then
 		-- Same content: refresh what is shown in place and leave every frame where it is.
-		for index = 1, math.min(built - 1, #items) do
-			if items[index].recipe then ShowRow(slots[index], items[index].recipe) end
-		end
+		refreshToken = refreshToken + 1
+		RefreshStep(refreshToken, 1, math.min(built - 1, #items))
 		return
 	end
 	shownSignature = signature
 	recipeCount, bandCount = rowCount, headingCount
 	generation = generation + 1
+	refreshToken = refreshToken + 1
 	ClearNav() -- the rows are reused for other recipes; the build's end sets them again
 	lastFocused = nil
 	nextItem, buildMs, buildSteps = 1, 0, 0
+	wipe(lapMs)
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
 	scroll:SetAlpha(0) -- shown by Finish, once every frame is placed

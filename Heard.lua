@@ -27,6 +27,12 @@ local WINDOW_CLOSED = {
 }
 local openWindows = {}
 local seenCount = 0
+-- Recipe items sighted while a window was open whose data had not loaded: a search lists items the client has not met, and their recipes
+-- are known only when the load answers (ITEM_DATA_LOAD_RESULT), often after the window closes. The line waits for them, at most this long.
+-- Unmeasured: how long a search's items take to load.
+local DEFERRED_WAIT = 3
+local deferred = {}
+local closing, closeToken = false, 0
 
 local function WindowOpen()
 	return next(openWindows) ~= nil or IsAnyBagOpen()
@@ -35,17 +41,44 @@ end
 local function SaySeen()
 	local count = seenCount
 	seenCount = 0
-	if count > 0 and ns.db.announceNewFinds then
+	local announce = ns.db.announceNewFinds
+	ns.Trace("SEEN windows closed: %d counted, %s", count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Announce New Finds is off")
+	if count > 0 and announce then
 		local seen = ns.voice.seen
 		ns.Say(seen.noise, (count == 1 and seen.reportOne or seen.report):format(count))
 	end
 end
 
--- Closing the last window says the line; anything still open keeps the count.
-local function OnWindowClosed()
+-- Said once nothing waits any more, or the wait is up; a window opened meanwhile keeps the count for its own close.
+local function EndClosing(token)
+	if not closing or (token and token ~= closeToken) then
+		return
+	end
+	closing = false
+	local unanswered = 0
+	for _ in pairs(deferred) do unanswered = unanswered + 1 end
+	if unanswered > 0 then
+		ns.Trace("SEEN %d items still unanswered, not counted", unanswered)
+	end
+	wipe(deferred)
 	if not WindowOpen() then
 		SaySeen()
 	end
+end
+
+-- Closing the last window says the line, after the items it saw have answered; anything still open keeps the count.
+local function OnWindowClosed()
+	if WindowOpen() then
+		return
+	end
+	if next(deferred) then
+		closing, closeToken = true, closeToken + 1
+		local token = closeToken
+		ns.Trace("SEEN windows closed, waiting for items that had not loaded")
+		C_Timer.After(DEFERRED_WAIT, function() EndClosing(token) end)
+		return
+	end
+	SaySeen()
 end
 
 -- One refresh after a burst of new recipes, and only when the chosen level shows them.
@@ -65,8 +98,12 @@ local function Note(bucket, id, level)
 		return
 	end
 	met[id] = level
-	if level == LEVEL.SELF and bucket == "recipes" and WindowOpen() and HasProfession(id) then
-		seenCount = seenCount + 1
+	if level == LEVEL.SELF and bucket == "recipes" and (WindowOpen() or closing) then
+		local counted = HasProfession(id)
+		if counted then
+			seenCount = seenCount + 1
+		end
+		ns.Trace("SEEN recipe %d %s", id, counted and "counted" or "not counted, not the character's profession")
 	end
 	if level <= ns.db.sourceLevel and not refreshQueued then
 		refreshQueued = true
@@ -143,9 +180,12 @@ local function NoteSeenItem(itemID)
 	local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID] or ns.GetTaughtRecipe(itemID)
 	if recipeID ~= nil then
 		itemsDone[itemID] = true
+		deferred[itemID] = nil
 		if recipeID then
 			Note("recipes", recipeID, LEVEL.SELF)
 		end
+	elseif WindowOpen() or closing then
+		deferred[itemID] = true -- read again when its data loads
 	end
 end
 
@@ -210,6 +250,7 @@ end
 for event in pairs(WINDOW_CLOSED) do
 	frame:RegisterEvent(event)
 end
+frame:RegisterEvent("ITEM_DATA_LOAD_RESULT")
 frame:RegisterEvent("BAG_CLOSED")
 frame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
@@ -217,8 +258,21 @@ frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_ADDED")
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
-frame:SetScript("OnEvent", function(_, event, message)
+frame:SetScript("OnEvent", function(_, event, message, loaded)
 	if not ns.db then
+		return
+	end
+	if event == "ITEM_DATA_LOAD_RESULT" then
+		if deferred[message] then
+			if loaded then
+				NoteSeenItem(message)
+			else
+				deferred[message] = nil -- never answers
+			end
+			if closing and not next(deferred) then
+				EndClosing()
+			end
+		end
 		return
 	end
 	if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_ENTERING_WORLD" then
@@ -231,6 +285,7 @@ frame:SetScript("OnEvent", function(_, event, message)
 	end
 	if WINDOW_OPENED[event] then
 		openWindows[WINDOW_OPENED[event]] = true
+		ns.Trace("SEEN %s opened", WINDOW_OPENED[event])
 		-- The bank's contents count as seen, as the bags do.
 		if event == "BANKFRAME_OPENED" then ReadBank() end
 		return
@@ -249,6 +304,7 @@ frame:SetScript("OnEvent", function(_, event, message)
 	end
 	if WINDOW_CLOSED[event] then
 		openWindows[WINDOW_CLOSED[event]] = nil
+		ns.Trace("SEEN %s closed", WINDOW_CLOSED[event])
 		OnWindowClosed()
 		return
 	end

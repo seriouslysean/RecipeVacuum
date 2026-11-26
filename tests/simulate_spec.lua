@@ -830,6 +830,23 @@ describe("simulation", function()
 				Event("MAIL_CLOSED")
 				assert(#said == 1 and said[1] == "1 recipe seen!", "one recipe says the singular")
 			end)
+			-- Fails if an item whose data loads after the window closes (an auction search lists items the client has not met) is lost.
+			it("an item that loads after the window closes still counts, and the line waits for it", function()
+				said = {}
+				local timers, after = {}, C_Timer.After
+				C_Timer.After = function(_, fn) timers[#timers + 1] = fn end
+				h.scanned[2107] = nil
+				Event("AUCTION_HOUSE_SHOW")
+				tooltipPostCalls[Enum.TooltipDataType.Item]({}, { id = 2107 })
+				Event("AUCTION_HOUSE_CLOSED")
+				assert(#said == 0, "the line waits for the unloaded item")
+				h.scanned[2107] = 7007
+				frames[#frames].script(frames[#frames], "ITEM_DATA_LOAD_RESULT", 2107, true)
+				assert(#said == 1 and said[1] == "1 recipe seen!", "the item's recipe counts when its data loads, said " .. tostring(said[1]))
+				for _, fn in ipairs(timers) do fn() end
+				assert(#said == 1, "the wait running out afterwards says nothing more")
+				C_Timer.After = after
+			end)
 			it("closing the last bag says the line, an open bag keeps it", function()
 				said = {}
 				h.scanned[2106] = 7006
@@ -902,6 +919,7 @@ describe("simulation", function()
 				if kind == "Button" then f.shown = true; buttons[#buttons + 1] = f end
 				for _, key in ipairs(parts[template] or {}) do f[key] = Fake(f) end
 				if rawget(f, "ButtonText") then f.ButtonText.GetStringWidth = function() return 0 end end
+				if rawget(f, "Label") then f.Label.GetStringWidth, f.Count.GetStringWidth = function() return 0 end, function() return 0 end end
 				if rawget(f, "Rank") then f.Rank.Text = Fake(f.Rank) end
 				return f
 			end

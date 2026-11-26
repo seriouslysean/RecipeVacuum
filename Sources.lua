@@ -472,11 +472,16 @@ function ns.GetMarkAspect(info)
 	return info.aspect
 end
 
+-- A mark's drawn width: size is the height, and atlas art keeps its own shape (the padlock is not square).
+function ns.MarkWidth(mark)
+	local info = ns.sourceTypes[mark] or ns.marks[mark]
+	return info.size * ns.GetMarkAspect(info)
+end
+
 -- Draws a mark on an icon frame with a centered .Texture.
 function ns.ApplyMark(icon, mark)
 	local info = ns.sourceTypes[mark] or ns.marks[mark]
-	-- size is the height; atlas art keeps its own shape (the padlock is not square).
-	icon.Texture:SetSize(info.size * ns.GetMarkAspect(info), info.size)
+	icon.Texture:SetSize(ns.MarkWidth(mark), info.size)
 	-- Compared by the art's own table, so replaced art redraws.
 	if icon.markInfo ~= info then
 		SetArt(icon.Texture, info)
