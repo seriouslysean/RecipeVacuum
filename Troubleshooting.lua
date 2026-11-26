@@ -822,7 +822,7 @@ local function LayoutRecord(parts)
 		return { height = paneBox.height - (lowest.top + lowest.height) }
 	end
 	Pair("detail", "bottom content margin", Margin(blizzardEdges, form), Margin(oursEdges, detail))
-	local action = parts.mapMore:IsShown() and parts.mapMore or parts.mapButton
+	local action = parts.mapMore and parts.mapMore:IsShown() and parts.mapMore or parts.mapButton
 	Both("detail", "action button", form, page.CreateButton, detail, action)
 
 	-- The recipe list: headings, rows, their text insets, the row pitch and the scroll bar.
@@ -868,7 +868,7 @@ local function LayoutRecord(parts)
 	Rank("bar art", rank.Background, parts.rankBar.Background)
 	Rank("bar border", rank.Border, parts.rankBar.Border)
 	Rank("bar fill", rank.Fill, parts.rankBar.Fill)
-	Rank("bar text", Path(rank, "Rank.Text"), Path(parts.rankBar, "Rank.Text"))
+	Rank("bar text", Path(rank, "Rank.Text"), Path(parts.rankBar, "text"))
 	Both("portrait", "portrait", window, Path(window, "PortraitContainer.portrait"), parts.panel, Path(parts.panel, "PortraitContainer.portrait"))
 	Both("portrait", "portrait box", window, Path(window, "PortraitContainer"), parts.panel, Path(parts.panel, "PortraitContainer"))
 	Pair("portrait", "details icon against the window's portrait", Measure(Path(window, "PortraitContainer.portrait"), window),
@@ -918,7 +918,8 @@ function ns.OnPanelDrawn(professionID, recipeID)
 	if key == lastLayoutKey then return end
 	C_Timer.After(0.5, function()
 		if key == lastLayoutKey or InCombatLockdown() then return end
-		if RecordLayout() then lastLayoutKey = key end
+		local record, reason = RecordLayout()
+		if record then lastLayoutKey = key else Append("LAYOUT not recorded: " .. tostring(reason)) end
 	end)
 end
 -- Sharing self-test for one account (Sharing.lua).
