@@ -49,11 +49,14 @@ local SKILL_X = -9
 local LABEL_GAP = 4
 -- Blizzard_ProfessionsRankBar.xml:21: the fill is 12 px narrower than the bar's art.
 local RANK_BAR_FILL_INSET = 12
--- Blizzard_Professions/Camelot/Blizzard_ProfessionsCrafting.lua:10: the window's own bar starts 110 px in from its page, which sits
--- about 5 px in from the window's frame, so it starts clear of the portrait (docs/client-notes.md, "Panel"). Ours starts at the same
--- distance from the frame and ends at the list's own inset.
-local RANK_BAR_LEFT = 110 + FRAME_INSET
-local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET
+-- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
+-- takes the same share of its size.
+local PORTRAIT_SIZE, PORTRAIT_LEFT, PORTRAIT_RISE = 62, 5, 7
+-- The discovery bar starts just right of the portrait ring and ends the same distance from the list's right edge, so it fills the
+-- band between them (docs/client-notes.md, "Panel").
+local RANK_BAR_CLEARANCE = 4
+local RANK_BAR_LEFT = PORTRAIT_SIZE - PORTRAIT_LEFT + RANK_BAR_CLEARANCE
+local RANK_BAR_WIDTH = PANEL_WIDTH - RANK_BAR_LEFT - FRAME_INSET - RANK_BAR_CLEARANCE
 local MAX_MARKS = 1 + #ns.sourceOrder + 1 -- a lock, every source type, or the unknown mark
 local ROW_TEMPLATE = "ProfessionsRecipeListRecipeTemplate"
 local HEADING_TEMPLATE = "ProfessionsRecipeListCategoryTemplate"
@@ -72,9 +75,6 @@ local DETAIL_GAP = 2 -- between the list and the details, as the window's list a
 local OUTPUT_SIZE = 47 -- ProfessionsOutputButtonTemplate (Blizzard_ProfessionsTemplates.xml:282)
 local OUTPUT_RING = 68 -- its icon border, centered on the button (Blizzard_ItemButton/Mainline/ItemButtonTemplate.xml:43-48)
 local OUTPUT_RING_MARGIN = (OUTPUT_RING - OUTPUT_SIZE) / 2 -- the ring reaches this far past the button
--- SharedUIPanelTemplates.xml:581-585: the window's 62 px portrait hangs 5 left of and 7 above its frame's corner. The icon's ring
--- takes the same share of its size.
-local PORTRAIT_SIZE, PORTRAIT_LEFT, PORTRAIT_RISE = 62, 5, 7
 local RING_LEFT = OUTPUT_RING * PORTRAIT_LEFT / PORTRAIT_SIZE
 local RING_RISE = OUTPUT_RING * PORTRAIT_RISE / PORTRAIT_SIZE
 local OUTPUT_LEFT = OUTPUT_RING_MARGIN - RING_LEFT -- the button's offset in the box: the ring hangs out, the button sits in
@@ -92,8 +92,6 @@ local REAGENT_TEXT_GAP = 7 -- the name's gap after the icon (Blizzard_Profession
 local SECTION_GAP = 8
 local BUTTON_INSET = 7 -- the window's Create button sits 7 px from its page's bottom (Blizzard_ProfessionsCrafting.lua:1036); same from the sides
 local SOURCE_HEIGHT = 22
-local PLACE_INDENT = 10 -- the opened places sit this far in
-local SOURCE_GAP = 2
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
 
 local panel, listArea, scroll, child, empty, rankBar, detail
@@ -102,8 +100,9 @@ local SelectRecipe -- defined with the details; a row tap selects through it
 local selected -- the recipe whose details show: set by a tap, kept until another is tapped, the profession changes or it leaves the list
 local detailSignature
 local reagentRows, sourceButtons = {}, {}
-local mapButton -- one Show Map button for every source with a place
-local mapOpen -- the list of places under it is open; a press toggles it, focus never does
+local mapButton, mapMore -- Show Map: a plain button for one place, the dropdown-looking one for several
+local placeMenu -- the floating list of places under mapMore
+local mapOpen -- that list is open; a press toggles it, focus never does
 local shownDiscovery
 local rows, headings = {}, {}
 local items = {} -- what the list shows, in order: { band = n } for a heading, { recipe = info } for a row
@@ -121,7 +120,7 @@ local nextItem, buildMs, buildSteps, recipeCount, bandCount
 -- Right from a row goes to the details and left from the details goes back to the row, through Blizzard's own jump overrides
 -- (Blizzard_GamepadSmartNavigation/Utility.lua:414-500; docs/client-notes.md, "Gamepad"). An override set from addon code is
 -- honoured only out of combat (SmartNavigation.lua:1503-1520) and setting one in combat is refused, so none is touched then.
-local navSet = {} -- [frame] = the direction its override was set for
+local navSet = {} -- [frame] = { [direction] = true } the overrides set on it
 local navPending = false -- a change waited for the end of combat
 local function NavAvailable()
 	return SMART_NAV_INPUT_DIRECTION and SmartNavigation_AddJumpNavigationOverride and SmartNavigation_ClearJumpNavigationOverridesInDirection
@@ -133,15 +132,18 @@ local function ClearNav()
 		navPending = true
 		return
 	end
-	for frame, direction in pairs(navSet) do
-		SmartNavigation_ClearJumpNavigationOverridesInDirection(frame, direction)
+	for frame, directions in pairs(navSet) do
+		for direction in pairs(directions) do
+			SmartNavigation_ClearJumpNavigationOverridesInDirection(frame, direction)
+		end
 	end
 	wipe(navSet)
 end
 
 local function SetNav(frame, direction, target)
 	SmartNavigation_AddJumpNavigationOverride(frame, direction, target)
-	navSet[frame] = direction
+	navSet[frame] = navSet[frame] or {}
+	navSet[frame][direction] = true
 end
 
 -- Only the rows of the open list lead to the details, and every control in the details leads back to the selected row (the
@@ -155,7 +157,8 @@ local function SyncNav()
 	navPending = false
 	ClearNav()
 	if not (panel and panel:IsShown() and detail:IsShown()) then return end
-	local into = mapButton and mapButton:IsShown() and mapButton:IsEnabled() and mapButton or detail.Output
+	local mapShown = mapMore and mapMore:IsShown() and mapMore or mapButton
+	local into = mapShown and mapShown:IsShown() and mapShown:IsEnabled() and mapShown or detail.Output
 	local first, chosen, rowCount = nil, nil, 0
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		local item = items[index]
@@ -168,7 +171,7 @@ local function SyncNav()
 	end
 	local back = chosen or first
 	if not back then return end
-	local controls = { detail.Output, mapButton }
+	local controls = { detail.Output, mapButton, mapMore }
 	for _, list in ipairs({ reagentRows, sourceButtons }) do
 		for _, button in ipairs(list) do controls[#controls + 1] = button end
 	end
@@ -177,6 +180,17 @@ local function SyncNav()
 		if control:IsShown() then
 			SetNav(control, SMART_NAV_INPUT_DIRECTION.LEFT, back)
 			count = count + 1
+		end
+	end
+	-- The open list is reached down from its button and walked with up and down; left from an entry goes back (above).
+	if placeMenu and placeMenu:IsShown() then
+		local previous = mapMore
+		for _, button in ipairs(sourceButtons) do
+			if button:IsShown() then
+				SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, button)
+				SetNav(button, SMART_NAV_INPUT_DIRECTION.UP, previous)
+				previous = button
+			end
 		end
 	end
 	ns.Trace("UI nav override set: %d rows to the details, %d controls back", rowCount, count)
@@ -486,15 +500,41 @@ end
 
 local FillDetail -- defined below; a press on a place redraws the details
 
+-- Blizzard's own dropdown art, for whichever menu family the client loaded (Blizzard_Menu/Classic or Mainline MenuTemplates):
+-- the filter button's background bleed past its box (WowStyle1FilterDropdownTemplate) and the menu's background, shade and inset
+-- (the Generate and GetInset of the style that button's menu uses). Read when first needed; we never call Blizzard's Menu system.
+local MENU_ART = {
+	classic = { bleed = 2, bg = "common-dropdown-classic-b-bg", bgTopLeft = { -3, 1 }, bgBottomRight = { 3, -4 },
+		shade = { 7, -4, -8, 8 }, inset = { left = 14, top = 14, right = 14, bottom = 14 } },
+	mainline = { bleed = 4, bg = "common-dropdown-bg", bgTopLeft = { -10, 3 }, bgBottomRight = { 10, -3 }, alpha = .925,
+		inset = { left = 8, top = 8, right = 8, bottom = 15 } },
+}
+local function MenuArt()
+	-- The family's own state constants name its atlases (Classic/MenuConstants.lua, MenuConstants.lua).
+	return WowStyle1FilterDropdownStateEnabled:find("classic", 1, true) and MENU_ART.classic or MENU_ART.mainline
+end
+local PLACE_ENTRY_HEIGHT = 20 -- one entry of Blizzard's menus (11_0_0_MenuImplementationGuide.lua)
+local MENU_OFFSET_X, MENU_OFFSET_Y = 6, 2 -- the filter button's menuPointX and menuPointY (WowStyle1FilterDropdownTemplate)
+-- Blizzard_Menu/MenuVariants.lua:41-50: a menu entry's hover.
+local MENU_HIGHLIGHT = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
+local ClosePlaces, UpdatePlaceMenu
+
 local function MakeSourceButton()
-	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
-	button:SetSize(PANEL_INNER_WIDTH - 2 * BUTTON_INSET - PLACE_INDENT, SOURCE_HEIGHT)
-	-- One source's pin, exactly: a button pins what it names, then the list closes (docs/client-notes.md, "Panel").
+	local button = CreateFrame("Button", nil, placeMenu)
+	button:SetHeight(PLACE_ENTRY_HEIGHT)
+	button:SetHighlightTexture(MENU_HIGHLIGHT, "ADD")
+	button:SetNormalFontObject("GameFontHighlight")
+	button:SetText("")
+	local text = button:GetFontString()
+	text:SetPoint("LEFT")
+	text:SetPoint("RIGHT")
+	text:SetJustifyH("LEFT")
+	text:SetWordWrap(false)
+	-- One source's pin, exactly: an entry pins what it names, then the list closes (docs/client-notes.md, "Panel").
 	button:SetScript("OnClick", function(self)
 		ns.Trace("UI source pressed: %s", self.source.label)
 		ns.ShowOnMap(self.source.target)
-		mapOpen = false
-		FillDetail()
+		ClosePlaces()
 	end)
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -506,8 +546,96 @@ local function MakeSourceButton()
 	return button
 end
 
--- The game's own Show Map label (SHOW_MAP, QuestMapFrame.xml). One place pins it; several open the list of places under the
--- button. Our own Buttons throughout: a Blizzard menu would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
+-- Every source, one line each: "who, type" left and its place right (none for a source with no place). The hint only when a press pins.
+local function ShowMapTooltip(self)
+	GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+	for _, source in ipairs(self.sources) do
+		GameTooltip:AddDoubleLine(source.label, source.place or "", HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
+			NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
+	end
+	if self.single then
+		GameTooltip_AddBlankLineToTooltip(GameTooltip)
+		GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
+	end
+	GameTooltip:Show()
+end
+
+-- The floating list of places, drawn as Blizzard's dropdown menu is: its background art and inset, under the button, on its own
+-- strata so it covers whatever it drops over and never changes the details' layout.
+local function MakePlaceMenu()
+	local art = MenuArt()
+	local menu = CreateFrame("Frame", nil, panel)
+	menu:SetFrameStrata("DIALOG")
+	menu:EnableMouse(true)
+	menu:Hide()
+	local bg = menu:CreateTexture(nil, "BACKGROUND")
+	bg:SetAtlas(art.bg)
+	bg:SetPoint("TOPLEFT", unpack(art.bgTopLeft))
+	bg:SetPoint("BOTTOMRIGHT", unpack(art.bgBottomRight))
+	bg:SetAlpha(art.alpha or 1)
+	if art.shade then
+		local shade = menu:CreateTexture(nil, "BACKGROUND", nil, -1)
+		shade:SetColorTexture(0, 0, 0, .8)
+		shade:SetPoint("TOPLEFT", bg, "TOPLEFT", art.shade[1], art.shade[2])
+		shade:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", art.shade[3], art.shade[4])
+	end
+	-- Escape closes it and is not passed on, so it does not also close the Professions window; every other key goes on.
+	menu:EnableKeyboard(true)
+	menu:SetScript("OnKeyDown", function(self, key)
+		local escape = key == "ESCAPE"
+		self:SetPropagateKeyboardInput(not escape)
+		if escape then ClosePlaces() end
+	end)
+	-- A press anywhere else closes it, as Blizzard's menus do; the button's own press toggles.
+	menu:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+	menu:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+	menu:SetScript("OnEvent", function(self)
+		if not (self:IsMouseOver() or (mapMore and mapMore:IsMouseOver())) then ClosePlaces() end
+	end)
+	return menu
+end
+
+-- The several-places button: the window's Filter button's own art (state atlases from Blizzard_Menu's constants, arrow included),
+-- on a Button of ours, so no Blizzard menu is ever set up on it.
+local function MakeMapMore()
+	local art = MenuArt()
+	local button = CreateFrame("Button", nil, detail)
+	button:SetSize(PANEL_INNER_WIDTH - 2 * BUTTON_INSET, SOURCE_HEIGHT)
+	button:SetPoint("BOTTOMLEFT", detail, "BOTTOMLEFT", BUTTON_INSET, BUTTON_INSET)
+	button.Background = button:CreateTexture(nil, "BACKGROUND")
+	button.Background:SetPoint("TOPLEFT", -art.bleed, art.bleed)
+	button.Background:SetPoint("BOTTOMRIGHT", art.bleed, -art.bleed)
+	button:SetNormalFontObject("GameFontHighlight")
+	button:SetText(SHOW_MAP)
+	local text = button:GetFontString()
+	text:ClearAllPoints()
+	text:SetPoint("LEFT", 12, 0)
+	text:SetPoint("RIGHT", -24, 0) -- the arrow's room
+	text:SetJustifyH("CENTER")
+	button:SetPushedTextOffset(2, -1) -- WowStyle1FilterDropdownMixin:OnLoad's displacement
+	local function Look(self)
+		local over, down = self:IsMouseOver(), self:GetButtonState() == "PUSHED"
+		local atlas = WowStyle1FilterDropdownStateEnabled
+		if over and down then atlas = WowStyle1FilterDropdownStateDownOver
+		elseif over then atlas = WowStyle1FilterDropdownStateOver
+		elseif down then atlas = WowStyle1FilterDropdownStateDown end
+		self.Background:SetAtlas(atlas, TextureKitConstants.UseAtlasSize)
+	end
+	Look(button)
+	button:SetScript("OnClick", function()
+		mapOpen = not mapOpen
+		UpdatePlaceMenu()
+	end)
+	button:HookScript("OnMouseDown", Look)
+	button:HookScript("OnMouseUp", Look)
+	button:SetScript("OnEnter", function(self) Look(self); ShowMapTooltip(self) end)
+	button:SetScript("OnLeave", function(self) Look(self); GameTooltip_Hide() end)
+	return button
+end
+
+-- The game's own Show Map label (SHOW_MAP, QuestMapFrame.xml). One place is a plain button that pins it (the same one as the quest
+-- log's); several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
+-- would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
 	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
 	button:SetSize(PANEL_INNER_WIDTH - 2 * BUTTON_INSET, SOURCE_HEIGHT)
@@ -517,28 +645,54 @@ local function MakeMapButton()
 		if self.single then
 			ns.Trace("UI source pressed: %s", self.single.label)
 			ns.ShowOnMap(self.single.target)
-		else
-			mapOpen = not mapOpen
-			FillDetail()
 		end
 	end)
 	-- A disabled button still shows its tooltip: the sources are the reason it is disabled.
 	button:SetMotionScriptsWhileDisabled(true)
-	-- Every source, one line each: "who, type" left and its place right (none for a source with no place). The hint only when a press pins.
-	button:SetScript("OnEnter", function(self)
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		for _, source in ipairs(self.sources) do
-			GameTooltip:AddDoubleLine(source.label, source.place or "", HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
-				NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
-		end
-		if self.single then
-			GameTooltip_AddBlankLineToTooltip(GameTooltip)
-			GameTooltip_AddNormalLine(GameTooltip, L["Press to mark this place on your map."])
-		end
-		GameTooltip:Show()
-	end)
+	button:SetScript("OnEnter", ShowMapTooltip)
 	button:SetScript("OnLeave", GameTooltip_Hide)
 	return button
+end
+
+-- Opens or closes the floating list to match mapOpen: down from the button like Blizzard's dropdown menus, above it when the
+-- screen has no room below (the flip of Blizzard_Menu/Menu.lua FlipPositionIfOffscreen).
+UpdatePlaceMenu = function()
+	local places = mapMore and mapMore:IsShown() and mapMore.places
+	if not (mapOpen and places and #places > 1) then
+		mapOpen = false
+		if placeMenu then placeMenu:Hide() end
+		SyncNav()
+		return
+	end
+	placeMenu = placeMenu or MakePlaceMenu()
+	local inset = MenuArt().inset
+	local width = mapMore:GetWidth()
+	placeMenu:SetSize(width, #places * PLACE_ENTRY_HEIGHT + inset.top + inset.bottom)
+	for index, source in ipairs(places) do
+		local button = Pooled(sourceButtons, index, MakeSourceButton)
+		button.source = source
+		button:SetWidth(width - inset.left - inset.right)
+		button:ClearAllPoints()
+		button:SetPoint("TOPLEFT", placeMenu, "TOPLEFT", inset.left, -inset.top - (index - 1) * PLACE_ENTRY_HEIGHT)
+		button:SetText(source.label)
+		button:Show()
+	end
+	for index = #places + 1, #sourceButtons do sourceButtons[index]:Hide() end
+	placeMenu:ClearAllPoints()
+	placeMenu:SetPoint("TOPLEFT", mapMore, "BOTTOMLEFT", MENU_OFFSET_X, MENU_OFFSET_Y)
+	placeMenu:Show()
+	local bottom = placeMenu:GetBottom()
+	if bottom and bottom < 0 then
+		placeMenu:ClearAllPoints()
+		placeMenu:SetPoint("BOTTOMLEFT", mapMore, "TOPLEFT", MENU_OFFSET_X, -MENU_OFFSET_Y)
+	end
+	SyncNav()
+end
+
+ClosePlaces = function()
+	if not mapOpen then return end
+	mapOpen = false
+	UpdatePlaceMenu()
 end
 
 -- What the details show: the made item, the basic reagents with what the character holds, and every source (those with a place
@@ -572,7 +726,7 @@ local function DetailData(recipeInfo)
 	end
 	for _, source in ipairs(data.plain) do parts[#parts + 1] = source.label .. "-" end
 	for _, source in ipairs(data.places) do parts[#parts + 1] = source.label .. "+" end
-	parts[#parts + 1] = (mapOpen and "open" or "shut") .. ":" .. (professionInfo.skillLevel or 0)
+	parts[#parts + 1] = ":" .. (professionInfo.skillLevel or 0)
 	return data, table.concat(parts, ",")
 end
 
@@ -582,6 +736,7 @@ local function HideDetail()
 	detailSignature = nil
 	detail:Hide()
 	PlaceList()
+	ClosePlaces()
 	SyncNav()
 end
 
@@ -642,29 +797,21 @@ FillDetail = function()
 
 	-- The sources are the button's tooltip, not lines in the box. With none to pin it stays, disabled, so the tooltip still tells them.
 	mapButton = mapButton or MakeMapButton()
+	mapMore = mapMore or MakeMapMore()
 	local several = #data.places > 1
-	mapButton:SetShown(#data.sources > 0)
+	mapButton:SetShown(#data.sources > 0 and not several)
 	mapButton:SetEnabled(#data.places > 0)
 	mapButton.sources = data.sources
 	mapButton.single = #data.places == 1 and data.places[1] or nil
-	if #data.sources > 0 then top = top + SECTION_GAP end
-	-- Opened, the places stack above the button, so it stays where it is when pressed.
-	local shown = several and mapOpen and #data.places or 0
-	for index = 1, shown do
-		local button = Pooled(sourceButtons, index, MakeSourceButton)
-		button.source = data.places[index]
-		button:SetPoint("TOPLEFT", detail, "TOPLEFT", BUTTON_INSET + PLACE_INDENT, -top)
-		button:SetText(button.source.label)
-		button:Show()
-		top = top + SOURCE_HEIGHT + SOURCE_GAP
-	end
-	for index = shown + 1, #sourceButtons do sourceButtons[index]:Hide() end
-	if #data.sources > 0 then top = top + SOURCE_HEIGHT end
+	mapMore:SetShown(several)
+	mapMore.sources = data.sources
+	mapMore.places = data.places
+	if #data.sources > 0 then top = top + SECTION_GAP + SOURCE_HEIGHT end
 
 	detail:SetHeight(top + BUTTON_INSET)
 	detail:Show()
 	PlaceList()
-	SyncNav()
+	UpdatePlaceMenu() -- the list floats: it never takes height from the details
 	if missing then
 		itemWatch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 	else
@@ -689,7 +836,7 @@ end
 
 SelectRecipe = function(recipeInfo)
 	selected = recipeInfo
-	mapOpen = false
+	ClosePlaces()
 	ns.Trace("UI recipe selected: %d", recipeInfo.recipeID)
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		if items[index].recipe then slots[index]:SetSelected(items[index].recipe.recipeID == recipeInfo.recipeID) end
@@ -892,7 +1039,10 @@ local function CreatePanel()
 	empty:SetText(L["Nothing left to learn."])
 	empty:Hide()
 
-	panel:HookScript("OnHide", ClearNav)
+	panel:HookScript("OnHide", function()
+		mapOpen = false
+		ClearNav()
+	end)
 	panel:SetScript("OnShow", function(self)
 		self:SetHeight(window:GetHeight())
 		placedKey = nil -- the window may have changed size
