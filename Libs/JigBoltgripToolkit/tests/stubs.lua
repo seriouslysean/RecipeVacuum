@@ -54,6 +54,7 @@ GetSubZoneText = function() return "" end
 GetPhysicalScreenSize = function() return 1280, 800 end
 GetLocale = function() return "enUS" end
 -- A client with no gamepad and no add-on profiler: both answer numbers the stand-ins cannot.
+InputUtil = { IsGamepadUIEnabled = function() return false end }
 C_GamePad = { IsEnabled = function() return false end }
 C_AddOnProfiler = { IsEnabled = function() return false end }
 SlashCmdList = {}

@@ -85,7 +85,8 @@ local FORBIDDEN = {
 -- Addon code that adds to Blizzard's lists, menus or panels is tainted, and the Gamepad UI then refuses
 -- to navigate them (docs/standards.md, "Gamepad UI"). Only the kit builds options, from Blizzard's own rows.
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
-	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap" }) do
+	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap",
+	"Settings%.OpenToCategory" }) do
 	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
 end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps

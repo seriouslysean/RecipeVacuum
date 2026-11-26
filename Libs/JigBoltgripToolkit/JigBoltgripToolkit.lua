@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 44
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 45
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -18,7 +18,7 @@ do
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
-		"Links", "Copy link", "Website", "CurseForge",
+		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
 		"Also tracks what your party, guild and friends find.", "Boltgrip's %s %s.",
 	}) do
@@ -115,6 +115,10 @@ function lib:PrintBlock(header, rows)
 	end
 end
 
+local function GamepadUI()
+	return InputUtil ~= nil and InputUtil.IsGamepadUIEnabled()
+end
+
 -- One registration per addon, so a second copy loading the same module cannot add a second page.
 -- class is a RAID_CLASS_COLORS key ("DRUID") for the device's name; without one the line color is used.
 function lib:RegisterModule(addonName, class)
@@ -130,10 +134,24 @@ function lib:RegisterModule(addonName, class)
 	local category, layout = Settings.RegisterVerticalLayoutSubcategory(parent, title)
 	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout, class = class }
 	table.insert(self.modules, module)
-	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, CONTEXT_ACTION_LABEL_OPEN, function()
-		Settings.OpenToCategory(category:GetID())
-	end, notes, false))
+	-- The gamepad interface is chosen before load (changing it reloads the UI); there the page's own list
+	-- already reaches each module, and an Open button would select a category from addon code.
+	if not GamepadUI() then
+		parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, CONTEXT_ACTION_LABEL_OPEN, function()
+			lib:OpenOptions(module)
+		end, notes, false))
+	end
 	return module
+end
+
+-- Opening the Settings window from addon code runs ShowUIPanel tainted, which the gamepad interface then
+-- refuses (docs/standards.md, "Gamepad UI"); there the player is told where the page is instead.
+function lib:OpenOptions(module)
+	if GamepadUI() then
+		self:Print(L["Find it in Options, then %s, %s, %s."]:format(ADDONS, self.title, module.title))
+	else
+		Settings.OpenToCategory(module.category:GetID())
+	end
 end
 
 -- Working builds. A module calls these from its own debug-only block, so a release never does; the library
