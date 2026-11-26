@@ -149,7 +149,7 @@ local function MapTargets(recipeInfo)
 	local entries = ns.GetSources(recipeInfo) or {}
 	local scope = ns.DropScope(entries)
 	if scope and scope.scope == "zone" and scope.place then
-		-- A dungeon zone drop opens the map recorded inside that dungeon, when a sighting has one (Astra review).
+		-- A dungeon zone drop opens the map recorded inside that dungeon, when a sighting has one.
 		local mapID = scope.place.kind == "map" and scope.place.id or nil
 		for _, observation in ipairs(entries) do
 			if not mapID and observation.instance == scope.place.id then mapID = observation.map end

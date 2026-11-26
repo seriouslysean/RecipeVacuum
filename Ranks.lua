@@ -1,11 +1,7 @@
 local _, ns = ...
 
--- Profession ranks, derived from what the client shows, with no shipped rank list (Astra review and owner,
--- 2026-11-25; docs/data.md, "Ranks"). A rank is its profession's skill line plus the cap it raises from:
---   a trainer is a source when its window offers the next rank (the skill step, shown apart by Blizzard);
---   a book or a quest is a source once a cap rises right after the book is used or the quest turned in.
--- The mark right of the link button shows when the open profession's cap has a recorded source with a place,
--- names it, and pins it on the map. The other faction's sources are left out. Kept per account, not shared yet.
+-- Ranks come only from what the client shows, so no rank list ships (docs/data.md, "Ranks").
+-- The mark beside the link button names a recorded source with a place and pins it on the map.
 local MARK_SIZE = 20
 local MARK_GAP = 4 -- space after the link button
 local LINK_X, LINK_Y = -2, -4 -- the link button's anchor offsets on the rank bar (Blizzard_ProfessionsCrafting.xml)
@@ -176,8 +172,8 @@ local function NextRank()
 	return #targets > 0 and { sources = sources, profession = info.professionName, entries = entries, targets = targets } or nil
 end
 
--- Titled with the game's own name for what is learned: a book, the trainer's rank, or the quest (owner,
--- 2026-11-25). Read at hover, since item and quest names can arrive after the window opens.
+-- Titled with the game's own name for what is learned. Read at hover, since item and quest names can
+-- arrive after the window opens.
 local function RankName(rank)
 	local sources = rank.sources
 	local name = sources.spell and C_Spell.GetSpellName(sources.spell)

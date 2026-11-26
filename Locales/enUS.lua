@@ -1,7 +1,5 @@
--- English, the default (owner, 2026-11-25: "English as the default ... I want the strings pulled out for
--- localization"). AceLocale-3.0 (Ace3): the key is the English text, and `true` means "the key as written".
--- Other languages are files beside this one, each starting with NewLocale("RecipeVacuum", "<locale>").
--- Only text a player reads is here; working-build lines stay English in the code.
+-- AceLocale-3.0: the key is the English text, and `true` means "the key as written". Only player text is
+-- here (docs/development.md, "Translations").
 local L = LibStub("AceLocale-3.0"):NewLocale("RecipeVacuum", "enUS", true)
 
 -- The voiced line (Voice.lua): noise, then the report.

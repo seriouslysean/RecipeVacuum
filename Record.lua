@@ -344,7 +344,7 @@ local function ReadLoot()
 		return
 	end
 	lootRead = true
-	-- One loot window is one sighting per recipe item and source, however many slots hold it (Astra review).
+	-- One loot window is one sighting per recipe item and source, however many slots hold it.
 	local counted, newItems, names, changed = {}, {}, {}, false
 	for slot = 1, GetNumLootItems() do
 		local link = GetLootSlotType(slot) == Enum.LootSlotType.Item and GetLootSlotLink(slot)

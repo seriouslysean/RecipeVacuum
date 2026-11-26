@@ -183,9 +183,8 @@ migrations[9] = function(db)
 	db.shareFinds = db.sourceLevel ~= ns.LEVEL.SELF
 end
 
--- Trainer rank records made before the skill-step check could name a rank already known, under a child
--- skill line (Astra review, 2026-11-25); which ones cannot be told now, so all trainer records go and the
--- next visits record them again. Book and quest records stay; sources left empty are dropped.
+-- Old trainer rank records may name a rank already known; they cannot be told apart, so all go and the next
+-- visits record them again (docs/data.md, "Ranks").
 migrations[10] = function(db)
 	for skillLine, byCap in pairs(db.ranks or {}) do
 		for cap, sources in pairs(byCap) do

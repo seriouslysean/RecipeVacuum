@@ -69,14 +69,13 @@ function ns.SourceInfo(observation)
 		return UNKNOWN, nil, observation.zone
 	end
 	local npc = ns.GetNPC(observation.npc)
-	-- A drop is placed by its own spot only; without one it keeps its map and gets no pin (Astra review).
+	-- A drop is placed by its own spot only; without one it keeps its map and gets no pin .
 	local positions = OwnPosition(observation)
 	if observation.kind ~= "drop" then positions = positions or npc and npc.positions end
 	return npc and npc.name, positions, observation.map
 end
 
--- Drop scope from sightings (docs/data.md, "Drops"). Thresholds are the owner's choice, set
--- 2026-11-25 after Wowhead's observed labels; no source publishes one.
+-- Drop scope from sightings; why these thresholds: docs/data.md, "Drops".
 local ZONE_DROP_CREATURES = 2 -- creature types in one zone or dungeon for a zone drop
 local WORLD_DROP_ZONES = 3    -- zones or dungeons for a world drop
 local DROP_SCOPE_LABELS = {
@@ -543,7 +542,7 @@ local function AddDropLines(tooltip, entries, detailed, withHeader)
 		GameTooltip_AddNormalLine(tooltip, MarkText("drop", header))
 	end
 	if scope.scope == "world" then
-		-- The creature zones are summarized; fishing and containers keep their own lines (Astra review).
+		-- Creature zones are summarized; fishing and containers keep their own lines.
 		local seen, names, own = {}, {}, {}
 		for _, observation in ipairs(entries) do
 			local kind, place = DropZone(observation)

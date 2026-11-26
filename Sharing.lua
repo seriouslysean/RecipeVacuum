@@ -310,7 +310,7 @@ local function OnData(_, message, channel, sender)
 			FinishRequest() -- invalid batch: nothing was written
 			return
 		end
-		-- The owner may have found more since its probe.
+		-- The sender may have found more since its probe.
 		peer.tip = math.max(peer.tip, through)
 		sourcesDirty = sourcesDirty or changed
 		-- Move the cursor only after the whole batch validated and merged.

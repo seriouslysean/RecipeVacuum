@@ -4,6 +4,46 @@
 --   luajit Libs/JigBoltgripToolkit/tests/conformance.lua <addon folder>
 -- Style is checked here, at commit time; the library itself refuses only what would break the page or
 -- the line at runtime (docs/standards.md, "Enforced by").
+-- Also: luajit conformance.lua --comments <file.lua>, the comment rule alone (the kit's own checks use it).
+
+-- Comments give the reason only: no history, at most three lines a block (docs/standards.md, "Comments").
+-- Debug-only blocks are exempt; a packager marker line is not a comment.
+local HISTORY = { "20%d%d%-%d%d%-%d%d", "%f[%a][Oo]wner%f[%A]", "%f[%a][Rr]eview%f[%A]", "%f[%a]Astra%f[%A]" }
+local COMMENT_LINES = 3
+local function CommentProblems(text)
+	local problems, open, block, number = {}, false, 0, 0
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		number = number + 1
+		local marker = line:match("^%s*%-%-@([%a%-]+)@%s*$")
+		if marker == "debug" then open = true elseif marker == "end-debug" then open = false end
+		local comment = not marker and line:match("%-%-(.*)$")
+		if comment and not open then
+			for _, pattern in ipairs(HISTORY) do
+				if comment:find(pattern) then
+					problems[#problems + 1] = ("line %d: a comment carries history; it belongs in docs"):format(number)
+					break
+				end
+			end
+		end
+		if not open and not marker and line:find("^%s*%-%-") then
+			block = block + 1
+			if block == COMMENT_LINES + 1 then
+				problems[#problems + 1] = ("line %d: a comment block runs past %d lines"):format(number, COMMENT_LINES)
+			end
+		else
+			block = 0
+		end
+	end
+	return problems
+end
+
+if arg[1] == "--comments" then
+	local problems = CommentProblems(assert(io.open(assert(arg[2])):read("*a")))
+	for _, problem in ipairs(problems) do print("FAIL " .. arg[2] .. ": " .. problem) end
+	print(#problems == 0 and "COMMENTS PASS" or (#problems .. " COMMENT PROBLEMS"))
+	os.exit(#problems == 0 and 0 or 1)
+end
+
 local addonDir = assert(arg[1], "usage: luajit conformance.lua <addon folder>")
 local kitDir = addonDir .. "/Libs/JigBoltgripToolkit"
 
@@ -81,6 +121,8 @@ for _, file in ipairs(files) do
 		end
 		if open then problems[#problems + 1] = "a debug block is never closed" end
 		check(file .. ": uses the kit for chat, options and working builds", #problems == 0, table.concat(problems, "; "))
+		local comments = CommentProblems(text)
+		check(file .. ": comments give the reason only", #comments == 0, table.concat(comments, "; "))
 	end
 end
 

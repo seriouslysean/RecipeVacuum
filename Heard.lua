@@ -62,7 +62,7 @@ local function OnChat(event, message)
 			end
 		end
 	end
-	-- Where a profession link was seen decides how near its owner's profession counts; session only.
+	-- Where a profession link was seen decides how near the linked player counts; session only.
 	for guid in message:gmatch("|Htrade:([^:|]+)") do
 		local name = select(6, GetPlayerInfoByGUID(guid))
 		if name and (not linkLevels[name] or level < linkLevels[name]) then
@@ -78,7 +78,8 @@ local function OnChat(event, message)
 	end
 end
 
--- A shown profession lists every recipe its owner knows: guild views count as Friends, links as Public unless seen in a friends channel.
+-- A shown profession lists every recipe its player knows: guild views count as Friends, links as Public
+-- unless seen in a friends channel.
 local shownPending
 
 local function ReadShownProfession()

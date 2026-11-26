@@ -112,6 +112,8 @@ The tooltip ends with the evidence: "Seen N times from N creatures in N zones". 
 
 The thresholds are the owner's choice (2026-11-25): no source publishes one. Wowhead's observed behaviour labels a zone drop at 2 creatures; "World Drop" is the wording of another addon, another addon and the Warcraft wiki (research: the session folder's drop-scope-research.md and drop-locations-research.md). "World Drop" and "Drop" are Blizzard's strings (`TRANSMOG_SOURCE_4`, `BATTLE_PET_SOURCE_1`); "Zone Drop" and the evidence line are English only. The times seen add one per loot window on the player's own client; across layers the first layer's count is used, so friends' counts do not add up yet.
 
+Drop details from the Astra review (2026-11-25): a drop is placed by its own spot only, or by none, never by the creature's latest position elsewhere; positions of a fishing spot or a creature or object drop are merged as one pair, so two reports never combine into a spot nobody stood at; one loot window is one sighting per recipe item and source, however many slots hold it; a world drop's tooltip summarizes the creature zones while fishing and containers keep their own lines; a dungeon zone drop opens the map recorded inside that dungeon when a sighting has one.
+
 A source can be known in part. The tooltip shows "Unknown" in the place column for a source whose location is not known (a roll in a zone, a peer's report without a position), and Show Map lists only places with a position.
 
 Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe, and the first-run dialog.
@@ -125,6 +127,8 @@ Profession ranks come only from what the client shows; no rank list ships (owner
 | Trainer | The trainer window offers a next rank: its skill step (`GetTrainerServiceStepIndex`, which Blizzard's trainer window shows apart). The rank's skill line comes from the step's spell; the cap is the character's at the visit. |
 | Book | A recipe item used from the bags is followed within 5 seconds by a cap rise. The book's vendors come from the items layer, as for any recipe item. |
 | Quest | A turn-in is followed within 5 seconds by a cap rise. The NPC at the completion window is kept as the giver. |
+
+Migration 10 (2026-11-25, Astra review): trainer rank records made before the skill-step check could name a rank already known, under a child skill line. They cannot be told apart now, so all trainer records were removed and the next visits record them again; book and quest records stay, and sources left empty are dropped. A rank is titled with the game's own name for what is learned (a book, the trainer's rank, or the quest; owner, 2026-11-25), read at hover because item and quest names can arrive after the window opens.
 
 The mark shows when the open profession's cap has a source with a place; the other faction's are left out. Ranks are kept per account and not shared yet. Unverified in game: the 5-second window, a trainer the character has outgrown, and a quest rank (Nat Pagle).
 

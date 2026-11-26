@@ -64,7 +64,7 @@ local function WireRow(row)
 	if observation.fishing then
 		mapID, position = observation.fishing, { x = observation.x, y = observation.y }
 	elseif observation.kind == "drop" then
-		-- A drop carries its own spot or none, never the creature's latest one elsewhere (Astra review).
+		-- A drop carries its own spot or none, never the creature's latest one elsewhere.
 		mapID, position = observation.map, observation.x and { x = observation.x, y = observation.y } or nil
 	end
 	return {
@@ -247,7 +247,7 @@ function ns.MergeFinds(rows, maxRows)
 			end
 		end
 		-- A fishing spot and a creature or object drop keep their own position, merged as one pair so two
-		-- reports never combine into a spot nobody stood at (Astra review); other sources use the NPC's.
+		-- reports never combine into a spot nobody stood at; other sources use the NPC's.
 		if row.x and (row.fi or (row.k == "drop" and (row.n or row.o))) then
 			local learned = at.x
 			local incoming, current = ("%s,%s"):format(row.x, row.y), observation.x and ("%s,%s"):format(observation.x, observation.y)

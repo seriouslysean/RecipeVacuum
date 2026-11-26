@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 33
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 34
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -8,10 +8,8 @@ end
 
 lib.title = "Jig Boltgrip's Toolkit"
 
--- The kit's player-facing text, English by default, through AceLocale-3.0 when the addon embeds it before
--- the kit (owner, 2026-11-25: "English as the default ... I want the strings pulled out for localization").
--- Other languages register "JigBoltgripToolkit" in their own files. Without AceLocale the English stands.
--- Working-build lines (watch, log, malfunctions) stay English in the code.
+-- Player-facing text goes through AceLocale-3.0 so other languages can register; without it English stands
+-- (docs/standards.md, "Translations").
 local L
 do
 	local AceLocale = LibStub("AceLocale-3.0", true)
@@ -117,10 +115,8 @@ function lib:PrintBlock(header, rows)
 	end
 end
 
--- Registers a module by addon folder name; returns its settings category and layout. Call
--- lib:FinishModule(module) after adding the module's rows. class is the class whose color the
--- device's name takes in chat, a key of RAID_CLASS_COLORS such as "DRUID"; without one the name is
--- the line color.
+-- Returns the module's settings category and layout; call lib:FinishModule(module) after its rows.
+-- class is a RAID_CLASS_COLORS key ("DRUID") for the device's name; without one the line color is used.
 function lib:RegisterModule(addonName, class)
 	for _, existing in ipairs(self.modules) do
 		if existing.addon == addonName then
@@ -216,19 +212,14 @@ function lib:EnableWorkingBuild()
 	end)
 end
 
--- Working-build log: per module, kept in the module's own saved table (the library has none) as
--- saved.devLog (lines), saved.devLogRun (where the current run starts) and saved.watch (watch left on).
--- Lines are timestamped so a long watch reads as a timeline; the last LOG_LINES are kept (owner,
--- 2026-11-25, for an always-on log: 20,000 lines, about 1.1 MB and 17 ms per load, working builds only).
--- Past the cap the oldest LOG_TRIM go at once, so a full log is not shifted on every new line and never
--- holds more than LOG_LINES.
+-- The log lives in the module's own saved table, since the library has none (docs/standards.md, "Working
+-- build helpers"). Trimming LOG_TRIM at once means a full log is not shifted on every new line.
 local LOG_LINES, LOG_TRIM = 20000, 1000
 lib.LOG_LINES, lib.LOG_TRIM = LOG_LINES, LOG_TRIM
 lib.logs = lib.logs or {}
 lib.logOrder = lib.logOrder or {} -- addon names in the order their logs started, for /boltgrip log
 
--- Shared context for every log that is logging (blocked actions, Lua errors, zone changes); a paused
--- log takes none (Astra review).
+-- A paused log takes no shared context.
 function lib:LogAll(line)
 	for _, addon in ipairs(self.logOrder) do
 		local log = self.logs[addon]
@@ -244,8 +235,7 @@ end
 
 -- One listener for every module's watch: each event is registered once and passed to every watching
 -- module that asked for it, after the kit's own zone context.
--- IDs first (the map and the explored area IDs at the player's spot, as both addons place things), then the
--- names for a person reading it.
+-- IDs first, since both addons place things by them; names follow for a reader.
 local function ZoneLine()
 	local mapID = C_Map.GetBestMapForUnit("player")
 	local info = mapID and C_Map.GetMapInfo(mapID)
@@ -296,10 +286,7 @@ local function UpdateWatchEvents()
 	end
 end
 
--- At logout each log gets the session's timings, as one dated block.
--- The game's own measurement of the addon (C_AddOnProfiler, as Blizzard's addon list reads it in
--- AddonList.lua, GetAddonMetricPercent): its share of frame time beside the game and other addons, its peak,
--- and how many frames it took over 1, 5 and 10 ms (owner, 2026-11-25: "Add CPU numbers").
+-- The game's own CPU measurement, read as Blizzard's AddonList.lua (GetAddonMetricPercent) reads it.
 local function ProfilerLine(addon)
 	if not (C_AddOnProfiler and C_AddOnProfiler.IsEnabled()) then return nil end
 	local metric = Enum.AddOnProfilerMetric
@@ -354,8 +341,7 @@ function lib:StartLog(module, saved, handlers)
 	self:Log(module, ("%s session: client %s (%s) | addon %s | %s, level %d | %s"):format(date("%Y-%m-%d %H:%M:%S"),
 		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
 		UnitLevel("player") or 0, ZoneLine()), true)
-	-- A working build logs from the start, always (owner, 2026-11-25: "don't I want an always on debug mode
-	-- while testing?"); /boltgrip watch off pauses it and is remembered.
+	-- A working build logs from the start; /boltgrip watch off is remembered.
 	if saved.watch ~= false and not log.watching then
 		self:SetWatch(module, true, true)
 	end
@@ -472,9 +458,8 @@ function lib:LoggedCommand(module, action, run, details)
 	end
 end
 
--- /boltgrip watch on|off and /boltgrip log [all|clear]: one switch and one viewer for every module that
--- started a log (owner, 2026-11-25: kit commands only). Release builds start no logs, so these do nothing
--- there and are not listed.
+-- One switch and one viewer for every module that started a log. Release builds start none, so these
+-- do nothing there and are not listed.
 local WORKING_BUILD_ROWS = {
 	"/boltgrip watch on|off - Pause or resume logging what each addon sees (on by default)",
 	"/boltgrip log [all|clear] - Show every addon's log; \"all\" shows everything kept, \"clear\" empties them",
@@ -547,17 +532,8 @@ function lib:TimingLines(module)
 	return lines
 end
 
--- Options pages. A module describes its page as data and lib:BuildOptions builds it from Blizzard's own
--- controls, so every toolkit page has the same headings, labels, notes and spacing (docs/standards.md,
--- "Options"). The data shape follows AceConfig's options tables; the drawing is Blizzard's.
---
---   lib:BuildOptions(module, db, sections), sections = { { heading = text, rows = { row, ... } }, ... }
---   Every row may have a note: gray text under it, for what the one-sentence tooltip cannot hold.
---   { kind = "checkbox", key, label, tooltip, default, onChange, under = key of a checkbox it is indented under }
---   { kind = "dropdown", key, label, tooltip, default, values = { { value, label }, ... }, onChange }
---   { kind = "cards", key, label, default, values = { { value, label, icon, text }, ... }, onChange }
---   { kind = "keybinding", binding = the Bindings.xml name }
--- Saved values live in db[key]; the setting is named "<addon>_<key>". Returns the settings by key.
+-- Options pages are data built from Blizzard's controls, so every page matches. The data shape follows
+-- AceConfig's options tables; the row kinds and fields are in docs/standards.md, "Options".
 
 -- Cards: a choice shown as a row of cards, laid out like the game's ruleset choice.
 local CARD_WIDTH, CARD_HEIGHT, CARD_GAP = 184, 198, 12
@@ -653,9 +629,7 @@ end
 
 local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
 
--- Every module's page has one order (owner, 2026-11-25: "The order needs to be aligned between both addons"):
--- the sources cards, then the module's own features, then sections Blizzard names (Key Binding, Combat,
--- Sound) in Blizzard's order; the kit's Commands and Links follow (FinishModule). Each section says its place.
+-- One order on every page (docs/standards.md, "Options"); each section says its place.
 local SECTION_PLACES = { sources = 1, features = 2, blizzard = 3 }
 
 -- Blizzard's own sections in the order its Settings pages show them; one not listed comes after these.
@@ -695,13 +669,8 @@ local function OrderedSections(sections)
 	return ordered
 end
 
--- Sources cards, the same in every module (owner, 2026-11-25: "These words don't match how recipe vacuum
--- works which feels like a miss"): the levels, names, icons, range openings and each card's sentence are
--- the kit's; the module names only the game thing it tracks.
---   spec.what      what the module tracks, in game terms ("recipes", "the Fishing skill each zone needs")
---   spec.friends   true when the module shares with party, guild and friends; otherwise no Friends card
---   spec.public    what Public adds ("recipes people link in chat"); nil leaves out the Public card
---   spec.openings  false leaves out the range openings (owner, 2026-11-25, Tackletron: "Game terms, no range opening")
+-- Sources cards are the kit's, words included, so every module reads the same; spec's fields are in
+-- docs/standards.md, "Options".
 lib.SOURCE_LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }
 local SOURCE_CARDS = {
 	{ name = L["Self Found"], icon = "Interface\\Icons\\INV_Misc_Spyglass_03", opening = L["Short range."],
@@ -714,7 +683,7 @@ local SOURCE_CARDS = {
 		text = function(spec) return spec.public and L["Also tracks %s."]:format(spec.public) end },
 }
 
--- Cards from here are marked, so BuildOptions can refuse cards built by hand (owner, 2026-11-25: rules baked in).
+-- Cards from here are marked, so BuildOptions can refuse cards built by hand.
 lib.sourceCardSets = lib.sourceCardSets or setmetatable({}, { __mode = "k" })
 
 function lib:SourceCards(spec)
@@ -842,7 +811,7 @@ function lib:ShowText(title, text, refresh)
 		end)
 		self.textFrame = frame
 	end
-	frame.log = nil -- set again by the log views; any other text is not a log (Astra review)
+	frame.log = nil -- set again by the log views; any other text is not a log
 	frame.Title:SetText(title)
 	frame.ScrollingEditBox:SetText(text)
 	frame:Show()
@@ -856,13 +825,9 @@ function lib:IsTextShown()
 	return self.textFrame and self.textFrame:IsShown()
 end
 
--- Each module registers a table of entries that drives the chat help and the Commands rows. An entry:
--- { action = "" | word, usage = arguments shown in help ("on|off"), description, run = function(arguments),
--- troubleshooting = true for diagnostics }.
--- Troubleshooting entries ship in every build and show in the chat help under their own heading, not on
--- the settings page (as other addons). Each module answers to /boltgrip <module>
--- and /<module>; full names, not aliases, since slash clashes resolve unpredictably (ChatFrameUtil.lua
--- imports SlashCmdList).
+-- One table of entries drives the chat help and the Commands rows (fields in docs/standards.md, "Options").
+-- Troubleshooting entries show in chat help only, as another addon does. Full slash names, not aliases,
+-- since clashes resolve unpredictably (ChatFrameUtil.lua imports SlashCmdList).
 lib.commands = lib.commands or {}
 
 -- Rows in Blizzard's own help shape, "/command <arguments> - What it does", with the command in the

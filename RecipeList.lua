@@ -158,7 +158,7 @@ EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	end, rowState)
 	ScrollUtil.AddInitializedFrameCallback(scrollBox, function(_, row, node)
 		State(row).labelWidth = nil -- Init restored Blizzard's width
-		UpdateRow(row, node) -- first callback argument is the owner
+		UpdateRow(row, node) -- the first callback argument is the object registered above
 	end, ns)
 	ns.RefreshRows()
 end)

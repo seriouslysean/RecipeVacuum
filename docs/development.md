@@ -37,7 +37,7 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
 | AceComm-3.0 | MINOR 14 | Ace3 |
 | AceLocale-3.0 | MINOR 2 | Ace3 Release-r981 |
-| JigBoltgripToolkit-1.0 | MINOR 33 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
+| JigBoltgripToolkit-1.0 | MINOR 34 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
 
@@ -68,6 +68,8 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 5. Commit the file with the release.
 
 A scan cut short loses pairs: one scan answered for 630 of 2,974 items (2026-11-23).
+
+The generated header in `Data/Seed.lua` is three lines: the generator, the taught note, the made note. What the tables are: `taught[recipe itemID] = recipeID` (which recipe each recipe item teaches; each recipe item's tooltip names its recipe ID, read by `ns.GetTaughtRecipe` in `Sources.lua`) and `made[made itemID] = recipeID` (which recipe makes each item; each recipe's schematic names the item it makes, read by `ScanMade` in `Troubleshooting.lua`). Both are the game's data: nothing in the file comes from players and nothing in it is copied into saved variables. A table only grows unasked. The made read keeps pairs it did not see and takes pairs it read, so a changed pair shows as a change (Astra review, 2026-11-25).
 
 The file holds IDs only. Names are left out on purpose: they differ by language and change between builds.
 
