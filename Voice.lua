@@ -1,18 +1,20 @@
 local _, ns = ...
+local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
 
 -- Every line the Vacuum says; read docs/voice.md before adding one.
 ns.voice = {
 	-- The voiced line: the noise, then the report (the toolkit's docs/standards.md, "Voice"); the library
 	-- puts "Boltgrip's Recipe Vacuum" in front and the period after the noise.
 	-- Report arguments: count, "recipe" or "recipes", who or where.
-	intake = { noise = "whirs and rattles", report = "Intake complete! %d %s from %s!" },
+	intake = { noise = L["whirs and rattles"], report = L["Intake complete! %d recipes from %s!"],
+		reportOne = L["Intake complete! %d recipe from %s!"] },
 	-- Development lines (checkout builds only): plain, not voiced. The watch and log lines are the toolkit's.
 	-- Arguments: count, "recipe" or "recipes".
 	detected = "%d %s detected!",
 	-- Argument: where. The error itself follows on its own line.
 	malfunction = "Malfunction in %s!",
 	-- Window titles.
-	exportTitle = "Recipe sources ready! Select all, then copy!",
+	exportTitle = L["Recipe sources ready! Select all, then copy!"],
 }
 
 --@debug@

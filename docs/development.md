@@ -36,6 +36,7 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | CallbackHandler-1.0 | MINOR 8 | Ace3 |
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
 | AceComm-3.0 | MINOR 14 | Ace3 |
+| AceLocale-3.0 | MINOR 6 | Ace3 Release-r981 |
 | JigBoltgripToolkit-1.0 | MINOR 32 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
@@ -69,6 +70,10 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 A scan cut short loses pairs: one scan answered for 630 of 2,974 items (2026-11-23).
 
 The file holds IDs only. Names are left out on purpose: they differ by language and change between builds.
+
+## Translations
+
+Every string a player reads is looked up in `Locales/enUS.lua` (AceLocale-3.0; the key is the English text), so the addon can be translated without touching code (owner, 2026-11-25: "English as the default. Let's only ship English to start though, but I want the strings pulled out for localization"). v0.1.0 ships English only. A language is one more file in `Locales/`, listed in the TOC after `enUS.lua`; translations will be made with Opus against Blizzard's own translated game terms. Working-build lines (watch, log, scan, perf) stay English in the code. Known gap: the drop evidence line joins three counted phrases, so a language with other word order cannot reorder them.
 
 ## Known gaps
 

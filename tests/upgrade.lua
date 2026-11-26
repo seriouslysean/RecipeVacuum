@@ -15,6 +15,10 @@ SlashCmdList = {}
 function CreateColor(r, g, b) return { r = r, g = g, b = b } end
 RAID_CLASS_COLORS = { DRUID = { r = 1, g = 0.49, b = 0.04 } }
 dofile(repo .. "/Libs/LibStub/LibStub.lua")
+GetLocale = GetLocale or function() return "enUS" end -- the client's language
+geterrorhandler = geterrorhandler or function() return error end
+dofile(repo .. "/Libs/AceLocale-3.0/AceLocale-3.0.lua")
+assert(loadfile(repo .. "/Locales/enUS.lua"))("RecipeVacuum", {})
 dofile(repo .. "/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua")
 dofile(saved)
 

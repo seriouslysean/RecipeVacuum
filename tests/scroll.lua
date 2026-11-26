@@ -173,6 +173,14 @@ local ns = { LEVEL = { SELF = 1, FRIENDS = 2, PUBLIC = 3 }, Perf = function() en
 	found = { recipes = { [WITNESSED] = { { kind = "trainer", npc = 1 } } }, items = {} },
 	shared = { recipes = {}, items = {} } },
 	included = { recipes = {}, items = {} } }
+LibStub = LibStub or (function()
+	dofile((UNLEARNED:gsub("Unlearned%.lua$", "Libs/LibStub/LibStub.lua")))
+	return LibStub
+end)()
+GetLocale = GetLocale or function() return "enUS" end -- the client's language
+geterrorhandler = geterrorhandler or function() return error end
+dofile((UNLEARNED:gsub("Unlearned%.lua$", "Libs/AceLocale-3.0/AceLocale-3.0.lua")))
+assert(loadfile((UNLEARNED:gsub("Unlearned%.lua$", "Locales/enUS.lua"))))("RecipeVacuum", ns)
 assert(loadfile((UNLEARNED:gsub("Unlearned%.lua$", "Sources.lua"))))("RecipeVacuum", ns)
 ns.GetRecipeFaction = function() return "Alliance" end -- no tooltip data offline
 ns.GetRecipeLock = function() return false end

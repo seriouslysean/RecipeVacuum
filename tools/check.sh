@@ -12,7 +12,7 @@ set -eu
 absolute() { case "$1" in /*) echo "$1" ;; "") echo "" ;; *) echo "$PWD/$1" ;; esac; }
 ui=$(absolute "${1:-}"); old_save=$(absolute "${2:-}"); new_save=$(absolute "${3:-}")
 
-ours() { git ls-files '*.lua' | grep -v '^Libs/AceComm-3.0/\|^Libs/CallbackHandler-1.0/\|^Libs/LibStub/'; }
+ours() { git ls-files '*.lua' | grep -v '^Libs/AceLocale-3.0/\|^Libs/AceComm-3.0/\|^Libs/CallbackHandler-1.0/\|^Libs/LibStub/'; }
 
 echo "== syntax (Lua 5.1, via LuaJIT)"
 for file in $(ours); do luajit -bl "$file" > /dev/null; done

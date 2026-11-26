@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
 
 -- Bumped on every change to the known sources, so cached results can tell they are stale.
 ns.sourcesVersion = 0
@@ -16,7 +17,7 @@ ns.sourceOrder = { "trainer", "vendor", "quest", "drop" }
 
 -- Labels reuse Blizzard's localized source names; marks are Blizzard art, size is the drawn height (docs/client-notes.md, "Requirements").
 ns.sourceTypes = {
-	trainer = { label = "Trainer",                       atlas = "Class", size = 14 },
+	trainer = { label = L["Trainer"],                     atlas = "Class", size = 14 },
 	vendor  = { label = BATTLE_PET_SOURCE_3 or "Vendor", atlas = "Auctioneer", size = 14 },
 	quest   = { label = BATTLE_PET_SOURCE_2 or "Quest",  texture = "Interface\\GossipFrame\\AvailableQuestIcon", size = 16 },
 	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   atlas = "lootroll-icon-need", size = 14 },
@@ -80,7 +81,7 @@ local ZONE_DROP_CREATURES = 2 -- creature types in one zone or dungeon for a zon
 local WORLD_DROP_ZONES = 3    -- zones or dungeons for a world drop
 local DROP_SCOPE_LABELS = {
 	single = BATTLE_PET_SOURCE_1 or "Drop",
-	zone = "Zone Drop",               -- no Blizzard string; English
+	zone = L["Zone Drop"],             -- no Blizzard string
 	world = TRANSMOG_SOURCE_4 or "World Drop",
 	mixed = BATTLE_PET_SOURCE_1 or "Drop",
 }
@@ -512,14 +513,15 @@ function ns.PlaceName(observation, mapInfo)
 	return zone or UNKNOWN
 end
 
+-- One string per count form, so a translation can word each (singular and plural keys in Locales/enUS.lua).
 local function Plural(count, one, many)
-	return ("%d %s"):format(count, count == 1 and one or many)
+	return (count == 1 and one or many):format(count)
 end
 
 -- "Seen 3 times from 2 creatures in 1 zone": how much a drop label rests on.
 local function DropEvidence(scope)
-	return ("Seen %s from %s in %s"):format(Plural(scope.times, "time", "times"),
-		Plural(scope.creatures, "creature", "creatures"), Plural(scope.places, "zone", "zones"))
+	return ("%s %s %s"):format(Plural(scope.times, L["Seen %d time"], L["Seen %d times"]),
+		Plural(scope.creatures, L["from %d creature"], L["from %d creatures"]), Plural(scope.places, L["in %d zone"], L["in %d zones"]))
 end
 
 local DROP_LINES = 6 -- sightings listed under a drop header before "and N more"
@@ -557,7 +559,7 @@ local function AddDropLines(tooltip, entries, detailed, withHeader)
 			GameTooltip_AddColoredLine(tooltip, names[index], HIGHLIGHT_FONT_COLOR, false, MARK_TEXT_INDENT)
 		end
 		if #names > DROP_LINES then
-			GameTooltip_AddColoredLine(tooltip, ("and %d more"):format(#names - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
+			GameTooltip_AddColoredLine(tooltip, L["and %d more"]:format(#names - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
 		end
 		AddKindLines(tooltip, own, "drop", detailed, false, true)
 	else
@@ -604,7 +606,7 @@ function AddKindLines(tooltip, entries, kind, detailed, withHeader, plain)
 		for _, observation in ipairs(entries) do
 			if observation.kind == "drop" then total = total + 1 end
 		end
-		GameTooltip_AddColoredLine(tooltip, ("and %d more"):format(total - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
+		GameTooltip_AddColoredLine(tooltip, L["and %d more"]:format(total - DROP_LINES), GRAY_FONT_COLOR, false, MARK_TEXT_INDENT)
 	end
 end
 

@@ -98,7 +98,7 @@ end
 local function Announce(count, name)
 	if count > 0 and ns.db.announceNewFinds then
 		local intake = ns.voice.intake
-		ns.Say(intake.noise, intake.report:format(count, count == 1 and "recipe" or "recipes", name or UNKNOWN))
+		ns.Say(intake.noise, (count == 1 and intake.reportOne or intake.report):format(count, name or UNKNOWN))
 	end
 end
 

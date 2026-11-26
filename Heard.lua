@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
 
 -- Recipes come across without a known source: chat links, nearby loot, shown professions (docs/data.md, "Come across").
 -- Only the recipe and its level are kept, never who or which channel.
@@ -106,7 +107,7 @@ local function ShowLevelTip()
 		return
 	end
 	HelpTip:Show(page, {
-		text = ("Your Recipe Vacuum is humming! Recipes you come across land in this list. Right now it listens to %s. You can change that in Options.")
+		text = L["Your Recipe Vacuum is humming! Recipes you come across land in this list. Right now it listens to %s. You can change that in Options."]
 			:format(ns.levelHeard[ns.db.sourceLevel]),
 		buttonStyle = HelpTip.ButtonStyle.Close,
 		targetPoint = HelpTip.Point.TopEdgeCenter,

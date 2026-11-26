@@ -1,4 +1,5 @@
 local addonName, ns = ...
+local L = LibStub("AceLocale-3.0"):GetLocale("RecipeVacuum")
 
 -- Saved data layout and migrations: docs/data.md.
 local SCHEMA = 10
@@ -12,7 +13,7 @@ ns.MAX_WIRE_NUMBER = 2^32
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 -- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
 ns.LEVEL = LibStub("JigBoltgripToolkit-1.0").SOURCE_LEVEL
-ns.levelHeard = { "only you", "you and your friends", "everyone nearby" }
+ns.levelHeard = { L["only you"], L["you and your friends"], L["everyone nearby"] }
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }
@@ -202,7 +203,7 @@ EventUtil.ContinueOnAddOnLoaded(addonName, function()
 		-- Newer save: leave it alone and run on an empty session copy.
 		db = {}
 		version = SCHEMA
-		ns.Log("saved data is from a newer version; it was left unchanged.")
+		ns.Log(L["Saved data is from a newer version of Recipe Vacuum; it was left unchanged."])
 	else
 		RecipeVacuumDB = db
 	end
