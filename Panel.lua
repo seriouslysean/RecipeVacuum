@@ -412,6 +412,9 @@ local function Finish()
 	SyncNav()
 	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
 	--@debug@
+	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected and selected.recipeID) end
+	--@end-debug@
+	--@debug@
 	ns.PerfMs("panel build", buildMs)
 	--@end-debug@
 end

@@ -880,8 +880,9 @@ end
 local function RecordLayout()
 	local parts = ns.DevPanelParts()
 	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
-	if not (page and page:IsVisible() and parts.panel and parts.panel:IsShown() and parts.detail:IsShown()) then
-		return nil, "Open a profession with a recipe selected in Blizzard's list and ours, then run it again."
+	-- The details are measured only while a recipe is selected in ours; the rest is measured either way.
+	if not (page and page:IsVisible() and parts.panel and parts.panel:IsShown()) then
+		return nil, "Open a profession, then run it again."
 	end
 	local profession = Professions.GetProfessionInfo()
 	local ok, record = pcall(LayoutRecord, parts)
@@ -895,7 +896,7 @@ local function RecordLayout()
 	ns.db.devLayout = ns.db.devLayout or {}
 	-- Every record is kept, by view and time, so each view and each build of it stays to be read: debugging data, nothing is
 	-- dropped (owner, 2026-11-26).
-	record.recipe = parts.detail.Name and parts.detail.Name:GetText() or "?"
+	record.recipe = parts.detail:IsShown() and parts.detail.Name and parts.detail.Name:GetText() or "no recipe selected"
 	record.when = date("%Y-%m-%d %H:%M:%S")
 	ns.db.devLayout[record.profession .. " / " .. record.recipe .. " @ " .. record.when] = record
 	Append(("LAYOUT recorded %d measures for %s"):format(#record.pairs, record.profession))
@@ -914,7 +915,7 @@ end, quiet = true })
 local lastLayoutKey
 function ns.OnPanelDrawn(professionID, recipeID)
 	local key = ("%s:%s:%s"):format(tostring(professionID), tostring(recipeID), tostring(C_AddOns.GetAddOnMetadata(addonName, "Version")))
-	if key == lastLayoutKey or not recipeID then return end
+	if key == lastLayoutKey then return end
 	C_Timer.After(0.5, function()
 		if key == lastLayoutKey or InCombatLockdown() then return end
 		if RecordLayout() then lastLayoutKey = key end
