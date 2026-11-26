@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 41
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 42
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -187,6 +187,9 @@ end
 -- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
 function lib:EnableWorkingBuild()
 	C_CVar.SetCVar("scriptErrors", "1")
+	-- Logs/taint.log names the access that tainted a blocked call, which no event or stack shows; level 2
+	-- is what Forever addon maintainers ask for when the gamepad UI blames an addon.
+	C_CVar.SetCVar("taintLog", "2")
 	if self.blockedListener then
 		return
 	end
