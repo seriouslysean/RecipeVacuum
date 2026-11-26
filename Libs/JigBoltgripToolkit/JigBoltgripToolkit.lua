@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 30
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 31
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -111,7 +111,7 @@ function lib:RegisterModule(addonName, class)
 	local category, layout = Settings.RegisterVerticalLayoutSubcategory(parent, title)
 	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout, class = class }
 	table.insert(self.modules, module)
-	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, OPEN or "Open", function()
+	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, CONTEXT_ACTION_LABEL_OPEN, function()
 		Settings.OpenToCategory(category:GetID())
 	end, notes, false))
 	return module
@@ -572,8 +572,12 @@ local function ShowChoice(frame, value)
 	end
 end
 
-local function AddCards(layout, setting, values)
+local function AddCards(layout, setting, values, label)
 	local initializer = Settings.CreateElementInitializer(ROW_TEMPLATE, {})
+	-- Found by the options search under its label and card names, as Blizzard's own rows are.
+	local tags = { label }
+	for _, choice in ipairs(values) do tags[#tags + 1] = choice[2] end
+	initializer:AddSearchTags(unpack(tags))
 	local shown -- the list's frame for this row while it is on screen
 	initializer.GetExtent = function()
 		return CARDS_ROW_HEIGHT
@@ -660,7 +664,7 @@ local SOURCE_CARDS = {
 		text = function(spec)
 			return ("Tracks only %s you see for yourself."):format(spec.what)
 		end },
-	{ name = "Friends", icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range.",
+	{ name = FRIENDS, icon = "Interface\\Icons\\INV_Misc_GroupLooking", opening = "Medium range.",
 		text = function(spec) return spec.friends and "Also tracks what your party, guild and friends find." end },
 	{ name = "Public", icon = "Interface\\Icons\\Ability_Warrior_BattleShout", opening = "Long range.",
 		text = function(spec) return spec.public and ("Also tracks %s."):format(spec.public) end },
@@ -708,7 +712,7 @@ function lib:BuildOptions(module, db, sections)
 					return container:GetData()
 				end, row.tooltip)
 			elseif row.kind == "cards" then
-				showChoice = AddCards(layout, setting, row.values)
+				showChoice = AddCards(layout, setting, row.values, row.label)
 			elseif row.kind == "keybinding" then
 				-- Blizzard's own key binding row, as the Controls page shows the Interact Key (Controls.lua).
 				local bindingIndex = C_KeyBindings.GetBindingIndex(row.binding)
