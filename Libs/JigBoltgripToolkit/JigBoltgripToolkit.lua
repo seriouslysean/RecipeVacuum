@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 43
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 44
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -560,7 +560,12 @@ end
 local function RowTooltip(row)
 	local lines = { row.tooltip }
 	for _, choice in ipairs(row.kind == "choice" and row.values or {}) do
-		lines[#lines + 1] = choice.description and (choice.label .. ": " .. choice.description) or nil
+		-- Each option as a gold heading over its sentence, the way Blizzard's tooltips set a name over its text;
+		-- settings text takes no colons.
+		if choice.description then
+			lines[#lines + 1] = "\n" .. NORMAL_FONT_COLOR:WrapTextInColorCode(choice.label)
+			lines[#lines + 1] = choice.description
+		end
 	end
 	lines[#lines + 1] = row.note
 	return #lines > 0 and table.concat(lines, "\n") or nil

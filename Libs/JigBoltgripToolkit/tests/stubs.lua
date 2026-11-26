@@ -62,7 +62,8 @@ NORMAL_FONT_COLOR = { WrapTextInColorCode = function(_, text) return text end }
 HIGHLIGHT_FONT_COLOR = NORMAL_FONT_COLOR
 RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1 } end })
 DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) client.chat[#client.chat + 1] = text end }
-C_AddOns = { GetAddOnMetadata = function(addon, field) return field == "Title" and addon or nil end }
+C_AddOns = { GetAddOnMetadata = function(addon, field) return field == "Title" and addon or nil end,
+	IsAddOnLoaded = function() return false end } -- no other addon is installed beside the one checked
 C_Map = { GetBestMapForUnit = function() return nil end, GetMapInfo = function() return nil end,
 	GetPlayerMapPosition = function() return nil end }
 EventUtil = { ContinueOnAddOnLoaded = function(name, callback)
