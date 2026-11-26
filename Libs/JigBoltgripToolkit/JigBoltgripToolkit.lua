@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 31
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 32
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -274,14 +274,35 @@ local function UpdateWatchEvents()
 end
 
 -- At logout each log gets the session's timings, as one dated block.
+-- The game's own measurement of the addon (C_AddOnProfiler, as Blizzard's addon list reads it in
+-- AddonList.lua, GetAddonMetricPercent): its share of frame time beside the game and other addons, its peak,
+-- and how many frames it took over 1, 5 and 10 ms (owner, 2026-11-25: "Add CPU numbers").
+local function ProfilerLine(addon)
+	if not (C_AddOnProfiler and C_AddOnProfiler.IsEnabled()) then return nil end
+	local metric = Enum.AddOnProfilerMetric
+	local function Share(which)
+		local app, overall = C_AddOnProfiler.GetApplicationMetric(which), C_AddOnProfiler.GetOverallMetric(which)
+		local own = C_AddOnProfiler.GetAddOnMetric(addon, which)
+		local total = app - overall + own
+		return total > 0 and own / total * 100 or 0
+	end
+	return ("CPU game's measure: session average %.3f ms (%.2f%% of frame time) | recent %.2f%% | peak %.2f ms | frames over 1 ms %d, 5 ms %d, 10 ms %d"):format(
+		C_AddOnProfiler.GetAddOnMetric(addon, metric.SessionAverageTime), Share(metric.SessionAverageTime),
+		Share(metric.RecentAverageTime), C_AddOnProfiler.GetAddOnMetric(addon, metric.PeakTime),
+		C_AddOnProfiler.GetAddOnMetric(addon, metric.CountTimeOver1Ms), C_AddOnProfiler.GetAddOnMetric(addon, metric.CountTimeOver5Ms),
+		C_AddOnProfiler.GetAddOnMetric(addon, metric.CountTimeOver10Ms))
+end
+
 local function WriteTimings()
 	for _, log in pairs(lib.logs) do
 		local lines = lib:TimingLines(log.module)
-		if #lines > 0 then
+		local cpu = ProfilerLine(log.module.addon)
+		if #lines > 0 or cpu then
 			local version, build = GetBuildInfo()
 			lib:Log(log.module, "")
 			lib:Log(log.module, ("%s PERF session on %s (%s), %s level %d"):format(date("%Y-%m-%d %H:%M:%S"), version,
 				build, UnitName("player") or UNKNOWN, UnitLevel("player") or 0), true)
+			if cpu then lib:Log(log.module, cpu) end
 			for _, line in ipairs(lines) do
 				lib:Log(log.module, line)
 			end
