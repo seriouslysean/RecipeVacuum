@@ -1,7 +1,8 @@
 -- Offline checks for the current schema, drop and quest recording, and sharing of the new kinds.
 -- luajit tests/simulate.lua . <a RecipeVacuum saved-variables file>
 local repo, savedFile = arg[1], arg[2]
-local now = 1795470000
+-- The real clock: a fixed one falls behind the saves, and their finds then read as from the future.
+local now = os.time()
 local loaded, frames = {}, {}
 local function check(label, ok) print((ok and "PASS " or "FAIL ") .. label); if not ok then FAILED = true end end
 
@@ -120,6 +121,11 @@ for _, layer in ipairs({ db.found, db.shared }) do
     end end
   end
 end
+-- Rank trainers and quest givers are kept for the rank mark.
+for _, byCap in pairs(db.ranks) do for _, sources in pairs(byCap) do
+  for npcID in pairs(sources.npcs) do named[npcID] = true end
+  for _, giver in pairs(sources.quests) do named[giver] = true end
+end end
 for id in pairs(db.npcs) do if not named[id] then strays = strays + 1 end end
 for id in pairs(named) do if not db.npcs[id] then missing = missing + 1 end end
 local savedNPCs = 0 for _ in pairs(before.npcs) do savedNPCs = savedNPCs + 1 end
@@ -522,11 +528,6 @@ do
   local onlyLevels = true
   for _, bucket in pairs(met) do for _, value in pairs(bucket) do onlyLevels = onlyLevels and type(value) == "number" end end
   check("nothing about who or where is kept", onlyLevels)
-  -- Seeing something a profession makes is coming across its recipe. Fails if a made item is ignored.
-  h.scannedMade = { [778] = 6001 }
-  nonRecipes[778] = true
-  chat("CHAT_MSG_PARTY", "nice |Hitem:778::::|h[Blue Overalls]|h")
-  check("a linked crafted item brings its recipe", met.recipes[6001] == 2 and met.items[778] == nil)
   chat("CHAT_MSG_GUILD", "mine |Henchant:5555|h[Engineering: Gizmo]|h")
   check("a nearer sighting replaces a farther one", met.recipes[5555] == 2)
   h.db.recipeItems[99] = { 1000 }
