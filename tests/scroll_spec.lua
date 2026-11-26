@@ -207,6 +207,7 @@ describe("scroll position in the recipe list", function()
 		ns.GetRecipeLock = function() return false end
 		ns.ReadSpecialization = function() return false end
 		ns.HasSpecialization = function() return false end
+		ns.Trace = function() end
 		assert(loadfile(UNLEARNED))("RecipeVacuum", ns)
 	end)
 
