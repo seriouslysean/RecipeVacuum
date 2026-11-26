@@ -115,10 +115,11 @@ local function ReadShownProfession()
 	shownPending = nil
 	local linked = C_TradeSkillUI.IsTradeSkillLinked()
 	local guild = C_TradeSkillUI.IsTradeSkillGuild() or C_TradeSkillUI.IsTradeSkillGuildMember()
-	local level = guild and LEVEL.FRIENDS or linked and LEVEL.PUBLIC
-	if not level then
+	-- Another player's profession, linked or a guild member's, is something the player saw for themselves.
+	if not (linked or guild) then
 		return
 	end
+	local level = LEVEL.SELF
 	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
 		if recipeInfo and recipeInfo.learned then
