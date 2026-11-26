@@ -64,7 +64,11 @@ SlashCmdList = {}
 UISpecialFrames = {}
 NORMAL_FONT_COLOR = { WrapTextInColorCode = function(_, text) return text end }
 HIGHLIGHT_FONT_COLOR = NORMAL_FONT_COLOR
-RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1 } end })
+-- Class colors are color objects in the client, so addon code may call their methods.
+RAID_CLASS_COLORS = setmetatable({}, { __index = function()
+	return { r = 1, g = 1, b = 1, colorStr = "ffffffff", WrapTextInColorCode = function(_, text) return text end,
+		GenerateHexColor = function() return "ffffffff" end, GetRGB = function() return 1, 1, 1 end }
+end })
 DEFAULT_CHAT_FRAME = { AddMessage = function(_, text) client.chat[#client.chat + 1] = text end }
 C_AddOns = { GetAddOnMetadata = function(addon, field) return field == "Title" and addon or nil end,
 	IsAddOnLoaded = function() return false end } -- no other addon is installed beside the one checked
@@ -79,10 +83,14 @@ hooksecurefunc = function() end
 -- Frames record their event handlers, so a test can fire the client's events (client.Fire). Any other
 -- frame method is a stub.
 client.frames = {}
+-- Forgets every frame made so far, for a spec that loads the addon again per case.
+function client.ClearFrames() client.frames = {} end
 local frameMeta = { __index = function(frame, name) return client.Stub("frame." .. name) end }
 function CreateFrame()
 	local frame = setmetatable({ events = {}, scripts = {} }, frameMeta)
 	function frame:RegisterEvent(event) self.events[event] = true end
+	-- The unit filter is not modeled: a unit event reaches the frame for any unit, so a spec fires it with the unit it means.
+	function frame:RegisterUnitEvent(event) self.events[event] = true end
 	function frame:UnregisterEvent(event) self.events[event] = nil end
 	function frame:UnregisterAllEvents() wipe(self.events) end
 	function frame:SetScript(name, handler) self.scripts[name] = handler end

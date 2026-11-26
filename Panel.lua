@@ -551,7 +551,7 @@ local function UpdateDiscovery(found, total)
 	-- The fill's width is the share found, as the skill bar's mask shows its share.
 	local share = total > 0 and math.min(found / total, 1) or 0
 	rankBar.Fill:SetShown(share > 0)
-	rankBar.Fill:SetWidth(math.max((BAR_WIDTH - BAR_FILL_INSET) * share, 1))
+	rankBar.Mask:SetWidth(math.max(BAR_WIDTH * share, 1)) -- GetMaskWidth: the bar's width times the share
 	rankBar.text:SetText(L["%d / %d discovered"]:format(found, total))
 end
 
@@ -1117,15 +1117,20 @@ local function CreatePanel()
 	local textLayer = CreateFrame("Frame", nil, rankBar)
 	textLayer:SetAllPoints()
 	textLayer:SetFrameLevel(rankBar:GetFrameLevel() + 3)
-	-- The fill is the share's width under the skill bar's own mask, which shapes its ends to the frame, as the template masks its
-	-- fill (Blizzard_ProfessionsRankBar.xml: Fill and Mask). The mask covers exactly the fill, so nothing lies outside it.
+	-- The fill spans the bar under the skill bar's own mask, set as the template sets it (Blizzard_ProfessionsRankBar.xml: Fill and
+	-- Mask, at its atlas size, LEFT of the fill plus 1, clamped to black past its edges); the mask's width is the share shown.
 	rankBar.Fill = fillLayer:CreateTexture(nil, "ARTWORK")
 	rankBar.Fill:SetAtlas("Legacy-Progressbar-Fill")
 	rankBar.Fill:SetPoint("TOPLEFT", BAR_FILL_LEFT, -BAR_FILL_TOP)
-	rankBar.Fill:SetHeight(RANK_BAR_HEIGHT)
+	rankBar.Fill:SetSize(BAR_WIDTH - BAR_FILL_INSET, RANK_BAR_HEIGHT)
 	rankBar.Mask = fillLayer:CreateMaskTexture()
-	rankBar.Mask:SetAtlas("Professions-skillbar-mask")
-	rankBar.Mask:SetAllPoints(rankBar.Fill)
+	local maskInfo = C_Texture.GetAtlasInfo("Professions-skillbar-mask")
+	if maskInfo then
+		rankBar.Mask:SetTexture(maskInfo.file, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+		rankBar.Mask:SetTexCoord(maskInfo.leftTexCoord, maskInfo.rightTexCoord, maskInfo.topTexCoord, maskInfo.bottomTexCoord)
+		rankBar.Mask:SetHeight(maskInfo.height)
+	end
+	rankBar.Mask:SetPoint("LEFT", rankBar.Fill, "LEFT", 1, 0)
 	rankBar.Fill:AddMaskTexture(rankBar.Mask)
 	rankBar.text = textLayer:CreateFontString(nil, "OVERLAY", "Number12FontOutline") -- the skill bar's own font
 	rankBar.text:SetPoint("CENTER", 0, -BAR_FILL_TOP)
