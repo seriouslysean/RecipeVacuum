@@ -1,14 +1,14 @@
 # Recipe Vacuum
 
-A WoW Forever addon that shows the recipes you don't know yet in Blizzard's profession window, and where they come from. It builds on the window Forever ships and follows Blizzard's design language.
+A WoW Forever addon that tracks where recipes come from and which ones you don't know yet. It leaves Blizzard's profession window alone, so controller navigation and other windows keep working; a panel of its own for unlearned recipes is planned.
 
-It lists a recipe once you have come across it, and fills in where it comes from as you learn more. Recipe sources are recorded from the trainers, vendors, quests and loot you see. How far it listens beyond that is a choice under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum:
+It tracks a recipe once you have come across it, and fills in where it comes from as you learn more. Recipe sources are recorded from the trainers, vendors, quests and loot you see. How far it listens beyond that is a choice under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum:
 
 - **Self Found**: only what you see yourself.
 - **Friends** (the default): also what your party, raid, guild and friends see, link or share. 
 - **Public**: also recipes linked in public chat.
 
-**Share My Finds** (on by default) sends what you find to your party, guild and friends who use Recipe Vacuum; turn it off to keep your finds to yourself. Recipes you have not come across stay out of the list unless you tick Unknown in the profession window's filter. **Announce New Finds** controls the chat line after a visit with new sources.
+**Share My Finds** (on by default) sends what you find to your party, guild and friends who use Recipe Vacuum; turn it off to keep your finds to yourself. On a profession's rank bar, a mark appears when the next rank has a known place; clicking it sets a map pin. **Announce New Finds** controls the chat line after a visit with new sources.
 
 To contribute discoveries collected while playing alone, type `/recipevacuum export` (or press Run next to it in the options), copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
 

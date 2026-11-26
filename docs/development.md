@@ -20,8 +20,7 @@ scripts/check [an old save] [a current save]
 
 The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/module-check.sh`), one line each with its seconds: Lua 5.1 syntax (through LuaJIT; the `luac` on a current machine is a newer Lua and accepts syntax the client rejects), ShellCheck and shfmt on `scripts/check`, `luacheck`, the toolkit's conformance check, that every file still compiles with the `--@debug@` blocks removed, then the specs (`busted`, `tests/*_spec.lua`, set up by `.busted`) on the source and on the stripped release build. A failed step shows its output, and any failure fails the run.
 
-- `scripts/check` fetches Blizzard's UI source once into `.ui-source` (ignored by git) at the commit it pins, for `tests/scroll_spec.lua`, which runs the addon's list code against Blizzard's real ScrollBox and tree data provider.
-- The script passes its inputs to the specs as `RV_UI_SOURCE`, `RV_OLD_SAVE` and `RV_SAVE`; one spec alone runs with them set, for example `RV_SAVE=tests/fixtures/current.lua busted tests/simulate_spec.lua`.
+- The script passes its inputs to the specs as `RV_OLD_SAVE` and `RV_SAVE`; one spec alone runs with them set, for example `RV_SAVE=tests/fixtures/current.lua busted tests/simulate_spec.lua`.
 - The upgrade and simulation specs run on the made-up saved files in `tests/fixtures` (schema 2 and the current schema). A real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`) can be given instead, to try the code on real data; real saves stay out of the repository.
 - CI (`.github/workflows/ci.yml`) runs the same script through the toolkit's shared workflow on every pull request and push to `main`.
 - `luacheck` reports any global the code reads that is not listed in `.luacheckrc` (`read_globals`), so a misspelled API name fails the check. Add a name there when the code starts using a new one.
@@ -47,7 +46,7 @@ The Ace3 copies came from a repository checkout, not a tagged release, and that 
 Code between `--@debug@` and `--@end-debug@` exists in a checkout and is stripped from released builds by the BigWigs packager, as other addons use the same markers. A checkout build:
 
 - has the development commands `perf`, `scan` and `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character);
-- times its own work all session (list builds, row marks, loot, vendor, trainer and quest reads, tooltips, linking) and writes the table to the saved log at logout or `/reload`, as `PERF` lines in `RecipeVacuumDB.devLog`;
+- times its own work all session (unlearned-recipe builds, loot, vendor, trainer and quest reads, tooltips, linking) and writes the table to the saved log at logout or `/reload`, as `PERF` lines in `RecipeVacuumDB.devLog`;
 - turns on the game's Lua error display (`scriptErrors`) at load and leaves it on;
 - uses a scan from the current game build ahead of the seed.
 

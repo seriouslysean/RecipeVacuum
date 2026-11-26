@@ -1,6 +1,6 @@
 # Recipe Vacuum
 
-A WoW Forever addon. It lists the recipes a character hasn't learned inside Blizzard's own profession window and shows where each one comes from: trainer, vendor, quest or drop. First module of Jig Boltgrip's Toolkit.
+A WoW Forever addon. It records where recipes come from (trainer, vendor, quest or drop) and works out which recipes a character hasn't learned. It writes nothing into Blizzard's profession window; the player-facing list is a panel of its own (docs/client-notes.md, "Gamepad"). First module of Jig Boltgrip's Toolkit.
 
 Client: WoW Forever 1.60.1 (Interface 16001; measured on builds 71037 to 71139), the modern client with Forever's `Camelot` overrides. Blizzard's UI source for this client: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
 
@@ -20,10 +20,11 @@ The short form of the shared standards, as they apply here.
 - Use patterns established addons use, and say which one in a short comment. Nothing custom without a real need.
 - Keep it simple and in one place (DRY). Data lives in tables, not in branches.
 - Fast: no per-row or per-rebuild work that can be cached. Non-recipe loot costs one item-class check.
-- Quiet: no chat output except the one line after a visit with new recipe sources, which players can turn off.
+- Quiet: no chat output except the one line after a visit with new recipe sources, which players can turn off, and the one line when a click sets a map pin.
+- Never write into Blizzard's frames, lists, menus or panels, and open none of its windows: it taints Blizzard's gamepad navigation and secure code (docs/client-notes.md, "Gamepad"). Reading Blizzard's state through post-hooks is fine.
 - No named magic numbers inline: name them at the top of the file.
 - Works in every client language: identify things by ID, never by matching English text. Names are for display only. Where the game gives no ID, say so in a comment and list it under known gaps.
-- Sit nicely with other addons: hooks run after Blizzard's code (`hooksecurefunc`, `Menu.ModifyMenu`), state on Blizzard frames goes in weak side tables, and the only globals are the saved variables, slash commands and one named frame (see `.luacheckrc`).
+- Sit nicely with other addons: hooks that read Blizzard's state run after its code (`hooksecurefunc`), and the only globals are the saved variables, slash commands and one named frame (see `.luacheckrc`).
 - Comments say why, in a line or two. Explanations, measurements and history go in `docs/`, and the comment points there.
 
 ## Layout
@@ -35,16 +36,14 @@ The short form of the shared standards, as they apply here.
 | `Data/Included.lua` | Reviewed finds shipped with the addon (empty for now) |
 | `tools/seed.lua` | Generates `Data/Seed.lua` from the item scan (repository only) |
 | `Voice.lua` | Every chat line the addon says, with the voice rules |
-| `Sources.lua` | Source types, lookups across data layers, tooltips, row marks |
+| `Sources.lua` | Source types, lookups across data layers, tooltips, marks, linking recipe items |
 | `Record.lua` | Records trainers, vendors, loot and quest rewards |
-| `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions; the first-run tip |
+| `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions |
 | `Finds.lua` | Revisions, wire rows, validation, merge, export |
 | `Sharing.lua` | Automatic sharing with guild, group and friends (AceComm) |
-| `Unlearned.lua` | Adds unlearned recipes to Blizzard's recipe list |
-| `RecipeList.lua` | Source marks on list rows |
+| `Unlearned.lua` | Which recipes the character hasn't learned, by category (`ns.GetUnlearnedRecipes`); no UI |
 | `Ranks.lua` | Profession ranks: sources from trainers, book use and quest turn-ins, and the mark beside the link button |
-| `RecipePanel.lua` | Source line and Show on Map for a selected unlearned recipe |
-| `Filter.lua` | The Recipe Vacuum section of Blizzard's filter menu |
+| `RecipePanel.lua` | Map pins for sources (`ns.MapTargets`, `ns.ShowOnMap`); the home of the recipe panel to come |
 | `Settings.lua` | Options page and player commands |
 | `Troubleshooting.lua` | Development commands and their log; checkout builds only |
 | `Libs/JigBoltgripToolkit` | Shared toolkit page, commands, help and copy window |

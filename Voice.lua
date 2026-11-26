@@ -8,6 +8,8 @@ ns.voice = {
 	-- Report arguments: count, "recipe" or "recipes", who or where.
 	intake = { noise = L["whirs and rattles"], report = L["Intake complete! %d recipes from %s!"],
 		reportOne = L["Intake complete! %d recipe from %s!"] },
+	-- Said when a map pin is set; argument: the source's label.
+	pinned = { noise = L["whirs and rattles"], report = L["Map pin set! %s marked on your map!"] },
 	-- Development lines (checkout builds only): plain, not voiced. The watch and log lines are the toolkit's.
 	-- Arguments: count, "recipe" or "recipes".
 	detected = "%d %s detected!",
@@ -24,8 +26,6 @@ ns.voice.scanNoWindow = "Scan aborted! No profession window detected!"
 ns.voice.scanBadCount = "Scan aborted! Item count exceeds tolerances!"
 ns.voice.scanFailed = "Scan aborted! Malfunction: %s!" -- the error
 ns.voice.perfWindow = "Diagnostics complete! Profession window ready in %s!" -- time or "no sample"
-ns.voice.perfList = "Recipe list assembled in %s! Slowest run %s, %d runs since reload!"
-ns.voice.perfCold = "Cold start logged! %d unlearned: recipes %.1f ms, sources %.1f ms, grouping %.1f ms!"
 ns.voice.perfScan = "Last scan logged! %s in %.1f s: item walk %.0f ms over %.1f s for %d IDs!"
 ns.voice.perfRequests = "Item requests logged! %d sent, %d answered in %.1f s! Report built in %.1f ms!"
 ns.voice.perfNoScan = "No scan on record!"

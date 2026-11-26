@@ -1,11 +1,10 @@
 -- A made-up saved file at the current schema (tests/simulate_spec.lua). Every name and ID is invented; it holds one
 -- source of each recorded kind, a shared find, a rank and the dev fields a working build leaves behind.
 RecipeVacuumDB = {
-	schema = 10,
+	schema = 11,
 	selfFound = true, shareFinds = true, announceNewFinds = true, sourceLevel = 2,
-	showUnlearned = true, showUnavailable = true, watch = true,
+	watch = true,
 	met = { recipes = { [3276] = 2 }, items = { [5002] = 3 } },
-	sourceFilter = {},
 	found = {
 		recipes = {
 			[3273] = { { kind = "trainer", npc = 200, skill = 1, cost = 100, faction = "Alliance", seen = 1795400000, build = 71139, rev = 1 } },

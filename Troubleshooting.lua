@@ -482,7 +482,8 @@ end
 
 
 -- Shared functions timed from here; the record is written out at session end.
-for name, label in pairs({ AddSourceLines = "source tooltip", MergeFinds = "merge shared finds", LinkPending = "link recipe items" }) do
+for name, label in pairs({ AddSourceLines = "source tooltip", MergeFinds = "merge shared finds", LinkPending = "link recipe items",
+	GetUnlearnedRecipes = "unlearned recipes" }) do
 	local inner = ns[name]
 	ns[name] = function(...)
 		local started = debugprofilestop()
@@ -585,15 +586,15 @@ table.insert(troubleshooting, { "mockranks", "Add test rank sources for this ses
 	ns.Log("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
 end, quiet = true })
 
--- Facts cache test: drops the cache, so the next profession window builds its list cold without it.
--- Compare that build's "list build, cold" with one after a plain reload (cache kept).
+-- Facts cache test: drops the cache, so the next unlearned-recipe build runs cold without it.
+-- Compare that build's "unlearned recipes" timing with one after a plain reload (cache kept).
 table.insert(troubleshooting, { "nofacts", "Drop the recipe facts cache for a timing test", function()
 	ns.db.recipeFacts = nil
 	ns.ClearRecipeLocks()
 	ns.SourcesChanged()
-	ns.Log("Recipe facts cache dropped. Open a profession window, then reload.")
+	ns.Log("Recipe facts cache dropped. Reload to build the unlearned recipes cold.")
 end, quiet = true })
-table.insert(troubleshooting, { "perf", "Show how long the profession window and its list took", function()
+table.insert(troubleshooting, { "perf", "Show how long the window and its lookups took", function()
 	local function Ms(value)
 		return value and ("%.1f ms"):format(value) or voice.noSample
 	end
@@ -601,11 +602,6 @@ table.insert(troubleshooting, { "perf", "Show how long the profession window and
 		Append(line)
 	end
 	Say(voice.perfWindow, Ms(openMs))
-	Say(voice.perfList, Ms(ns.lastUnlearnedMs), Ms(ns.slowestUnlearnedMs), ns.unlearnedBuilds or 0)
-	local phases = ns.coldBuildPhases
-	if phases and phases.grouping then
-		Say(voice.perfCold, phases.unlearned or 0, phases.recipes or 0, phases.sources or 0, phases.grouping)
-	end
 	local timing = ns.db.devScan and ns.db.devScan.timing
 	if timing and timing.totalSeconds then
 		Say(voice.perfScan, timing.profession or UNKNOWN, timing.totalSeconds, timing.walkMs or 0,

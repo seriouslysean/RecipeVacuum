@@ -7,6 +7,7 @@ local L = LibStub("AceLocale-3.0"):NewLocale(addonName, "enUS", true)
 L["whirs and rattles"] = true
 L["Intake complete! %d recipe from %s!"] = true
 L["Intake complete! %d recipes from %s!"] = true
+L["Map pin set! %s marked on your map!"] = true
 
 -- Options (Settings.lua)
 L["Recipe Sources"] = true
@@ -26,7 +27,7 @@ L["Open the options"] = true
 L["Copy the recipe sources you found"] = true
 L["Opens a window of every recipe source you found, ready to copy."] = true
 
--- Tooltips and the recipe pane (Sources.lua, RecipePanel.lua)
+-- Tooltips (Sources.lua)
 L["Trainer"] = true
 L["Zone Drop"] = true
 L["Seen %d time"] = true
@@ -37,11 +38,8 @@ L["in %d zone"] = true
 L["in %d zones"] = true
 L["and %d more"] = true
 
--- The first-run tip (Heard.lua); the argument is one of the three below.
-L["Your Recipe Vacuum is humming! Recipes you come across land in this list. Right now it listens to %s. You can change that in Options."] = true
-L["only you"] = true
-L["you and your friends"] = true
-L["you, your friends and recipes people link in chat"] = true
+-- The rank mark's tooltip (Ranks.lua)
+L["Click to pin the first of %d places."] = true
 
 -- Chat (Core.lua)
 L["Saved data is from a newer version of Recipe Vacuum; it was left unchanged."] = true

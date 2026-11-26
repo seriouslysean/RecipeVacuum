@@ -2,14 +2,22 @@
 
 What WoW Forever's client does, where the addon depends on it. Measured in game on build 1.60.1.71037 unless a file is named. Blizzard's UI source for this client: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
 
+## Gamepad
+
+With the Gamepad UI (Steam Deck), Blizzard's own code refuses to run on anything an addon wrote, so Recipe Vacuum writes nothing into Blizzard's frames, lists, menus or panels and opens none of its windows (owner decision; the same rule for every input method, not a gamepad mode). Measured in game on WoW Forever:
+
+- `SmartNavigation.lua` `EnsureIsSecure` stops when it reads anything addon code wrote. After rows were inserted into the profession recipe list, the d-pad stopped moving (stack: `Navigate`, `SelectButton`, `EnsureIsSecure`).
+- `ADDON_ACTION_FORBIDDEN` named Recipe Vacuum for `SetPreferredGamepadInteractTarget`.
+- Opening the character window from the gamepad radial failed with "attempt to compare a secret number value (execution tainted by 'RecipeVacuum')".
+- `OpenWorldMap` from addon code taints (TrainerSpells, pull request 9), and so do `MenuUtil.CreateContextMenu` and `Menu.ModifyMenu` entries. A map pin is `C_Map.SetUserWaypoint` plus `C_SuperTrack.SetSuperTrackedUserWaypoint(true)`, with nothing opened.
+- Other addons that show recipes for unlearned professions (SkillUp Forever, TrainerSpells, Macro Assist) keep their own frames beside Blizzard's.
+
+What is no longer done: unlearned rows in the recipe list, source marks on rows, the source line, item row and Show Map button in the recipe pane, the Recipe Vacuum section of the filter menu, the first-run help tip, and any call that refreshes Blizzard's list. Unlearned recipes will live in Recipe Vacuum's own panel beside the window, fed by `ns.GetUnlearnedRecipes`.
+
 ## Profession window
 
-- The client leaves unlearned recipes out of `C_TradeSkillUI.GetFilteredRecipeIDs()` even with Show Unlearned on, so the addon adds them after Blizzard builds the list.
-- The list's group number for learned recipes is 2 (the local `Group` enum in `Blizzard_Professions.lua`).
-- The recipe list keeps a pixel scroll offset. Detaching the data provider scrolls to the top, so the offset is saved before a rebuild and reapplied after.
-- `ValidateControls` runs on every bag and skill update while the window is open.
-- Blizzard's source line (`RecipeSourceButton`) is never filled on this client, because `C_TradeSkillUI.GetRecipeSourceText` returns nothing. Its layout values in `ProfessionsRecipeSchematicFormMixin:Init`: 10 below the description, reagents 50 below while it shows.
-- `AllocateBestQualityCheckbox` is anchored at the form's bottom left (x 30); Forever moves Track Recipe to the bottom right.
+- The client leaves unlearned recipes out of `C_TradeSkillUI.GetFilteredRecipeIDs()` even with Show Unlearned on, so the addon works them out itself from `C_TradeSkillUI.GetAllRecipeIDs()`.
+- Blizzard's source line (`RecipeSourceButton`) is never filled on this client, because `C_TradeSkillUI.GetRecipeSourceText` returns nothing.
 - The client carries recipe categories nobody can be shown to have learned or found, such as fifteen Alchemy recipes under "Season of Discovery".
 
 ## Recipe items
@@ -61,18 +69,10 @@ Recorded by the working build on low-level characters:
 | Piece | Time |
 |---|---|
 | Profession window, show to ready | 9 to 14 ms |
-| List build, first after a reload, before tooltip facts were kept | 34 ms (Tailoring, 417 unlearned), 42 ms (Blacksmithing, 501), 56 ms (Leatherworking, 585) |
+| Unlearned-recipe build with the old list insertion, first after a reload, before tooltip facts were kept | 34 ms (Tailoring, 417 unlearned), 42 ms (Blacksmithing, 501), 56 ms (Leatherworking, 585) |
 | of which reading recipes and their tooltips | about two thirds |
-| List build, later | 4 to 8 ms |
-| Marks on one row | under 0.01 ms |
+| Same, later | 4 to 8 ms |
 | Trainer read | 3 ms average; vendor read 0.06 ms |
-
-## Recipe list rows
-
-- The recipe list's element initializer calls `button:SetScript("OnEnter", ...)` on a row every time it is initialized (`Blizzard_ProfessionsRecipeList.lua`, the factory in `ProfessionsRecipeListMixin:OnLoad`). A `HookScript("OnEnter")` on a row therefore lasts only until that row's next Init. Measured on build 71037 with a hover trace: 19 hooked enters against 221 hooked leaves in one session, the enters only on rows not yet re-initialized. `OnLeave` is set once in the template XML, so a hook on it stays.
-- The row's lock and skill-up child buttons leave through the row's `OnLeave` method, not its script (`ProfessionsRecipeListRecipeMixin:OnLoad`), so a row's leave is hooked both ways. Seen in the hover trace: one method leave after a skill-up button enter.
-- Build 71091 changed this file only in the craftable-count callback and an early return in `OnEnter`; the checks pass against it.
-- Blizzard's row `OnEnter` method fires `EventRegistry` event `Professions.RecipeListOnEnter` with the row and its element data, from the row's script and from its child buttons (skill-up arrows, lock). Row hover is taken from that event.
 
 ## Places
 
@@ -83,13 +83,13 @@ Recorded by the working build on low-level characters:
 
 Measured on build 71091, 2026-11-25, one character, one run each (working build timings):
 
-| Run | Saved file | Saved variables load | Cold list build | Of which reading recipes |
+| Run | Saved file | Saved variables load | Cold unlearned-recipe build | Of which reading recipes |
 |---|---|---|---|---|
 | With the old item scan | 219 KB | 2.7 ms | 13.0 ms | 1.5 ms |
 | Scan cleared | 153 KB | 1.7 ms | 8.9 ms | 0.6 ms |
 | Facts cache dropped | 153 KB | 1.7 ms | 29.7 ms | 17.9 ms |
 
-Size costs little: about 1 ms per 66 KB at load. The recipe facts cache saves about 20 ms on a profession's first list build per game build, so it stays.
+Size costs little: about 1 ms per 66 KB at load. The recipe facts cache saves about 20 ms on a profession's first unlearned-recipe build per game build, so it stays.
 
 ## Rank books
 

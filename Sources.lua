@@ -7,10 +7,6 @@ ns.sourcesVersion = 0
 function ns.SourcesChanged()
 	ns.sourcesVersion = ns.sourcesVersion + 1
 	ns.ClearUnlearnedCache()
-	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
-	if page and page:IsVisible() and ns.db.showUnlearned and ns.CanShowUnlearned() then
-		ns.RefreshList()
-	end
 end
 
 ns.sourceOrder = { "trainer", "vendor", "quest", "drop" }
@@ -248,32 +244,6 @@ function ns.SummarizeSources(recipeInfo)
 	recipeInfo.sourceTypes = types
 end
 
--- Recipes with a known source show unless their type is unticked; those without show only when Unknown is ticked or they were come across.
-ns.sourceFilterKeys = { "trainer", "vendor", "quest", "drop", "unknown" }
-
-function ns.IsSourceShown(key)
-	local shown = ns.db.sourceFilter[key]
-	if shown == nil then
-		return key ~= "unknown"
-	end
-	return shown
-end
-
-function ns.PassesSourceFilter(recipeInfo)
-	local types = recipeInfo.sourceTypes
-	if not types then
-		-- No known source: shown once come across within the level, or with Unknown ticked; unticked by hand (as Uncheck All does) hides them all.
-		local unknown = ns.db.sourceFilter.unknown
-		return unknown or (unknown == nil and recipeInfo.met ~= nil and recipeInfo.met <= ns.db.sourceLevel)
-	end
-	for sourceType in pairs(types) do
-		if ns.IsSourceShown(sourceType) then
-			return true
-		end
-	end
-	return false
-end
-
 -- The recipe an item teaches, by ID (docs/data.md, "Recipe items").
 
 -- From the seed or this session's scan.
@@ -300,15 +270,19 @@ function ns.GetTaughtRecipe(itemID)
 	return false
 end
 
--- Items awaiting data are asked once; ITEM_DATA_LOAD_RESULT rebuilds the list, and one that never answers costs nothing more.
-local awaitedItems = {}
+-- Items whose data was requested and has not answered, by the time of the request. A failed or silent load is asked again on a later LinkPending, up to MAX_LINK_ATTEMPTS times a session; some items never answer (docs/client-notes.md, "Recipe items"), so a request older than LOAD_TIMEOUT seconds counts as failed. Unmeasured: kept long enough for a slow server.
+local MAX_LINK_ATTEMPTS = 3
+local LOAD_TIMEOUT = 10
+local awaitedItems, linkAttempts = {}, {}
 
 local itemLoads = CreateFrame("Frame")
 itemLoads:RegisterEvent("ITEM_DATA_LOAD_RESULT")
 itemLoads:SetScript("OnEvent", function(_, _, itemID, success)
-	if awaitedItems[itemID] and success then
+	if awaitedItems[itemID] then
 		awaitedItems[itemID] = nil
-		ns.SourcesChanged()
+		if success then
+			ns.SourcesChanged()
+		end
 	end
 end)
 
@@ -351,18 +325,23 @@ function ns.GetRecipeItems(recipeID)
 	return joined
 end
 
--- Links recorded recipe items to the recipes they teach; false while an item's data loads, so the caller retries on a later build.
+-- Links recorded recipe items to the recipes they teach; true only when no item is outstanding. An item is outstanding while its data loads or is unanswered, until it has been tried MAX_LINK_ATTEMPTS times.
 function ns.LinkPending()
 	local db = ns.db
-	local loaded = true
+	local complete = true
 	for itemID, item in pairs(db.pendingItems) do
 		if ns.GetSeededRecipe(itemID) then
 			db.pendingItems[itemID] = nil
-		elseif not item.none and not awaitedItems[itemID] then
+		elseif awaitedItems[itemID] and GetTime() - awaitedItems[itemID] < LOAD_TIMEOUT then
+			complete = false
+		elseif not item.none and (linkAttempts[itemID] or 0) < MAX_LINK_ATTEMPTS then
+			awaitedItems[itemID] = nil
 			local recipeID = ns.GetTaughtRecipe(itemID)
 			if recipeID == nil then
-				awaitedItems[itemID] = true
-				loaded = false
+				linkAttempts[itemID] = (linkAttempts[itemID] or 0) + 1
+				-- Only a requested load answers with an event; cached data without a tooltip yet is asked again next time.
+				awaitedItems[itemID] = not C_Item.IsItemDataCachedByID(itemID) and GetTime() or nil
+				complete = false
 			elseif recipeID then
 				--@debug@
 				-- What the game says about the taught spell, to tell a profession rank from a recipe.
@@ -383,7 +362,7 @@ function ns.LinkPending()
 			end
 		end
 	end
-	return loaded
+	return complete
 end
 
 -- The client localizes the Fishing spell's name for fishing sources.
@@ -698,24 +677,7 @@ local function IsUnmet(color)
 	return color ~= nil and color.g < UNMET_MAX_GREEN
 end
 
--- Rows waiting for a made item's data redraw once after the answers arrive.
-local LOCK_REFRESH_DELAY = 0.2
-local loadingItems, refreshQueued = {}, false
-
-local function QueueRowRefresh()
-	if not refreshQueued then
-		refreshQueued = true
-		C_Timer.After(LOCK_REFRESH_DELAY, function()
-			refreshQueued = false
-			-- Hiding unavailable recipes changes which rows exist, so rebuild the list.
-			if ns.db.showUnavailable then
-				ns.RefreshRows()
-			else
-				ns.RefreshList()
-			end
-		end)
-	end
-end
+local loadingItems = {}
 
 -- recipeSpecs: false for no specialization requirement, MET, or the requirement text when unmet.
 -- specialized: professions where the character meets one, which is how a picked specialization is told (docs/client-notes.md, "Requirements").
@@ -763,7 +725,6 @@ function ns.ReadSpecialization(recipeID)
 				for waitingRecipeID in pairs(waiting) do
 					ns.ReadSpecialization(waitingRecipeID)
 				end
-				QueueRowRefresh()
 			end)
 		end
 		waiting[recipeID] = true

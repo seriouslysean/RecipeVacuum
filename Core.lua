@@ -5,7 +5,7 @@ ns.L = LibStub("AceLocale-3.0"):GetLocale(addonName)
 local L, toolkit = ns.L, ns.toolkit
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 10
+local SCHEMA = 11
 
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
@@ -16,7 +16,6 @@ ns.MAX_WIRE_NUMBER = 2^32
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 -- The levels, their names, icons and range openings are the toolkit's sources cards (its docs/standards.md, "Options").
 ns.LEVEL = toolkit.SOURCE_LEVEL
-ns.levelHeard = { L["only you"], L["you and your friends"], L["you, your friends and recipes people link in chat"] }
 
 function ns.NewLayer()
 	return { recipes = {}, items = {} }
@@ -24,12 +23,9 @@ end
 
 -- Option defaults live in Settings.lua.
 local defaults = {
-	showUnlearned = true, -- Blizzard default; Forever turns it off
 	sourceLevel = ns.LEVEL.FRIENDS,
 	shareFinds = true, -- send own finds to party, guild and friends; separate from what the level shows
 	met = { recipes = {}, items = {} }, -- come across without a source: [recipeID or recipe itemID] = ns.LEVEL
-	sourceFilter = {},     -- [sourceType or "unknown"] = true or false once set in the Sources filter (ns.IsSourceShown)
-	showUnavailable = true,
 	npcs = {},
 	objects = {},
 	-- Profession rank sources seen by this account (Ranks.lua): [skill line][cap it raises from] =
@@ -202,6 +198,11 @@ migrations[10] = function(db)
 		end
 		if not next(byCap) then db.ranks[skillLine] = nil end
 	end
+end
+
+-- Schema 11 drops the options and first-run flag of the rows once added to Blizzard's recipe list (docs/client-notes.md, "Gamepad").
+migrations[11] = function(db)
+	db.showUnlearned, db.showUnavailable, db.sourceFilter, db.levelTipSeen = nil, nil, nil, nil
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()

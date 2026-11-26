@@ -1,6 +1,6 @@
 # Voice
 
-The addon's one voiced line shows the Vacuum at work: "Boltgrip's Recipe Vacuum whirs and rattles. Intake complete! 8 recipes from Stephen Ryback!" Every line is in `Voice.lua`; a new or changed line goes there, never inline in code. The rules and the delivery are the toolkit's, in the library repository's `docs/standards.md` ("Voice"); this page holds what is the Vacuum's own.
+The addon's voiced lines show the Vacuum at work: "Boltgrip's Recipe Vacuum whirs and rattles. Intake complete! 8 recipes from Stephen Ryback!" The second, said when a click sets a map pin: "Boltgrip's Recipe Vacuum whirs and rattles. Map pin set! Stephen Ryback (Stormwind City) marked on your map!" Every line is in `Voice.lua`; a new or changed line goes there, never inline in code. The rules and the delivery are the toolkit's, in the library repository's `docs/standards.md` ("Voice"); this page holds what is the Vacuum's own.
 
 ## Rules
 
@@ -12,7 +12,7 @@ Settings labels and tooltips are not in this voice: they follow Blizzard's wordi
 
 ## Plain text
 
-The help tip and the level cards speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the cards give the scanner's range), never a second in the same text. The verb for what the addon does with a recipe is "tracks". The cards' sentences are the toolkit's (`SourceCards`; Recipe Vacuum passes "recipes" and "recipes people link in chat"); `ns.levelHeard` in `Core.lua` and the tip in `Heard.lua` are this addon's.
+The level cards speak to the player directly, so they are plain: short sentences, everyday words, one idea each, warm, as a friendly game explains itself. A single gnomish touch is welcome (the cards give the scanner's range), never a second in the same text. The verb for what the addon does with a recipe is "tracks". The cards' sentences are the toolkit's (`SourceCards`; Recipe Vacuum passes "recipes" and "recipes people link in chat").
 
 ## Where the voice comes from
 

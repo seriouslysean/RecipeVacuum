@@ -6,18 +6,7 @@
 # try the code on real data.
 set -euo pipefail
 
-# Blizzard's UI source for the client, for the scroll spec: fetched once at the pinned commit into
-# .ui-source (ignored by git), so every run tests against the same Blizzard code.
-UI_SOURCE_COMMIT=c01a87b549bbc19e0f284c1616d18654c91297de # Gethe/wow-ui-source, forever branch, 1.60.1
-if [[ $(git -C .ui-source rev-parse HEAD 2>/dev/null) != "$UI_SOURCE_COMMIT" ]]; then
-	rm -rf .ui-source
-	git init -q .ui-source
-	git -C .ui-source fetch -q --depth 1 https://github.com/Gethe/wow-ui-source.git "$UI_SOURCE_COMMIT"
-	git -C .ui-source checkout -q FETCH_HEAD
-fi
-
-RV_UI_SOURCE=$PWD/.ui-source
 RV_OLD_SAVE=$(realpath "${1:-tests/fixtures/schema2.lua}")
 RV_SAVE=$(realpath "${2:-tests/fixtures/current.lua}")
-export RV_UI_SOURCE RV_OLD_SAVE RV_SAVE
+export RV_OLD_SAVE RV_SAVE
 exec Libs/JigBoltgripToolkit/tests/module-check.sh

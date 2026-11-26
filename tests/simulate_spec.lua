@@ -125,13 +125,13 @@ describe("simulation", function()
 
 	-- 1. Schema 3 -> 4 on the owner's real save
 	local a, db, before, beforeRecipes, beforeItems, beforeRevision
-	it("schema is 10", function()
+	it("schema is 11", function()
 		dofile(savedFile); before = RecipeVacuumDB
 		beforeRecipes, beforeItems = count(before.found)
 		beforeRevision = before.exchange.revision
 		a = boot(savedFile)
 		db = a.db
-		assert(db.schema == 10, "schema is 10")
+		assert(db.schema == 11, "schema is 11")
 	end)
 	it("trainerNames dropped", function()
 		assert(db.found.trainerNames == nil and db.shared.trainerNames == nil, "trainerNames dropped")
@@ -357,7 +357,7 @@ describe("simulation", function()
 			[3] = { { "Requires Gnomish Engineer", white } },
 			[4] = { { "Requires Engineering (260)", red }, { "Requires Goblin Engineer", red } },
 		}
-		local itemLoaded, itemReads, loadCallbacks, refreshes = {}, 0, {}, 0
+		local itemLoaded, itemReads, loadCallbacks = {}, 0, {}
 		it("no answer while the made item loads", function()
 			Enum.TooltipDataLineType.UsageRequirement = 1
 			Enum.TooltipDataUsageRequirementType.Faction, Enum.TooltipDataUsageRequirementType.Skill = 1, 2
@@ -366,7 +366,6 @@ describe("simulation", function()
 			C_Item.IsItemDataCachedByID = function(id) return itemLoaded[id] == true end
 			Item = { CreateFromItemID = function(_, id) return { ContinueOnItemLoad = function(_, fn) loadCallbacks[id] = fn end } end }
 			C_Timer.After = function(_, fn) fn() end
-			a.RefreshRows = function() refreshes = refreshes + 1 end
 			C_TooltipInfo = { GetItemByID = function(id)
 				itemReads = itemReads + 1
 				local lines = { { leftText = "Name" } }
@@ -377,12 +376,9 @@ describe("simulation", function()
 			end }
 			assert(a.GetRecipeLock(1) == nil and itemReads == 0, "no answer while the made item loads")
 		end)
-		it("rows redraw once the made item has loaded", function()
+		it("no lock while no met specialization has been seen", function()
 			itemLoaded[MADE + 1] = true
 			loadCallbacks[MADE + 1]()
-			assert(refreshes == 1, "rows redraw once the made item has loaded")
-		end)
-		it("no lock while no met specialization has been seen", function()
 			assert(a.GetRecipeLock(1) == false, "no lock while no met specialization has been seen")
 		end)
 		-- The list build reads every recipe of the profession; the met line on recipe 3 shows the pick.
@@ -619,19 +615,26 @@ describe("simulation", function()
 		end
 		assert(b.LinkPending() == false and b.db.itemRecipe[2000] == nil, "link waits while an item's data loads")
 	end)
-	-- Asked once: an item still loading neither blocks the list nor is requested again.
-	it("an unanswered item is not asked twice and no longer blocks", function()
-		local requests = 0
+	-- Fails if a second call reports completion while an item is still loading, or a failed load is never asked again.
+	local requests = 0
+	local function ItemDataResult(id, success)
+		for _, f in ipairs(bFrames) do
+			if f.events.ITEM_DATA_LOAD_RESULT then f.script(f, "ITEM_DATA_LOAD_RESULT", id, success) end
+		end
+	end
+	it("an item still loading is not asked twice and keeps the link incomplete", function()
 		C_Item.RequestLoadItemDataByID = function() requests = requests + 1 end
-		assert(b.LinkPending() == true and requests == 0, "an unanswered item is not asked twice and no longer blocks")
+		assert(b.LinkPending() == false and requests == 0, "an item still loading is not asked twice and keeps the link incomplete")
+	end)
+	it("a failed load is asked again on a later call", function()
+		for id in pairs(b.db.pendingItems) do ItemDataResult(id, false) end
+		assert(b.LinkPending() == false and requests > 0, "a failed load is asked again on a later call")
 	end)
 	it("link made from the recipe ID in the item's tooltip", function()
 		-- The client reports each item's data as it arrives.
 		for id in pairs(b.db.pendingItems) do
 			cached[id] = true
-			for _, f in ipairs(bFrames) do
-				if f.events.ITEM_DATA_LOAD_RESULT then f.script(f, "ITEM_DATA_LOAD_RESULT", id, true) end
-			end
+			ItemDataResult(id, true)
 		end
 		assert(b.LinkPending() == true and b.db.itemRecipe[2000] == RED_LINEN_BAG
 			and b.db.recipeItems[RED_LINEN_BAG][1] == 2000 and b.db.pendingItems[2000] == nil,
@@ -640,6 +643,19 @@ describe("simulation", function()
 	it("an item that teaches nothing stays unlinked and is not asked again", function()
 		assert(b.db.itemRecipe[1000] == nil and b.db.pendingItems[1000].none == true,
 			"an item that teaches nothing stays unlinked and is not asked again")
+	end)
+	-- An item that never answers is asked three times at most, then stops blocking.
+	it("a silent load is asked again after a while, three times at most", function()
+		b.db.pendingItems[2999] = {}
+		requests = 0
+		local started = clock
+		for _ = 1, 5 do
+			b.LinkPending()
+			clock = clock + 11
+		end
+		local complete = b.LinkPending()
+		clock = started
+		assert(requests == 3 and complete == true, "a silent load is asked again after a while, three times at most")
 	end)
 
 	-- Seed data answers before item data loads and stays out of the saved data. Fails if a seeded pair is ignored, or a seeded item gets a saved link or waits in pending.
@@ -682,26 +698,7 @@ describe("simulation", function()
 	end)
 	it("reject more rows than the limit", function() assert(b.MergeFinds(rows, #rows - 1) == nil, "reject more rows than the limit") end)
 
-	-- 6b. Sources filter defaults: a recipe with no known source is hidden until Unknown is ticked; one
-	-- with a source shows until its type is unticked. Fails if the full game list shows by default.
-	describe("sources filter defaults", function()
-		local kept, unknown, trained
-		it("no-source recipes are hidden by default, sourced ones shown", function()
-			kept = a.db.sourceFilter
-			a.db.sourceFilter = {}
-			unknown, trained = {}, { sourceTypes = { trainer = true } }
-			assert(a.PassesSourceFilter(unknown) == false and a.PassesSourceFilter(trained) == true,
-				"no-source recipes are hidden by default, sourced ones shown")
-		end)
-		it("ticking Unknown shows them, unticking a type hides it", function()
-			a.db.sourceFilter = { unknown = true, trainer = false }
-			assert(a.PassesSourceFilter(unknown) == true and a.PassesSourceFilter(trained) == false,
-				"ticking Unknown shows them, unticking a type hides it")
-			a.db.sourceFilter = kept
-		end)
-	end)
-
-	-- 6c. Come across: a chat-linked or nearby-looted recipe is kept with how near it arrived and nothing else.
+	-- 6b. Come across: a chat-linked or nearby-looted recipe is kept with how near it arrived and nothing else.
 	-- Fails if a link is missed, a non-recipe is kept, who or where is saved, a farther sighting weakens a nearer one, or a recipe shows below its level.
 	describe("come across", function()
 		local h, known, chat, met
@@ -733,16 +730,6 @@ describe("simulation", function()
 			h.IsTrusted = function() return false end -- Sharing.lua, not loaded here
 			chat("CHAT_MSG_WHISPER", "psst |Hitem:1001::::|h[Pattern: Other]|h")
 			assert(met.items[1001] == 3, "a stranger's whisper counts as public chat")
-		end)
-		it("a recipe come across shows at its level and not below", function()
-			h.db.recipeItems[99] = { 1000 }
-			local viaItem = { recipeID = 99, name = "x" }
-			h.SummarizeSources(viaItem)
-			h.db.sourceFilter, h.db.sourceLevel = {}, 2
-			local shownAtFriends = h.PassesSourceFilter(viaItem)
-			h.db.sourceLevel = 1
-			assert(viaItem.met == 2 and shownAtFriends == true
-				and h.PassesSourceFilter(viaItem) == false, "a recipe come across shows at its level and not below")
 			C_TradeSkillUI = known
 		end)
 	end)
@@ -754,6 +741,6 @@ describe("simulation", function()
 		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, ResumeWatch = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-		assert(c.db.schema == 10 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
+		assert(c.db.schema == 11 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
 	end)
 end)

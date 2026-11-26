@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 -- Ranks come only from what the client shows, so no rank list ships (docs/data.md, "Ranks").
 -- The mark beside the link button names a recorded source with a place and pins it on the map.
@@ -171,8 +172,6 @@ local function NextRank()
 			if target then targets[#targets + 1] = target end
 		end
 	end
-	-- Recorded sources come from unordered tables; a stable order keeps the menu the same each time.
-	table.sort(targets, function(left, right) return left.label < right.label end)
 	return #targets > 0 and { sources = sources, profession = info.professionName, entries = entries, targets = targets } or nil
 end
 
@@ -196,21 +195,18 @@ local function OnEnter(button)
 	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
 	GameTooltip_SetTitle(GameTooltip, RankName(button.rank))
 	ns.AddEntryLines(GameTooltip, button.rank.entries)
+	local count = #button.rank.targets
+	if count > 1 then
+		GameTooltip_AddColoredLine(GameTooltip, L["Click to pin the first of %d places."]:format(count), GRAY_FONT_COLOR)
+	end
 	GameTooltip:Show()
 end
 
--- One place opens the map; several open a menu, as the recipe pane's Show Map does.
+-- Pins the first place, this zone's first; a menu would taint (docs/client-notes.md, "Gamepad").
 local function OnClick(button)
 	local targets = button.rank.targets
-	if #targets == 1 then
-		ns.ShowOnMap(targets[1])
-		return
-	end
-	MenuUtil.CreateContextMenu(button, function(_, rootDescription)
-		for _, target in ipairs(targets) do
-			rootDescription:CreateButton(target.label, function() ns.ShowOnMap(target) end)
-		end
-	end)
+	ns.SortTargets(targets)
+	ns.ShowOnMap(targets[1])
 end
 
 local function Update()

@@ -50,7 +50,7 @@ A recipe item links to the recipe it teaches by ID, from three places kept apart
 - `faction[recipeID]`: `"Alliance"`, `"Horde"` or `false`.
 - `spec[recipeID]`: `true` when the item the recipe makes needs a specialization, `false` when it does not.
 
-Whether a specialization is met depends on the character, so those recipes are read again each session. The list build reads every recipe of the profession, learned ones included; `spec[recipeID] == false` spares the read, so only a profession's first open on a game build reads them all.
+Whether a specialization is met depends on the character, so those recipes are read again each session. The unlearned-recipe build (`ns.GetUnlearnedRecipes`) reads every recipe of the profession, learned ones included; `spec[recipeID] == false` spares the read, so only a profession's first open on a game build reads them all.
 
 ## Sharing
 
@@ -76,7 +76,7 @@ The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core
 | Friends (2), the default | Also the shared layer, and what party, raid, guild and whispers bring | What Share My Finds sends |
 | Public (3) | Also what public chat brings | What Share My Finds sends |
 
-Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The first-run tip (`Heard.lua`) names the current level and points to the options page, which sets it.
+Everything is recorded at every level, tagged with the level it arrived at; the level decides what is shown and whether friends' finds are taken in. Sending is its own option, Share My Finds (`shareFinds`, on by default; owner, 2026-11-25: "the opt in for sharing is separate", then "On, can opt out"). A player who does not share offers revision 0, so no one asks for their finds. Schema 9 turned sending off for anyone who had chosen Self Found, which used to stop sending. The options page sets the level.
 
 ## Come across
 
@@ -90,7 +90,7 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 | The guild's profession view | Friends |
 | A linked profession the player opens | The level its link was seen at this session, else Public |
 
-A recipe with no known source is listed, with the unknown mark, once it has been come across within the chosen level. Recipes never come across stay hidden unless Unknown is ticked in the Sources filter.
+A recipe with no known source counts as come across once it has been seen within the chosen level (`recipeInfo.met`); the panel to come decides how those are listed.
 
 Seeing an item a recipe makes is not coming across the recipe: it says nothing about the recipe or where to learn it, and the player's own loot would count. Crafted items are ignored.
 
@@ -102,10 +102,10 @@ Each drop is one creature (or object) in one place: the item, the creature, the 
 
 A recipe's drop label comes from all its drop sightings, own and shared (`ns.DropScope`, `Sources.lua`):
 
-| Sightings | Label | Show Map |
+| Sightings | Label | Map pin |
 |---|---|---|
-| One creature | Drop | Pinned where it was killed; the Show Map list names the creature and its subzone |
-| 2 or more creatures, one zone or dungeon | Zone Drop: <place> | Opens the zone, no pin |
+| One creature | Drop | Pinned where it was killed; the pin's label names the creature and its subzone |
+| 2 or more creatures, one zone or dungeon | Zone Drop: <place> | No pin; the tooltip names the place |
 | 3 or more zones or dungeons | World Drop | Nothing to show; the tooltip lists the zones |
 | Anything else | Drop | Pins only fishing spots |
 
@@ -113,11 +113,11 @@ The tooltip ends with the evidence: "Seen N times from N creatures in N zones". 
 
 The thresholds are the owner's choice (2026-11-25): no source publishes one. Wowhead's observed behaviour labels a zone drop at 2 creatures; "World Drop" is the wording of another addon, another addon and the Warcraft wiki (research: the session folder's drop-scope-research.md and drop-locations-research.md). "World Drop" and "Drop" are Blizzard's strings (`TRANSMOG_SOURCE_4`, `BATTLE_PET_SOURCE_1`); "Zone Drop" and the evidence line are English only. The times seen add one per loot window on the player's own client; across layers the first layer's count is used, so friends' counts do not add up yet.
 
-Drop details from the Astra review (2026-11-25): a drop is placed by its own spot only, or by none, never by the creature's latest position elsewhere; positions of a fishing spot or a creature or object drop are merged as one pair, so two reports never combine into a spot nobody stood at; one loot window is one sighting per recipe item and source, however many slots hold it; a world drop's tooltip summarizes the creature zones while fishing and containers keep their own lines; a dungeon zone drop opens the map recorded inside that dungeon when a sighting has one.
+Drop details from the Astra review (2026-11-25): a drop is placed by its own spot only, or by none, never by the creature's latest position elsewhere; positions of a fishing spot or a creature or object drop are merged as one pair, so two reports never combine into a spot nobody stood at; one loot window is one sighting per recipe item and source, however many slots hold it; a world drop's tooltip summarizes the creature zones while fishing and containers keep their own lines; a dungeon zone drop is named by the dungeon.
 
-A source can be known in part. The tooltip shows "Unknown" in the place column for a source whose location is not known (a roll in a zone, a peer's report without a position), and Show Map lists only places with a position.
+A source can be known in part. The tooltip shows "Unknown" in the place column for a source whose location is not known (a roll in a zone, a peer's report without a position), and a pin needs a position.
 
-Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe, and the first-run dialog.
+Not measured on build 71037: the profession link format (`|Htrade:<GUID>:`), that `recipeInfo.learned` in a linked or guild view means the other player knows the recipe.
 
 ## Ranks
 
@@ -147,3 +147,4 @@ The mark shows when the open profession's cap has a source with a place; the oth
 | 8 | The two source modes become three levels (`sourceLevel`); an earlier Self Found choice is kept |
 | 9 | Sending becomes its own option (`shareFinds`), off for anyone at Self Found |
 | 10 | Trainer rank records are dropped, to be recorded again with the skill-step check |
+| 11 | The options of the rows once added to Blizzard's recipe list (`showUnlearned`, `showUnavailable`, `sourceFilter`) and the first-run tip flag (`levelTipSeen`) are removed |

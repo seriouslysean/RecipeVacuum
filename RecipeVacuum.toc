@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: Recipe Vacuum
-## Notes: Shows the recipes you don't know yet in the profession window, and where they come from.
+## Notes: Tracks the recipes you don't know yet, and where they come from.
 ## Category: Jig Boltgrip's Toolkit
 ## Author: Jig Boltgrip
 ## Version: @project-version@
@@ -26,9 +26,7 @@ Sharing.lua
 Settings.lua
 Record.lua
 Heard.lua
-Filter.lua
 Unlearned.lua
-RecipeList.lua
 RecipePanel.lua
 Ranks.lua
 

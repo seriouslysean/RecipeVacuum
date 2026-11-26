@@ -1,5 +1,4 @@
 local _, ns = ...
-local L = ns.L
 
 -- Recipes come across without a known source: chat links, nearby loot, shown professions (docs/data.md, "Come across").
 -- Only the recipe and its level are kept, never who or which channel.
@@ -99,21 +98,6 @@ local function ReadShownProfession()
 	end
 end
 
--- Shown once on the player's first own profession window: how far the vacuum listens and where to change it.
-local function ShowLevelTip()
-	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
-	if ns.db.levelTipSeen or not page or not Professions.InLocalCraftingMode() then
-		return
-	end
-	HelpTip:Show(page, {
-		text = L["Your Recipe Vacuum is humming! Recipes you come across land in this list. Right now it listens to %s. You can change that in Options."]
-			:format(ns.levelHeard[ns.db.sourceLevel]),
-		buttonStyle = HelpTip.ButtonStyle.Close,
-		targetPoint = HelpTip.Point.TopEdgeCenter,
-		onAcknowledgeCallback = function() ns.db.levelTipSeen = true end,
-	}, page.RecipeList.FilterDropdown)
-end
-
 local frame = CreateFrame("Frame")
 for event in pairs(CHAT_LEVELS) do
 	frame:RegisterEvent(event)
@@ -131,9 +115,6 @@ frame:SetScript("OnEvent", function(_, event, message, sender)
 	end
 	if event ~= "TRADE_SKILL_LIST_UPDATE" then
 		shownPending = true
-		if event == "TRADE_SKILL_SHOW" then
-			ShowLevelTip()
-		end
 	end
 	ReadShownProfession()
 end)
