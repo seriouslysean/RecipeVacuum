@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 65
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 66
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -18,7 +18,9 @@ do
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
-		"Working Build", "Reload the interface, switch the working log and read it. Working builds only.",
+		"Working Build", "Watch and read the working log. Working builds only.",
+		"Live Watch", "Switch", "Turns detailed lines on or off for every module.", "Working Log", "Show",
+		"Opens every module's working log in the copy window.", "Clear Working Log", "Clear", "Empties every module's working log.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
@@ -40,8 +42,8 @@ BINDING_HEADER_JIGBOLTGRIPTOOLKIT = lib.title
 -- false for search tags, as Blizzard does.
 function lib:GetCategory()
 	if not self.category then
+		-- No heading: the page's title already names the toolkit (docs/options.md, "Toolkit page").
 		self.category, self.layout = Settings.RegisterVerticalLayoutCategory(self.title)
-		self.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(ADDONS or "AddOns"))
 		-- Open in the AddOns list, so the modules show; Blizzard reads the flag securely (Blizzard_Category.lua:114-123).
 		self.category:SetExpanded(true)
 		Settings.RegisterAddOnCategory(self.category)
@@ -278,17 +280,33 @@ function lib:RegisterModule(addonName, class)
 	end
 	local title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 	local notes = C_AddOns.GetAddOnMetadata(addonName, "Notes")
-	local parent, parentLayout = self:GetCategory()
+	local parent = self:GetCategory()
 	local category, layout = Settings.RegisterVerticalLayoutSubcategory(parent, title)
 	local module = self.records[addonName] or { addon = addonName }
 	module.title, module.notes, module.category, module.layout = title, notes, category, layout
 	module.class = class or module.class
 	table.insert(self.modules, module)
-	-- The button is always there; OpenOptions decides at the press whether the gamepad interface is on.
-	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, CONTEXT_ACTION_LABEL_OPEN, function()
-		lib:OpenOptions(module)
-	end, notes, false))
+	-- Rows go in by title once every module has loaded, so the page reads like the AddOns list.
+	EventUtil.ContinueOnPlayerLogin(function() lib:AddModuleRows() end)
 	return module
+end
+
+-- One Open row per module, by title. The button is always there; OpenOptions decides at the press whether the
+-- gamepad interface is on.
+function lib:AddModuleRows()
+	local _, layout = self:GetCategory()
+	self.rowsAdded = self.rowsAdded or {}
+	local pending = {}
+	for _, module in ipairs(self.modules) do
+		if not self.rowsAdded[module] then table.insert(pending, module) end
+	end
+	table.sort(pending, function(a, b) return (a.title or a.addon):lower() < (b.title or b.addon):lower() end)
+	for _, module in ipairs(pending) do
+		self.rowsAdded[module] = true
+		layout:AddInitializer(CreateSettingsButtonInitializer(module.title, CONTEXT_ACTION_LABEL_OPEN, function()
+			lib:OpenOptions(module)
+		end, module.notes, false))
+	end
 end
 
 -- Selecting our category from addon code is blocked under the gamepad interface (docs/standards.md, "Gamepad UI");
@@ -956,16 +974,21 @@ function lib:BuildOptions(module, db, sections)
 	return settings
 end
 
--- Closing sections every module page shares: commands and links.
--- Working builds get buttons, since a gamepad has no keyboard. The toolkit's page holds only what is the kit's: reload, the
--- shared watch switch and the log viewer. A module's own development commands go on its own page.
+-- Working builds get buttons, since a gamepad has no keyboard. The toolkit's page holds only the kit's watch switch and
+-- log viewer, named with the verb on the button as Blizzard's rows are; no reload row, the game menu has one
+-- (docs/options.md, "Toolkit page"). A module's own development commands go on its own page.
 local function AddKitWorkingRows()
 	local _, layout = lib:GetCategory()
+	lib:AddModuleRows()
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
-		L["Reload the interface, switch the working log and read it. Working builds only."]))
-	layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
-	for _, row in ipairs({ { "/boltgrip watch", "watch" }, { "/boltgrip log", "log" }, { "/boltgrip log clear", "log", "clear" } }) do
-		layout:AddInitializer(CreateSettingsButtonInitializer(row[1], L["Run"], function() KitCommand(row[2], row[3]) end, row[1], false))
+		L["Watch and read the working log. Working builds only."]))
+	for _, row in ipairs({
+		{ L["Live Watch"], L["Switch"], L["Turns detailed lines on or off for every module."], "watch" },
+		{ L["Working Log"], L["Show"], L["Opens every module's working log in the copy window."], "log" },
+		{ L["Clear Working Log"], L["Clear"], L["Empties every module's working log."], "log", "clear" },
+	}) do
+		layout:AddInitializer(CreateSettingsButtonInitializer(row[1], row[2], function() KitCommand(row[4], row[5]) end,
+			row[3], false))
 	end
 end
 
