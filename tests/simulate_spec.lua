@@ -1178,7 +1178,8 @@ describe("simulation", function()
 			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
 			  GetOnlyShowMakeableRecipes = function() return false end, GetShowUnlearned = function() return true end,
 			  GetOnlyShowSkillUpRecipes = function() return false end, GetOnlyShowFirstCraftRecipes = function() return false end,
-			  GetRecipeSchematic = function() return nil end, GetTradeSkillLineForRecipe = function() return 164 end }
+			  GetRecipeSchematic = function() return nil end, GetTradeSkillLineForRecipe = function() return 164 end,
+			  IsTradeSkillLinked = function() return false end, IsTradeSkillGuild = function() return false end }
 			GetProfessions = function() return 1 end
 			skillRank = 1
 			GetProfessionInfo = function() return "Blacksmithing", 0, skillRank, 75, 0, 0, 164 end
@@ -1208,6 +1209,69 @@ describe("simulation", function()
 			for _ = 1, 5 do init() end
 			Flush()
 			assert(Builds() == 1, "several Init calls in one frame build the list once")
+		end)
+		-- The pool's waits (pool.settling): made while the professions window works, each frame cost about 7 ms where it costs 0.2 ms
+		-- at rest (Deck, 2026-11-27). Each case adds finds so the pool has frames to make, runs a bounded number of frames, then lets
+		-- the window go quiet.
+		local nextFind = 3000
+		local function MoreFinds()
+			for _ = 1, 100 do
+				nextFind = nextFind + 1
+				pns.db.found.recipes[nextFind] = { { kind = "trainer", count = 1, skill = 1 } }
+			end
+			for i = #traces, 1, -1 do traces[i] = nil end
+			pns.RequestPanel()
+		end
+		local function RunFrames(steps)
+			for _ = 1, steps do
+				if #queue == 0 then return end
+				table.remove(queue, 1)()
+			end
+		end
+		local function Waited(reason)
+			local text = table.concat(traces, "\n")
+			local _, waits = text:gsub("POOL waits: " .. reason, "")
+			return waits == 1 and not text:find("POOL rows made", 1, true)
+		end
+		local function Resumed()
+			local text = table.concat(traces, "\n")
+			return text:find("POOL resumes", 1, true) ~= nil and text:find("POOL ready", 1, true) ~= nil
+		end
+		-- Fails if the pool makes frames while a linked or guild profession is shown, or never makes them after.
+		it("the pool waits while a linked profession is shown, then resumes", function()
+			Flush()
+			C_TradeSkillUI.IsTradeSkillLinked = function() return true end
+			MoreFinds()
+			RunFrames(40)
+			local waited = Waited("a linked or guild profession is shown")
+			C_TradeSkillUI.IsTradeSkillLinked = function() return false end
+			Flush()
+			assert(waited and Resumed(), "the pool waits while a linked profession is shown, then resumes")
+		end)
+		-- Fails if the pool makes frames in the moment after the professions window opens or updates its list.
+		it("the pool waits a moment after the professions window opens", function()
+			Flush()
+			for _, frame in ipairs(made) do
+				local scripts = rawget(frame, "scripts")
+				if scripts and scripts.OnEvent then pcall(scripts.OnEvent, frame, "TRADE_SKILL_SHOW") end
+			end
+			MoreFinds()
+			RunFrames(40)
+			local waited = Waited("the professions window is loading")
+			clock = clock + 2
+			Flush()
+			assert(waited and Resumed(), "the pool waits a moment after the professions window opens")
+		end)
+		-- Fails if the pool makes frames while a shown profession's recipes are being walked.
+		it("the pool waits while a shown profession is being read", function()
+			Flush()
+			pns.shownStepAt = clock
+			MoreFinds()
+			RunFrames(40)
+			local waited = Waited("a shown profession is being read")
+			clock = clock + 2
+			Flush()
+			assert(waited and Resumed(), "the pool waits while a shown profession is being read")
 		end)
 		-- Fails if a heading says "Skill 76 to 150" where the game names the rank, or breaks where no rank spell is known.
 		it("a band heading is the rank spell's subtext, or the skill range without one", function()

@@ -240,6 +240,7 @@ local shownStalls, shownLastMissing = 0, nil
 -- loaded stays pending, and the next list update walks the list again. Notes are idempotent, so a repeat pass costs only reads.
 local function ReadShownStep(run, ids, at, started, learned, missing)
 	if run ~= shownRun then return end
+	ns.shownStepAt = GetTime() -- the frame pool waits while a walk runs (Panel.lua, pool.settling)
 	local stepStart = debugprofilestop()
 	local count = #ids
 	while at <= count do

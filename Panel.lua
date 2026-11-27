@@ -1509,6 +1509,22 @@ pool.templates = "Blizzard_ProfessionsTemplates" -- holds both templates; the wi
 pool.rowTarget, pool.headingTarget = 0, 0
 pool.scan = nil -- { ids, at, rows = { [line] = n }, bands = { [line] = { [band] = true } }, caps } while a count is running
 pool.running, pool.started, pool.dirty, pool.made, pool.ms = false, false, false, 0, 0
+-- Quiet time the pool waits after the professions window's own work (its open, a list update, a shown profession's walk), when a
+-- frame costs far more to make (docs/client-notes.md, "Frame pool").
+pool.settleSeconds = 1
+pool.windowEventAt = nil -- GetTime() of the window's last open or list update
+pool.waitReason = nil -- why the pool is waiting, traced once a wait
+
+-- Why the pool should wait now, or nil when the window is quiet.
+function pool.settling()
+	local now = GetTime()
+	if pool.windowEventAt and now - pool.windowEventAt < pool.settleSeconds then return "the professions window is loading" end
+	if ns.shownStepAt and now - ns.shownStepAt < pool.settleSeconds then return "a shown profession is being read" end
+	if ProfessionsFrame and ProfessionsFrame:IsShown()
+		and (C_TradeSkillUI.IsTradeSkillLinked() or C_TradeSkillUI.IsTradeSkillGuild()) then
+		return "a linked or guild profession is shown"
+	end
+end
 
 function pool.ids()
 	local ids, seen = {}, {}
@@ -1580,6 +1596,24 @@ function pool.step()
 		ns.toolkit:Trace(ns.module, "POOL paused, in combat; resumes when it ends")
 		return -- PLAYER_REGEN_ENABLED starts it again
 	end
+	local reason = pool.settling()
+	if reason then
+		if pool.waitReason ~= reason then
+			pool.waitReason = reason
+			ns.toolkit:Trace(ns.module, "POOL waits: %s", reason)
+		end
+		pool.running = true
+		C_Timer.After(pool.settleSeconds, function() pool.step() end)
+		return
+	end
+	if pool.waitReason then
+		pool.waitReason = nil
+		ns.toolkit:Trace(ns.module, "POOL resumes")
+	end
+	local gc -- Lua memory around the slice, working builds only (docs/client-notes.md, "Frame pool")
+	--@debug@
+	local gcBefore = collectgarbage("count")
+	--@end-debug@
 	local started = debugprofilestop()
 	-- The details' frames come first: they are what the first recipe picked needs.
 	local detailMade = 0
@@ -1587,7 +1621,11 @@ function pool.step()
 		detailMade = detailMade + 1
 	end
 	if detailMade > 0 then
-		ns.toolkit:Trace(ns.module, "POOL details' frames made %d in %.1f ms (%d reagent rows)", detailMade, debugprofilestop() - started, #reagentRows)
+		local ms = debugprofilestop() - started
+		--@debug@
+		gc = (", Lua memory %.0f to %.0f KB"):format(gcBefore, collectgarbage("count"))
+		--@end-debug@
+		ns.toolkit:Trace(ns.module, "POOL details' frames made %d in %.1f ms (%d reagent rows)%s", detailMade, ms, #reagentRows, gc or "")
 		pool.kick()
 		return
 	end
@@ -1639,7 +1677,10 @@ function pool.step()
 	end
 	local ms = debugprofilestop() - started
 	pool.made, pool.ms = pool.made + made, pool.ms + ms
-	ns.toolkit:Trace(ns.module, "POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms)
+	--@debug@
+	gc = (", Lua memory %.0f to %.0f KB"):format(gcBefore, collectgarbage("count"))
+	--@end-debug@
+	ns.toolkit:Trace(ns.module, "POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms%s", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms, gc or "")
 	pool.kick()
 end
 --@debug@
@@ -1969,7 +2010,11 @@ ns.toolkit:EventFrame(ns.module, {
 	end,
 	NEW_RECIPE_LEARNED = RedrawFor,
 	SKILL_LINES_CHANGED = RedrawFor,
-	TRADE_SKILL_LIST_UPDATE = RedrawFor,
+	TRADE_SKILL_SHOW = function() pool.windowEventAt = GetTime() end,
+	TRADE_SKILL_LIST_UPDATE = function()
+		pool.windowEventAt = GetTime()
+		RedrawFor()
+	end,
 	TRADE_SKILL_DATA_SOURCE_CHANGED = RedrawFor,
 })
 
