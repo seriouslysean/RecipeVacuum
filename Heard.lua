@@ -232,6 +232,9 @@ end
 local shownPending
 local shownRun = 0 -- a newer profession shown ends the walk of an older one
 local SHOWN_STEP_MS = 2
+-- Full passes of one shown profession whose missing count did not shrink; at ns.MAX_ITEM_ATTEMPTS the walk ends, as an item that
+-- never answers does, since TRADE_SKILL_LIST_UPDATE repeats every few seconds (docs/client-notes.md, "Panel").
+local shownStalls, shownLastMissing = 0, nil
 
 -- The walk is over a snapshot of the list, so it is only done once a pass found info for every id: a recipe whose info has not
 -- loaded stays pending, and the next list update walks the list again. Notes are idempotent, so a repeat pass costs only reads.
@@ -243,7 +246,8 @@ local function ReadShownStep(run, ids, at, started, learned, missing)
 		-- The window closed or switched, or its data is reloading: shownPending is still set, so the next list update walks again.
 		if not C_TradeSkillUI.IsTradeSkillReady() then return end
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(ids[at])
-		if not recipeInfo then
+		-- A table without its name is the not-loaded case, as in Unlearned.lua: not an answer.
+		if not (recipeInfo and recipeInfo.name) then
 			missing = missing + 1
 		elseif recipeInfo.learned then
 			learned = learned + 1
@@ -259,9 +263,21 @@ local function ReadShownStep(run, ids, at, started, learned, missing)
 	if at <= count then
 		RunNextFrame(function() ReadShownStep(run, ids, at, started, learned, missing) end)
 	else
-		if missing == 0 then shownPending = nil end
+		-- Ids the list gained after the snapshot are not read yet either.
+		missing = missing + math.max(0, #C_TradeSkillUI.GetAllRecipeIDs() - count)
+		local gaveUp = false
+		if missing == 0 then
+			shownPending = nil
+		else
+			shownStalls = (shownLastMissing and missing >= shownLastMissing) and shownStalls + 1 or 0
+			shownLastMissing = missing
+			if shownStalls >= ns.MAX_ITEM_ATTEMPTS then
+				shownPending, gaveUp = nil, true
+			end
+		end
 		ns.toolkit:Trace(ns.module, "SEEN shown profession read: %d recipes, %d learned, %d without info%s, %.1f ms since it began",
-			count, learned, missing, missing > 0 and " (read again on the next list update)" or "", debugprofilestop() - started)
+			count, learned, missing, gaveUp and " (given up: no more answers over several passes)" or missing > 0 and " (read again on the next list update)" or "",
+			debugprofilestop() - started)
 	end
 end
 
@@ -405,12 +421,12 @@ local handlers = {
 	end,
 	BAG_CLOSED = function() QueueBagSync() end,
 	TRADE_SKILL_SHOW = function()
-		shownPending = true
+		shownPending, shownStalls, shownLastMissing = true, 0, nil
 		shownRun = shownRun + 1
 		ReadShownProfession()
 	end,
 	TRADE_SKILL_DATA_SOURCE_CHANGED = function()
-		shownPending = true
+		shownPending, shownStalls, shownLastMissing = true, 0, nil
 		shownRun = shownRun + 1
 		ReadShownProfession()
 	end,

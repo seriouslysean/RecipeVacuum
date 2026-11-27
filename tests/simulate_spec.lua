@@ -904,7 +904,7 @@ describe("simulation", function()
 			C_TradeSkillUI = { IsTradeSkillReady = function() return true end, IsTradeSkillLinked = function() return true end,
 			  IsTradeSkillGuild = function() return false end, IsTradeSkillGuildMember = function() return false end,
 			  GetAllRecipeIDs = function() return ids end, GetTradeSkillLineForRecipe = function() return 202 end,
-			  GetRecipeInfo = function(id) return loadedInfo[id] and { recipeID = id, learned = true } or nil end }
+			  GetRecipeInfo = function(id) return loadedInfo[id] and { recipeID = id, name = "R" .. id, learned = true } or nil end }
 			local heard = frames[#frames]
 			local ok, err = pcall(function()
 				heard.script(heard, "TRADE_SKILL_SHOW")
@@ -913,6 +913,73 @@ describe("simulation", function()
 				ids = { 8001, 8002, 8003 }
 				heard.script(heard, "TRADE_SKILL_LIST_UPDATE")
 				assert(h.db.met.recipes[8002] and h.db.met.recipes[8003], "the list update walks it again")
+			end)
+			C_TradeSkillUI, RunNextFrame = priorClient, nextFrame
+			assert(ok, err)
+		end)
+		-- Fails if a recipe table with no name counts as answered: the walk ended and the recipe was never met at Self Found.
+		it("a linked profession's recipe info without a name is not an answer", function()
+			local priorClient, nextFrame = C_TradeSkillUI, RunNextFrame
+			local named = false
+			RunNextFrame = function(fn) fn() end
+			C_TradeSkillUI = { IsTradeSkillReady = function() return true end, IsTradeSkillLinked = function() return true end,
+			  IsTradeSkillGuild = function() return false end, IsTradeSkillGuildMember = function() return false end,
+			  GetAllRecipeIDs = function() return { 8101 } end, GetTradeSkillLineForRecipe = function() return 202 end,
+			  GetRecipeInfo = function(id) return { recipeID = id, name = named and "R" or nil, learned = true } end }
+			local heard = frames[#frames]
+			local ok, err = pcall(function()
+				heard.script(heard, "TRADE_SKILL_SHOW")
+				assert(not h.db.met.recipes[8101], "not met while its name has not loaded")
+				named = true
+				heard.script(heard, "TRADE_SKILL_LIST_UPDATE")
+				assert(h.db.met.recipes[8101], "walked again, since the nameless table was not an answer")
+			end)
+			C_TradeSkillUI, RunNextFrame = priorClient, nextFrame
+			assert(ok, err)
+		end)
+		-- Fails if an id the list gained after the walk's snapshot is dropped once every snapshot id answered.
+		it("a linked profession's id gained during the walk is read on the next list update", function()
+			local priorClient, nextFrame = C_TradeSkillUI, RunNextFrame
+			local ids = { 8201 }
+			RunNextFrame = function(fn) fn() end
+			C_TradeSkillUI = { IsTradeSkillReady = function() return true end, IsTradeSkillLinked = function() return true end,
+			  IsTradeSkillGuild = function() return false end, IsTradeSkillGuildMember = function() return false end,
+			  GetAllRecipeIDs = function() return ids end, GetTradeSkillLineForRecipe = function() return 202 end,
+			  GetRecipeInfo = function(id)
+				  if id == 8201 then ids = { 8201, 8202 } end -- the list grows while the walk runs
+				  return { recipeID = id, name = "R" .. id, learned = true }
+			  end }
+			local heard = frames[#frames]
+			local ok, err = pcall(function()
+				heard.script(heard, "TRADE_SKILL_SHOW")
+				assert(not h.db.met.recipes[8202], "not in the snapshot")
+				heard.script(heard, "TRADE_SKILL_LIST_UPDATE")
+				assert(h.db.met.recipes[8202], "read on the next list update")
+			end)
+			C_TradeSkillUI, RunNextFrame = priorClient, nextFrame
+			assert(ok, err)
+		end)
+		-- Fails if a recipe that never answers keeps every list update walking the whole profession again, forever.
+		it("a linked profession's walk ends after passes that find no more answers", function()
+			local priorClient, nextFrame = C_TradeSkillUI, RunNextFrame
+			local reads = 0
+			RunNextFrame = function(fn) fn() end
+			C_TradeSkillUI = { IsTradeSkillReady = function() return true end, IsTradeSkillLinked = function() return true end,
+			  IsTradeSkillGuild = function() return false end, IsTradeSkillGuildMember = function() return false end,
+			  GetAllRecipeIDs = function() return { 8301, 8302 } end, GetTradeSkillLineForRecipe = function() return 202 end,
+			  GetRecipeInfo = function(id)
+				  reads = reads + 1
+				  if id == 8301 then return { recipeID = id, name = "R", learned = true } end
+			  end }
+			local heard = frames[#frames]
+			local ok, err = pcall(function()
+				heard.script(heard, "TRADE_SKILL_SHOW")
+				for _ = 1, 20 do heard.script(heard, "TRADE_SKILL_LIST_UPDATE") end
+				assert(h.db.met.recipes[8301], "what answered is kept")
+				local settled = reads
+				for _ = 1, 5 do heard.script(heard, "TRADE_SKILL_LIST_UPDATE") end
+				assert(reads == settled, "no walk after the cap: " .. (reads - settled) .. " more reads")
+				assert(settled <= 10, "a few passes only: " .. settled .. " reads")
 			end)
 			C_TradeSkillUI, RunNextFrame = priorClient, nextFrame
 			assert(ok, err)
@@ -1036,7 +1103,7 @@ describe("simulation", function()
 			C_TradeSkillUI = { IsTradeSkillReady = function() return true end,
 			  GetAllRecipeIDs = function() return { 101, 102, 103, 104, 105, 106, 107 } end,
 			  GetRecipeInfo = function(id) return { recipeID = id, name = recipes[id], categoryID = 1, learned = false, maxTrivialLevel = id, icon = 1,
-				  relativeDifficulty = clientDifficulty[id], canSkillUp = clientDifficulty[id] ~= nil and not clientCapped[id] } end,
+				  relativeDifficulty = clientDifficulty[id] or Enum.TradeskillRelativeDifficulty.Trivial, canSkillUp = clientDifficulty[id] ~= nil and not clientCapped[id] } end,
 			  IsRecipeInSkillLine = function(id, line) return (inLine[id] or line) == line end,
 			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
 			  GetOnlyShowMakeableRecipes = function() return false end, GetShowUnlearned = function() return true end,
@@ -1217,7 +1284,7 @@ describe("simulation", function()
 				end
 			end
 			local ok, err = pcall(function()
-				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Optimal, "read at skill 44")
+				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Optimal, "read at skill 44 got " .. tostring(Difficulty()))
 				clientDifficulty[101] = Enum.TradeskillRelativeDifficulty.Trivial
 				skillRank = 60
 				C_TradeSkillUI.GetRecipeInfo = function(id) if id == 101 then return nil end return answer(id) end
@@ -1230,6 +1297,19 @@ describe("simulation", function()
 				Difficulty()
 				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
 				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Trivial, "the difficulty is read again once the recipe answers")
+				-- Fails if a table with no name or difficulty (the not-loaded case) replaces a good difficulty and marks the change read.
+				clientDifficulty[101] = Enum.TradeskillRelativeDifficulty.Optimal
+				skillRank = 70
+				C_TradeSkillUI.GetRecipeInfo = function(id) if id == 101 then return { recipeID = id } end return answer(id) end
+				Fire()
+				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
+				Difficulty()
+				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
+				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Trivial, "a nameless answer keeps the good difficulty")
+				C_TradeSkillUI.GetRecipeInfo = answer
+				Difficulty()
+				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
+				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Optimal, "read again once it answers")
 			end)
 			C_TradeSkillUI.GetRecipeInfo = answer
 			clientDifficulty[101] = rawDifficulty

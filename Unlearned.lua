@@ -182,7 +182,8 @@ local function RefreshSkill(professionID, read, job)
 	for _, recipeInfo in ipairs(read.candidates) do
 		Yield(job)
 		local fresh = C_TradeSkillUI.GetRecipeInfo(recipeInfo.recipeID)
-		if fresh then
+		-- A table without its name or difficulty is the not-loaded case (see ReadClient): it must not blank a good difficulty.
+		if fresh and fresh.name and fresh.relativeDifficulty ~= nil then
 			recipeInfo.relativeDifficulty, recipeInfo.canSkillUp = fresh.relativeDifficulty, fresh.canSkillUp
 		else
 			answered = false
