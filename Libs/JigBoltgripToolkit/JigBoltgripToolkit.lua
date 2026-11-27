@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 68
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 69
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -18,8 +18,8 @@ do
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
-		"Working Build", "Watch and read the working log. Working builds only.",
-		"Live Watch", "Switch", "Turns detailed lines on or off for every module.", "Working Log", "Show",
+		"Working Build", "Read the working log. Working builds only.",
+		"Working Log", "Show",
 		"Opens every module's working log in the copy window.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
@@ -561,10 +561,8 @@ function lib:StartLog(module, saved, handlers)
 		self.logWriter:RegisterEvent("PLAYER_LOGOUT")
 		self.logWriter:SetScript("OnEvent", WriteTimings)
 	end
-	-- A working build logs from the start; /boltgrip watch off is remembered, and a paused log stays as it is.
-	if saved.watch == false then
-		return
-	end
+	-- A working build always logs: there is no switch to turn it off (docs/standards.md, "Working build").
+	saved.watch = nil
 	-- Session header: one line per load, so each log reads on its own.
 	local version, build = GetBuildInfo()
 	self:Log(module, "")
@@ -752,33 +750,15 @@ end
 -- One switch and one viewer for every module that started a log. Release builds start none, so these
 -- do nothing there and are not listed.
 local WORKING_BUILD_ROWS = {
-	"/boltgrip watch on|off - Pause or resume logging what each addon sees (on by default)",
 	"/boltgrip log [all|clear] - Show every addon's log; \"all\" shows everything kept, \"clear\" empties them",
 }
 
 local function KitCommand(name, word)
-	if #lib.logOrder == 0 or (name ~= "watch" and name ~= "log") then
+	if #lib.logOrder == 0 or name ~= "log" then
 		return false
 	end
 	word = (word or ""):lower()
-	if name == "watch" then
-		-- Anything but on, off or nothing is a typo: show the usage rather than guess.
-		if word ~= "on" and word ~= "off" and word ~= "" then
-			lib:Print(WORKING_BUILD_ROWS[1])
-			return true
-		end
-		local anyOn, titles = false, {}
-		for _, addon in ipairs(lib.logOrder) do
-			anyOn = anyOn or lib.logs[addon].watching ~= nil
-		end
-		local on = word == "on" or (word == "" and not anyOn)
-		for _, addon in ipairs(lib.logOrder) do
-			local module = lib.logs[addon].module
-			lib:SetWatch(module, on, true)
-			titles[#titles + 1] = module.title
-		end
-		lib:Print(("Watch %s: %s."):format(on and "enabled" or "disabled", table.concat(titles, ", ")))
-	elseif word == "clear" then
+	if word == "clear" then
 		for _, addon in ipairs(lib.logOrder) do
 			local saved = lib.logs[addon].saved
 			saved.devLog, saved.devLogRun = {}, nil
@@ -790,7 +770,7 @@ local function KitCommand(name, word)
 		end
 		lib:ShowAllLogs(word == "all")
 	else
-		lib:Print(WORKING_BUILD_ROWS[2])
+		lib:Print(WORKING_BUILD_ROWS[1])
 	end
 	return true
 end
@@ -993,9 +973,8 @@ local function AddKitWorkingRows()
 	local _, layout = lib:GetCategory()
 	lib:AddModuleRows()
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
-		L["Watch and read the working log. Working builds only."]))
+		L["Read the working log. Working builds only."]))
 	for _, row in ipairs({
-		{ L["Live Watch"], L["Switch"], L["Turns detailed lines on or off for every module."], "watch" },
 		{ L["Working Log"], L["Show"], L["Opens every module's working log in the copy window."], "log" },
 	}) do
 		layout:AddInitializer(CreateSettingsButtonInitializer(row[1], row[2], function() KitCommand(row[4], row[5]) end,

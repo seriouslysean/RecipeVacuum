@@ -409,49 +409,26 @@ describe("load order", function()
 			and saved.devLog[1] == "line " .. (trim + 2) and saved.devLog[cap] == "line " .. (cap + trim + 1),
 			"the log keeps the newest lines, in order, per module, never more than its cap")
 	end)
-	-- Fails if /boltgrip watch misses a module that started a log, or writes one module's lines to another.
+	-- Fails if a module that started a log is not logging, or its events don't reach it.
 	local otherSaved, seen
-	it("/boltgrip watch switches every module's own watch", function()
+	it("every module that starts a log is logging, and gets its own events", function()
 		otherSaved, seen = {}, {}
 		local other = { addon = "Other", title = "Other" }
 		toolkit:StartLog(other, otherSaved, { LOOT_READY = function(slot) seen[#seen + 1] = slot end })
-		SlashCmdList.BOLTGRIP("watch on")
 		listener = toolkit.watchFrame
-		assert(saved.watch == true and otherSaved.watch == true
-			and otherSaved.devLog[#otherSaved.devLog]:find("watch on", 1, true) ~= nil and #saved.devLog <= toolkit.LOG_LINES + toolkit.LOG_TRIM,
-			"/boltgrip watch switches every module's own watch")
-	end)
-	-- Fails if the shared listener drops a module's event, or passes it while the watch is off.
-	it("the shared listener passes events only while watching", function()
 		listener.script(listener, "LOOT_READY", 7)
-		SlashCmdList.BOLTGRIP("watch off")
-		listener.script(listener, "LOOT_READY", 8)
-		assert(#seen == 1 and seen[1] == 7, "the shared listener passes events only while watching")
+		assert(toolkit:IsLogging(other) and seen[1] == 7 and #saved.devLog <= toolkit.LOG_LINES + toolkit.LOG_TRIM,
+			"every module that starts a log is logging, and gets its own events")
 	end)
-	-- Fails if a working build's log is not on from the start, or a paused log still traces.
-	it("a working build logs from the start, and a paused log takes no trace or shared context", function()
-		freshSaved = {}
+	-- Fails if a working build can be switched off, or a log an older build left off stays off.
+	it("a working build always logs, even after an older build turned it off", function()
+		freshSaved = { watch = false }
 		fresh = { addon = "Fresh", title = "Fresh" }
 		toolkit:StartLog(fresh, freshSaved)
-		toolkit:Trace(fresh, "offer sent")
-		local traced = freshSaved.devLog[#freshSaved.devLog]:find("offer sent", 1, true) ~= nil
 		SlashCmdList.BOLTGRIP("watch off")
-		count = #freshSaved.devLog
-		toolkit:Trace(fresh, "not this")
-		toolkit:LogAll("nor this")
-		assert(traced and #freshSaved.devLog == count and freshSaved.watch == false and not toolkit:IsLogging(fresh),
-			"a working build logs from the start, and a paused log takes no trace or shared context")
-	end)
-	-- Fails if a load with the watch left off still writes its session lines.
-	it("a paused log stays as it is across a reload", function()
-		toolkit:StartLog(fresh, freshSaved)
-		assert(#freshSaved.devLog == count, "a paused log stays as it is across a reload")
-	end)
-	-- Fails if a mistyped watch word is read as off.
-	it("a mistyped watch word changes nothing", function()
-		SlashCmdList.BOLTGRIP("watch on")
-		SlashCmdList.BOLTGRIP("watch onn")
-		assert(freshSaved.watch == true, "a mistyped watch word changes nothing")
+		toolkit:Trace(fresh, "offer sent")
+		assert(toolkit:IsLogging(fresh) and freshSaved.devLog[#freshSaved.devLog]:find("offer sent", 1, true) ~= nil,
+			"a working build always logs, even after an older build turned it off")
 	end)
 
 	-- Fails if the library holds a packager token, even in a comment: the packager turns "--@debug@" into the
