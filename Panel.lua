@@ -43,6 +43,12 @@ local HEADING_TEXT_LEFT = 8
 local COUNT_GAP = 4
 -- Blizzard_ProfessionsRecipeList.xml:140-145,167-172: a row's SkillUps slot (26 x 15, 9 left of the row) and the
 -- label's 4 px gap after it. The skill number takes that slot, right-aligned so the numbers line up.
+-- Blizzard_ProfessionsRecipeList.lua, SetRecipeInfo: the arrow's atlas by the skill-up's difficulty.
+local SKILL_UP_ATLAS = {
+	[Enum.TradeskillRelativeDifficulty.Optimal] = "Professions-Icon-Skill-High",
+	[Enum.TradeskillRelativeDifficulty.Medium] = "Professions-Icon-Skill-Medium",
+	[Enum.TradeskillRelativeDifficulty.Easy] = "Professions-Icon-Skill-Low",
+}
 local SKILL_WIDTH = 26
 local SKILL_HEIGHT = 15
 local SKILL_X = -9
@@ -508,10 +514,27 @@ local function ShowRow(row, recipeInfo)
 		row.Count:SetShown(count > 0)
 		if count > 0 then row.Count:SetFormattedText(" [%d] ", count) end
 	end
-	row.Skill:SetText(ns.SkillOf(recipeInfo))
-	-- The number shows the skill-up the recipe would give once learned; a recipe too high for the character stays dim like its name.
-	local skillColor = row.color ~= DISABLED_FONT_COLOR and ns.SkillUpColor(recipeInfo.recipeID, professionInfo and professionInfo.skillLevel or 0)
-	row.Skill:SetTextColor((skillColor or row.color):GetRGB())
+	-- Blizzard's skill-up arrow for a recipe the character can learn now and would skill up on (Blizzard_ProfessionsRecipeList.lua,
+	-- SetRecipeInfo: Optimal high, Medium medium, Easy low, Trivial none, and none once the skill is at its rank's cap, where the client
+	-- reports canSkillUp false). Until then the dim required-skill number stands, so the arrow adds to the list and never replaces it with less.
+	local arrow
+	if row.color ~= DISABLED_FONT_COLOR then
+		local skill, cap = professionInfo and professionInfo.skillLevel or 0, professionInfo and professionInfo.maxSkillLevel or 0
+		if not (cap > 0 and skill >= cap) then
+			arrow = SKILL_UP_ATLAS[ns.SkillUpDifficulty(recipeInfo.recipeID, skill)]
+		end
+	end
+	if row.shownArrow ~= (arrow or false) then
+		row.shownArrow = arrow or false
+		row.SkillUps:SetShown(arrow ~= nil)
+		if arrow then
+			row.SkillUps.Icon:SetAtlas(arrow, TextureKitConstants.UseAtlasSize)
+			row.SkillUps.Text:Hide()
+		end
+		ns.toolkit:Trace(ns.module, "UI row %d skill-up %s", recipeInfo.recipeID, arrow or "none, the number shows")
+	end
+	row.Skill:SetText(arrow and "" or ns.SkillOf(recipeInfo))
+	row.Skill:SetTextColor(row.color:GetRGB())
 	Lap("skill")
 	local markCount = ns.GetMarks(recipeInfo, row.markNames)
 	row.markCount = markCount
@@ -618,7 +641,7 @@ local function Finish()
 	ns.toolkit:Trace(ns.module, "UI build parts, ms (worstStep is the longest frame): %s", table.concat(parts, ", "))
 	--@end-debug@
 	--@debug@
-	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected and selected.recipeID) end
+	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected and selected.recipeID, items) end
 	--@end-debug@
 	--@debug@
 	ns.PerfMs("panel build", buildMs)

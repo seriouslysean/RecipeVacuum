@@ -47,10 +47,10 @@ local DifficultyColors = {
 	[Enum.TradeskillRelativeDifficulty.Trivial] = TRIVIAL_DIFFICULTY_COLOR,
 }
 
--- The color of the skill-up a recipe would give at this skill, or nil where the seed has no thresholds. The client gives a relative
--- difficulty only for learned recipes, so it is worked out from the seeded yellow (Low) and grey (High) points: yellow from Low, green
--- from their midpoint, grey from High (docs/data.md, "Skill-up colors"). Two table lookups, so it is cheap per row.
-function ns.SkillUpColor(recipeID, skill)
+-- The difficulty of the skill-up a recipe would give at this skill, or nil where the seed has no thresholds. The seed's yellow (Low)
+-- and grey (High) points give it: yellow from Low, green from their midpoint, grey from High (docs/data.md, "Skill-up colors").
+-- Two table lookups, so it is cheap per row.
+function ns.SkillUpDifficulty(recipeID, skill)
 	local seed = ns.seed
 	local high = seed and seed.trivialHigh and seed.trivialHigh[recipeID]
 	local low = high and seed.trivialLow[recipeID]
@@ -59,13 +59,19 @@ function ns.SkillUpColor(recipeID, skill)
 	end
 	local difficulty = Enum.TradeskillRelativeDifficulty
 	if skill >= high then
-		return DifficultyColors[difficulty.Trivial]
+		return difficulty.Trivial
 	elseif skill >= math.floor((low + high) / 2) then
-		return DifficultyColors[difficulty.Easy]
+		return difficulty.Easy
 	elseif skill >= low then
-		return DifficultyColors[difficulty.Medium]
+		return difficulty.Medium
 	end
-	return DifficultyColors[difficulty.Optimal]
+	return difficulty.Optimal
+end
+
+-- Its color, or nil where the seed has no thresholds.
+function ns.SkillUpColor(recipeID, skill)
+	local difficulty = ns.SkillUpDifficulty(recipeID, skill)
+	return difficulty and DifficultyColors[difficulty]
 end
 
 local function SortRecipes(left, right)

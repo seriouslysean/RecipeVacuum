@@ -195,7 +195,8 @@ handlers.GOSSIP_SHOW = function()
 		Describe(UnitGUID("npc")), C_GossipInfo.GetNumAvailableQuests(),
 		#options > 0 and table.concat(options, "; ") or "none", Where()))
 end
--- Services can arrive after the window opens and its filter hides some, so list them later with every filter on, then restore the player's filter.
+-- Services can arrive after the window opens and its filter hides some, so count them later with every filter on, then restore the player's filter. The
+-- per-service tooltip listing is gone: it ran twelve tooltips in one frame, and the recorder's own TRAINER trace says what each scan read.
 local TRAINER_LIST_DELAY = 0.5
 handlers.TRAINER_SHOW = function()
 	Show(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
@@ -203,29 +204,6 @@ handlers.TRAINER_SHOW = function()
 	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function() ns.WithAllTrainerServices(function(shown)
 		Show(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
 			GetNumTrainerServices(), Describe(shown.available), Describe(shown.unavailable), Describe(shown.used)))
-		-- Recipes have a category and ranks none, which is how the recorder tells them apart; skipped ones are named.
-		local recipes, skipped = 0, {}
-		for index = 1, GetNumTrainerServices() do
-			local tooltip = C_TooltipInfo.GetTrainerService(index)
-			local name, _, _, _, _, category = GetTrainerServiceInfo(index)
-			if tooltip and tooltip.id and C_TradeSkillUI.GetTradeSkillLineForRecipe(tooltip.id) then
-				if category and category ~= "" then
-					recipes = recipes + 1
-				else
-					table.insert(skipped, Describe(name))
-				end
-			end
-			Append(("  service %d %s | spell %s | profession line %s"):format(index, DescribeAll(GetTrainerServiceInfo(index)),
-				Describe(tooltip and tooltip.id),
-				tooltip and tooltip.id and DescribeAll(C_TradeSkillUI.GetTradeSkillLineForRecipe(tooltip.id)) or "nil")
-				-- Does the game know the spell as a recipe? Ranks ("Journeyman Fishing") do not count.
-				.. " | recipe info " .. Describe(tooltip and tooltip.id and C_TradeSkillUI.GetRecipeInfo(tooltip.id) ~= nil)
-				.. " | step " .. Describe(GetTrainerServiceStepIndex()))
-		end
-		if #skipped > 0 then
-			Show("  skipped as ranks (no category): " .. table.concat(skipped, "; "))
-		end
-		WatchFound(recipes)
 	end) end))
 end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
@@ -898,84 +876,71 @@ end, quiet = true })
 -- The same record, taken by itself whenever the panel draws a different view: another profession, recipe or build (owner,
 -- 2026-11-26: the layout is part of the working build's logging, not a step for the player). Half a second after the
 -- details draw, so the frames have settled; never in combat.
--- What the client itself says about a recipe's skill-up, for learned and unlearned recipes alike: whether the panel's colors can come
--- from the game instead of the seed (owner, 2026-11-26: "you shouldn't need static data"). Once per recipe, and once per profession a
--- tally over every recipe, split by learned; logged by selecting rows, since typing on the Deck is not an option.
-local difficultySeen, difficultyTallied = {}, {}
-local TALLY_SLICE_MS = 2 -- a tally slice stays well under the 5 ms frame bar
-local function TallyStep(professionID, ids, index, tally)
+-- Does the client give a real skill-up difficulty for recipes the character has not learned, or always the same value (owner, 2026-11-26:
+-- "you shouldn't need static data")? For each recipe the panel lists, once per profession, the client's relativeDifficulty, maxTrivialLevel,
+-- canSkillUp and numSkillUps beside what the seed gives (ns.SkillUpDifficulty, trivialHigh), then a histogram of the client's values and the
+-- mismatch counts. Every recipe sitting at one value proves nothing, so read it at several skill levels. Done in slices, since a list is hundreds.
+local TALLY_SLICE_MS = 2 -- a slice stays well under the 5 ms frame bar
+local difficultyDone = {} -- [professionID] = skill level it was logged at
+local function DifficultyStep(job)
 	local started = debugprofilestop()
-	while index <= #ids and debugprofilestop() - started < TALLY_SLICE_MS do
-		local id = ids[index]
-		local info = C_TradeSkillUI.GetRecipeInfo(id)
-		if not info then
-			tally.missing = tally.missing + 1
-		-- Only the open skill line's recipes: the call lists every expansion's, which the panel never shows (docs/data.md, "Show rule").
-		elseif C_TradeSkillUI.IsRecipeInSkillLine(id, professionID) then
-			local t = info.learned and tally.learned or tally.unlearned
-			t.n = t.n + 1
-			-- Optimal is 0, so presence is the test, not truth.
-			if info.relativeDifficulty ~= nil then t.difficulty = t.difficulty + 1 end
-			if (info.maxTrivialLevel or 0) > 0 then t.trivial = t.trivial + 1 end
-			if (info.numSkillUps or 0) > 0 then t.skillUps = t.skillUps + 1 end
+	while job.index <= #job.items and debugprofilestop() - started < TALLY_SLICE_MS do
+		local recipeInfo = job.items[job.index].recipe
+		job.index = job.index + 1
+		local id = recipeInfo and recipeInfo.recipeID
+		local info = id and C_TradeSkillUI.GetRecipeInfo(id)
+		if info then
+			local seed = ns.seed
+			local high = seed and seed.trivialHigh and seed.trivialHigh[id]
+			local expected = ns.SkillUpDifficulty(id, job.skill)
+			job.count = job.count + 1
+			job.histogram[tostring(info.relativeDifficulty)] = (job.histogram[tostring(info.relativeDifficulty)] or 0) + 1
+			if expected ~= nil and expected ~= info.relativeDifficulty then job.colorMismatch = job.colorMismatch + 1 end
+			if high ~= nil and high ~= info.maxTrivialLevel then job.trivialMismatch = job.trivialMismatch + 1 end
+			if info.canSkillUp then job.canSkillUp = job.canSkillUp + 1 end
+			if (info.numSkillUps or 0) > 0 then job.skillUps = job.skillUps + 1 end
+			ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d %s at skill %d: client relativeDifficulty %s maxTrivialLevel %s canSkillUp %s numSkillUps %s; seed difficulty %s high %s",
+				id, tostring(info.name), job.skill, tostring(info.relativeDifficulty), tostring(info.maxTrivialLevel), tostring(info.canSkillUp),
+				tostring(info.numSkillUps), tostring(expected), tostring(high))
 		end
-		index = index + 1
 	end
-	ns.PerfMs("difficulty tally slice", debugprofilestop() - started)
-	if index <= #ids then
-		RunNextFrame(function() TallyStep(professionID, ids, index, tally) end)
+	ns.PerfMs("difficulty slice", debugprofilestop() - started)
+	if job.index <= #job.items then
+		RunNextFrame(function() DifficultyStep(job) end)
 		return
 	end
-	if tally.missing > 0 then
-		-- Some recipe info had not loaded: the numbers would be short, so the next draw tallies again.
-		difficultyTallied[professionID] = nil
-		ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s tally incomplete, %d recipes without info; tried again on the next draw", tostring(professionID), tally.missing)
-		return
-	end
-	for _, kind in ipairs({ "learned", "unlearned" }) do
-		local t = tally[kind]
-		ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s, %s %d: relativeDifficulty %d, maxTrivialLevel>0 %d, numSkillUps>0 %d",
-			tostring(professionID), kind, t.n, t.difficulty, t.trivial, t.skillUps)
-	end
+	local parts = {}
+	for value, n in pairs(job.histogram) do parts[#parts + 1] = ("%s x%d"):format(value, n) end
+	table.sort(parts)
+	ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s at skill %d: %d listed unlearned, client relativeDifficulty %s; differs from the seed's difficulty %d, maxTrivialLevel differs from the seed's high %d; canSkillUp %d, numSkillUps>0 %d",
+		tostring(job.professionID), job.skill, job.count, table.concat(parts, ", "), job.colorMismatch, job.trivialMismatch, job.canSkillUp, job.skillUps)
 end
 
-local function LogDifficulty(professionID, recipeID)
-	-- A paused log keeps no lines, so nothing is read and nothing is marked done.
-	if not ns.toolkit:IsLogging(ns.module) then return end
-	local skill = professionID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID or 0)
-	if professionID and not difficultyTallied[professionID] then
-		difficultyTallied[professionID] = true
-		-- Next frame, so the walk never shares one with the details it was called from.
-		RunNextFrame(function()
-			TallyStep(professionID, C_TradeSkillUI.GetAllRecipeIDs(), 1, {
-				missing = 0,
-				learned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 },
-				unlearned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 },
-			})
-		end)
-	end
-	if not recipeID or difficultySeen[recipeID] then return end
-	difficultySeen[recipeID] = true
-	local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
-	if not info then return ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d: no recipe info", recipeID) end
-	local seed = ns.seed
-	ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d %s: learned %s, relativeDifficulty %s, maxTrivialLevel %s, numSkillUps %s, canSkillUp %s, skill %s; seed low %s high %s",
-		recipeID, info.name, tostring(info.learned), tostring(info.relativeDifficulty), tostring(info.maxTrivialLevel),
-		tostring(info.numSkillUps), tostring(info.canSkillUp), tostring(skill and skill.skillLevel),
-		tostring(seed and seed.trivialLow and seed.trivialLow[recipeID]), tostring(seed and seed.trivialHigh and seed.trivialHigh[recipeID]))
-	for _, requirement in ipairs(C_TradeSkillUI.GetRecipeRequirements(recipeID) or {}) do
-		ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d requirement: %s, met %s", recipeID, tostring(requirement.name), tostring(requirement.met))
-	end
+-- Called from the panel's build end with its items; again when the character's skill in the profession has changed.
+local function LogDifficulty(professionID, items)
+	if not (professionID and items and ns.toolkit:IsLogging(ns.module)) then return end
+	local profession = C_TradeSkillUI.GetProfessionInfoByRecipeID(items[#items] and items[#items].recipe and items[#items].recipe.recipeID or 0)
+	local skill = profession and profession.skillLevel or 0
+	if difficultyDone[professionID] == skill then return end
+	difficultyDone[professionID] = skill
+	local list = {}
+	for index, item in ipairs(items) do list[index] = item end
+	RunNextFrame(function()
+		DifficultyStep({ professionID = professionID, items = list, index = 1, skill = skill, count = 0, histogram = {},
+			colorMismatch = 0, trivialMismatch = 0, canSkillUp = 0, skillUps = 0 })
+	end)
 end
 
 local lastLayoutKey
-function ns.OnPanelDrawn(professionID, recipeID)
-	LogDifficulty(professionID, recipeID)
+function ns.OnPanelDrawn(professionID, recipeID, items)
+	LogDifficulty(professionID, items)
 	local key = ("%s:%s:%s"):format(tostring(professionID), tostring(recipeID), tostring(C_AddOns.GetAddOnMetadata(addonName, "Version")))
 	if key == lastLayoutKey then return end
 	C_Timer.After(0.5, function()
 		if key == lastLayoutKey or InCombatLockdown() then return end
+		local started = debugprofilestop()
 		local record, reason = RecordLayout()
+		ns.Perf("layout record", started)
 		if record then lastLayoutKey = key else Append("LAYOUT not recorded: " .. tostring(reason)) end
 	end)
 end

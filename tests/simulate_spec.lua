@@ -956,6 +956,10 @@ describe("simulation", function()
 				if rawget(f, "ButtonText") then f.ButtonText.GetStringWidth = function() return 0 end end
 				if rawget(f, "Label") then f.Label.GetStringWidth, f.Count.GetStringWidth = function() return 0 end, function() return 0 end end
 				if rawget(f, "Rank") then f.Rank.Text = Fake(f.Rank) end
+				if rawget(f, "SkillUps") then
+					f.SkillUps.Icon, f.SkillUps.Text = Fake(f.SkillUps), Fake(f.SkillUps)
+					f.SkillUps.Icon.SetAtlas = function(self, atlas) self.atlas = atlas end
+				end
 				return f
 			end
 			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end, IsAddOnLoaded = function() return true end }
@@ -1126,19 +1130,18 @@ describe("simulation", function()
 				assert(table.concat(Bands(), ",") == table.concat(case.bands, ","), "skill " .. case.skill .. " has bands " .. table.concat(Bands(), ","))
 			end
 		end)
-		-- Fails if a learnable row's number gets the wrong skill-up color below the yellow point, at it, at the green point (the midpoint, rounded
-		-- down) or at the grey point, if a recipe with no thresholds is colored, or if a row too high for the character is colored.
-		it("a row's number takes the skill-up color at the character's skill", function()
-			local orange, yellow, green, grey, white, dim =
-				{ 1, 0.5, 0.25 }, { 1, 1, 0 }, { 0.25, 0.75, 0.25 }, { 0.5, 0.5, 0.5 }, { 1, 1, 1 }, { 0.5, 0.5, 0.5 }
+		-- Fails if a learnable row shows the wrong skill-up arrow below the yellow point, at it, at the green point (the midpoint, rounded down)
+		-- or at the grey point, if a recipe with no thresholds or one at its rank's cap gets an arrow, or if a row too high for the character
+		-- loses its dim number. Blizzard's list: Optimal high, Medium medium, Easy low, Trivial none, none at the cap (canSkillUp false).
+		it("a row shows Blizzard's skill-up arrow at the character's skill", function()
+			local high, medium, low = "Professions-Icon-Skill-High", "Professions-Icon-Skill-Medium", "Professions-Icon-Skill-Low"
 			-- Recipe 101 is learned at 30 and turns yellow at 45, green at floor((45 + 60) / 2) = 52 and grey at 60; 102 has no thresholds.
 			pns.seed.trivialLow, pns.seed.trivialHigh = { [101] = 45 }, { [101] = 60 }
 			local cases = {
-				{ skill = 44, recipe = 101, color = orange }, { skill = 45, recipe = 101, color = yellow },
-				{ skill = 51, recipe = 101, color = yellow }, { skill = 52, recipe = 101, color = green },
-				{ skill = 59, recipe = 101, color = green }, { skill = 60, recipe = 101, color = grey },
-				{ skill = 300, recipe = 101, color = grey }, { skill = 80, recipe = 102, color = white },
-				{ skill = 20, recipe = 101, color = dim },
+				{ skill = 44, recipe = 101, arrow = high }, { skill = 45, recipe = 101, arrow = medium },
+				{ skill = 51, recipe = 101, arrow = medium }, { skill = 52, recipe = 101, arrow = low },
+				{ skill = 59, recipe = 101, arrow = low }, { skill = 60, recipe = 101 },
+				{ skill = 75, recipe = 101 }, { skill = 80, recipe = 102 }, { skill = 20, recipe = 101 },
 			}
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			local ok, err = pcall(function()
@@ -1146,14 +1149,15 @@ describe("simulation", function()
 					pns.ClearUnlearnedCache()
 					init(case.skill)
 					Flush()
-					local number
+					local row
 					for _, button in ipairs(buttons) do
 						local recipe = rawget(button, "recipe")
-						if button:IsShown() and recipe and recipe.recipeID == case.recipe then number = button.Skill end
+						if button:IsShown() and recipe and recipe.recipeID == case.recipe then row = button end
 					end
-					assert(number and number.textColor, "recipe " .. case.recipe .. " has no row at skill " .. case.skill)
-					local got = table.concat(number.textColor, ",")
-					assert(got == table.concat(case.color, ","), ("recipe %d at skill %d: color %s, wanted %s"):format(case.recipe, case.skill, got, table.concat(case.color, ",")))
+					assert(row, "recipe " .. case.recipe .. " has no row at skill " .. case.skill)
+					local arrow = row.SkillUps:IsShown() and row.SkillUps.Icon.atlas or nil
+					assert(arrow == case.arrow, ("recipe %d at skill %d: arrow %s, wanted %s"):format(case.recipe, case.skill, tostring(arrow), tostring(case.arrow)))
+					assert((row.Skill.text == "") == (case.arrow ~= nil), "the number stands exactly where there is no arrow")
 				end
 			end)
 			pns.seed.trivialLow, pns.seed.trivialHigh = nil, nil

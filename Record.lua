@@ -107,8 +107,8 @@ end
 -- All three filters are on for the read; the player's choice is put back after.
 local TRAINER_SERVICE_TYPES = { "available", "unavailable", "used" }
 
--- Runs read with every trainer service shown, then restores the player's filter, also when read fails; read is given the old filter.
-function ns.WithAllTrainerServices(read)
+-- The filter is held on while a read runs (the services are indexed under it) and put back after.
+function ns.HoldAllTrainerServices()
 	local shown = {}
 	for _, serviceType in ipairs(TRAINER_SERVICE_TYPES) do
 		shown[serviceType] = not not GetTrainerServiceTypeFilter(serviceType)
@@ -116,69 +116,145 @@ function ns.WithAllTrainerServices(read)
 			SetTrainerServiceTypeFilter(serviceType, true)
 		end
 	end
-	local ok, first, second, third, fourth = pcall(read, shown)
+	return shown
+end
+
+function ns.RestoreTrainerServices(shown)
 	for serviceType, wasShown in pairs(shown) do
 		if not wasShown then
 			SetTrainerServiceTypeFilter(serviceType, false)
 		end
 	end
+end
+
+-- Runs read with every trainer service shown, then restores the player's filter, also when read fails; read is given the old filter.
+function ns.WithAllTrainerServices(read)
+	local shown = ns.HoldAllTrainerServices()
+	local ok, first, second, third, fourth = pcall(read, shown)
+	ns.RestoreTrainerServices(shown)
 	if not ok then
 		error(first, 0)
 	end
 	return first, second, third, fourth
 end
 
-local ReadTrainerServices
 local trainerSpells = {} -- "npcID:service name" = spell, for this session
+local trainerMisses = {} -- same key = tooltip reads that gave no spell; capped like an item that never answers
+local trainerJob -- the scan in progress: { shown, npc, professionTrainer, index, services, ... }
 
+-- The first read of a trainer is a tooltip per service (about 1.5 ms each on the Deck, 23 to 33 ms in all), so it runs in steps of
+-- TRAINER_STEP_MS, one frame apart, with the player's filters held on across the steps (the services are indexed under them) and put back
+-- in the last one; a trainer already read this session costs no tooltips (docs/client-notes.md, "Trainers").
+local TRAINER_STEP_MS = 4
+local FinishScan -- defined below, after Scan's pieces
+
+local function EndTrainerJob(job)
+	ns.RestoreTrainerServices(job.shown)
+	if trainerJob == job then trainerJob = nil end
+end
+
+local function ReadTrainerService(job, index)
+	local npc = job.npc
+	local name, serviceType, _, _, _, category = GetTrainerServiceInfo(index)
+	if name and serviceType ~= "header" and index ~= job.stepIndex and category and category ~= "" then
+		local _, skillRank = GetTrainerServiceSkillReq(index)
+		local cost = GetTrainerServiceCost(index)
+		-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id. One trainer's service of a name teaches the same
+		-- spell, so it is read once per trainer and name a session; one that gave no spell is asked again only up to MAX_ITEM_ATTEMPTS.
+		local key = npc.npcID .. ":" .. name
+		local spellID = trainerSpells[key]
+		if spellID == nil and (trainerMisses[key] or 0) < ns.MAX_ITEM_ATTEMPTS then
+			--@debug@
+			local tooltipStart = debugprofilestop()
+			--@end-debug@
+			local tooltip = C_TooltipInfo.GetTrainerService(index)
+			--@debug@
+			job.tooltipMs = job.tooltipMs + (debugprofilestop() - tooltipStart)
+			--@end-debug@
+			spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
+			if spellID then
+				trainerSpells[key] = spellID
+			else
+				trainerMisses[key] = (trainerMisses[key] or 0) + 1
+				if trainerMisses[key] >= ns.MAX_ITEM_ATTEMPTS then
+					ns.toolkit:Trace(ns.module, "TRAINER service %s of npc %d gave no spell %d times, not asked again this session", name, npc.npcID, trainerMisses[key])
+				end
+			end
+		end
+		-- No Spell tooltip means no recipe ID; skip it.
+		if spellID and (job.professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
+			local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })
+			job.recipes = job.recipes + 1
+			job.changed = job.changed or updated
+			if isNew then job.count = job.count + 1 end
+		end
+	end
+end
+
+local function TrainerStep(job)
+	if trainerJob ~= job then return end -- the window closed or another trainer opened: that already put the filters back
+	local started = debugprofilestop()
+	job.steps = job.steps + 1
+	while job.index <= job.services and (job.index == job.first or debugprofilestop() - started < TRAINER_STEP_MS) do
+		ReadTrainerService(job, job.index)
+		job.index = job.index + 1
+	end
+	job.ms = job.ms + (debugprofilestop() - started)
+	--@debug@
+	ns.PerfMs("trainer scan step", debugprofilestop() - started)
+	--@end-debug@
+	if job.index <= job.services then
+		job.first = job.index
+		RunNextFrame(function() TrainerStep(job) end)
+		return
+	end
+	-- The rank read (a tooltip too) and the closing work get a frame of their own.
+	RunNextFrame(function()
+		if trainerJob ~= job then return end
+		local lastStart = debugprofilestop()
+		-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step).
+		if job.professionTrainer and ns.NoteTrainerRank(job.npc.npcID) then
+			NoteVisit(job.npc)
+		end
+		if job.recipes > 0 then NoteVisit(job.npc) end
+		EndTrainerJob(job)
+		local lastMs = debugprofilestop() - lastStart
+		--@debug@
+		ns.PerfMs("trainer scan tooltips", job.tooltipMs)
+		ns.PerfMs("trainer scan rest", job.ms - job.tooltipMs + lastMs)
+		--@end-debug@
+		ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips) and %.1f ms to finish; %d recipes, %d new",
+			job.services, job.steps, job.ms, job.tooltipMs or 0, lastMs, job.recipes, job.count)
+		FinishScan(job.count, job.npc, job.changed)
+	end)
+end
+
+-- Starts the scan; true when the services are there, false when the window has none yet (the caller asks again on the next update).
 local function RecordTrainer()
 	if not ns.db.selfFound then
-		return 0
+		return true
 	end
 	local professionTrainer = IsTradeskillTrainer()
 	local npc = CurrentNPC()
 	if not npc then
-		return 0
+		return true
 	end
-	return ns.WithAllTrainerServices(function()
-		return ReadTrainerServices(npc, professionTrainer)
-	end)
-end
-
-function ReadTrainerServices(npc, professionTrainer)
-	local count, recipes = 0, 0
-	local changed = false
+	if trainerJob then
+		ns.toolkit:Trace(ns.module, "TRAINER scan already running, not started again")
+		return true
+	end
+	local shown = ns.HoldAllTrainerServices()
 	local services = GetNumTrainerServices()
-	-- A recipe has a category; a profession rank has none.
-	local stepIndex = GetTrainerServiceStepIndex()
-	for index = 1, services do
-		local name, serviceType, _, _, _, category = GetTrainerServiceInfo(index)
-		if name and serviceType ~= "header" and index ~= stepIndex and category and category ~= "" then
-			local _, skillRank = GetTrainerServiceSkillReq(index)
-			local cost = GetTrainerServiceCost(index)
-			-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id. The tooltip is the costly read (about 1.5 ms a
-			-- service on the Deck), and one trainer's service of a name teaches the same spell, so it is read once per trainer and name a session.
-			local spellID = trainerSpells[npc.npcID .. ":" .. name]
-			if spellID == nil then
-				local tooltip = C_TooltipInfo.GetTrainerService(index)
-				spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
-				if spellID then trainerSpells[npc.npcID .. ":" .. name] = spellID end
-			end
-			-- No Spell tooltip means no recipe ID; skip it.
-			if spellID and (professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
-				local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })
-				recipes = recipes + 1
-				changed = changed or updated
-				if isNew then count = count + 1 end
-			end
-		end
+	if services == 0 then
+		ns.RestoreTrainerServices(shown)
+		return false
 	end
-	-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step).
-	if professionTrainer and ns.NoteTrainerRank(npc.npcID) then
-		NoteVisit(npc)
-	end
-	if recipes > 0 then NoteVisit(npc) end
-	return count, npc, services > 0, changed
+	local job = { shown = shown, npc = npc, professionTrainer = professionTrainer, index = 1, first = 1, services = services,
+		-- A recipe has a category; a profession rank has none.
+		stepIndex = GetTrainerServiceStepIndex(), count = 0, recipes = 0, changed = false, steps = 0, ms = 0, tooltipMs = 0 }
+	trainerJob = job
+	TrainerStep(job)
+	return true
 end
 
 -- Vendor recipe items; also runs on MERCHANT_UPDATE, since a row's details can arrive after the window opens.
@@ -230,22 +306,18 @@ local function FinishVisit()
 		timer:Cancel()
 		timer = nil
 	end
+	if trainerJob then
+		ns.toolkit:Trace(ns.module, "TRAINER scan stopped at service %d of %d: the visit ended", trainerJob.index, trainerJob.services)
+		EndTrainerJob(trainerJob)
+	end
 	Announce(newSources, visitNPC and (ns.GetNPC(visitNPC.npcID) or {}).name)
 	newSources, visitNPC, record = 0, nil, nil
 	wipe(missingItems)
 	frame:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
 end
 
-local function Scan()
-	timer = nil
-	wipe(missingItems)
-	--@debug@
-	local perfStart, perfName = debugprofilestop(), record == RecordTrainer and "trainer scan" or "vendor scan"
-	--@end-debug@
-	local count, npc, ready, changed = record()
-	--@debug@
-	ns.Perf(perfName, perfStart)
-	--@end-debug@
+-- What follows a scan, whether it ran at once (a vendor) or in steps (a trainer).
+function FinishScan(count, npc, changed)
 	if next(missingItems) then
 		frame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 	else
@@ -257,6 +329,22 @@ local function Scan()
 	if count > 0 or changed then
 		ns.SourcesChanged()
 	end
+end
+
+local function Scan()
+	timer = nil
+	wipe(missingItems)
+	if record == RecordTrainer then
+		return RecordTrainer()
+	end
+	--@debug@
+	local perfStart = debugprofilestop()
+	--@end-debug@
+	local count, npc, ready, changed = record()
+	--@debug@
+	ns.Perf("vendor scan", perfStart)
+	--@end-debug@
+	FinishScan(count, npc, changed)
 	return ready
 end
 
