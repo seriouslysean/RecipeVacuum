@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 84
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 85
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1120,8 +1120,9 @@ function lib:BuildOptions(module, db, sections)
 				-- Blizzard's own key binding row, as the Controls page shows the Interact Key (Controls.lua).
 				local bindingIndex = C_KeyBindings.GetBindingIndex(row.binding)
 				if bindingIndex then
+					-- No search tag of ours: Blizzard reads a binding's name in secure code (Keybindings.lua, securecallfunction),
+					-- and the tag addon code wrote is the lead suspect for Options search blocking IsUserOAuthed (decision 0075).
 					initializer = CreateKeybindingEntryInitializer(bindingIndex, true)
-					initializer:AddSearchTags(GetBindingName(row.binding))
 					layout:AddInitializer(initializer)
 				else
 					-- A binding the game does not know leaves no row; say so rather than lose it unseen.
