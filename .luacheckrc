@@ -28,7 +28,7 @@ read_globals = {
 	"LE_PARTY_CATEGORY_INSTANCE", "LibStub", "MISCELLANEOUS", "NORMAL_FONT_COLOR",
 	"OPEN", "Professions", "ProfessionsFrame", "SettingsPanel",
 	"QUEST", "RAID_CLASS_COLORS", "REQUIRES_LABEL", "Settings",
-	"SetTrainerServiceTypeFilter", "C_AddOnProfiler", "C_GamePad", "GetPhysicalScreenSize", "CONTEXT_ACTION_LABEL_OPEN", "FRIENDS", "KEY_BINDING", "COMBAT", "SOUND", "ScriptErrorsFrame", "GetProfessions", "GetProfessionInfo", "C_Container", "SOURCE", "strcmputf8i", "strjoin", "strsplit",
+	"SetTrainerServiceTypeFilter", "GetTrainerSelectionIndex", "ClassTrainerFrame", "C_AddOnProfiler", "C_GamePad", "GetPhysicalScreenSize", "CONTEXT_ACTION_LABEL_OPEN", "FRIENDS", "KEY_BINDING", "COMBAT", "SOUND", "ScriptErrorsFrame", "GetProfessions", "GetProfessionInfo", "C_Container", "SOURCE", "strcmputf8i", "strjoin", "strsplit",
 	"strtrim", "tContains", "TOOLTIP_DEFAULT_BACKGROUND_COLOR", "TOOLTIP_DEFAULT_COLOR", "tDeleteItem", "tostringall", "UiMapPoint",
 	"UIParent", "UISpecialFrames", "UnitFactionGroup", "UnitGUID", "UnitInParty",
 	"UnitInRaid", "UnitLevel", "UnitName", "UNKNOWN", "wipe", "WOW_PROJECT_ID",

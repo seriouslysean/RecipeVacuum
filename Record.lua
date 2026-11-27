@@ -118,8 +118,8 @@ local trainerJob -- the scan in progress: { npc, professionTrainer, index, servi
 local TRAINER_STEP_MS = 3
 local TRAINER_MAX_RESTARTS = 5 -- the list changed under a scan this many times (filters, a purchase): stop and let the next update ask again
 local FinishScan -- defined below, after Scan's pieces
-local LearnedStep -- the one-frame read of learned services, below
-local learnedRead = {} -- [npcID] = true once this session's read of that trainer's learned services is done
+local LearnedStep -- the read of learned services, below
+local QueueLearned
 -- Our own filter change fires TRAINER_UPDATE; those are counted and not taken for the player's change (docs/client-notes.md, "Trainers").
 local LEARNED_SETTLE = 0.5 -- seconds the window for our own TRAINER_UPDATEs stays open
 local ownWindow, ownUpdates
@@ -201,7 +201,13 @@ local function ReadTrainerService(job, index)
 		if not spellID then
 			Skip(job, "no spell")
 		elseif job.professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID) then
-			local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })
+			-- Blizzard hides a learned row's cost and skill, so 0 on a "used" row is "not shown" and never saved over a real value.
+			local details = { skill = skillRank, cost = cost }
+			if serviceType == "used" then
+				if not (skillRank and skillRank > 0) then details.skill = nil end
+				if not (cost and cost > 0) then details.cost = nil end
+			end
+			local isNew, updated = Save("recipes", spellID, "trainer", npc, details)
 			job.recipes = job.recipes + 1
 			job.changed = job.changed or updated
 			if isNew then job.count = job.count + 1 end
@@ -270,7 +276,6 @@ local function TrainerStep(job)
 		end, function()
 			-- The job is over; the last step runs unguarded.
 			EndTrainerJob(job)
-			RunNextFrame(function() LearnedStep(job.npc) end)
 			RunNextFrame(function()
 				local finishStart = debugprofilestop()
 				FinishScan(job.count, job.npc, job.changed)
@@ -281,15 +286,30 @@ local function TrainerStep(job)
 				--@end-debug@
 				ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips, worst step %.1f ms), closed in %.1f ms and finished in %.1f ms; %d recipes, %d new; skipped: %s; filters off: %s; restarts %d",
 					job.services, job.steps, job.ms, job.tooltipMs or 0, job.worstMs, job.closingMs, ms, job.recipes, job.count, SkippedText(job.skipped), HiddenTypes(), job.restarts)
+				-- The learned read waits for the frame after this one.
+				QueueLearned(job.npc, job.recipes > 0)
 			end)
 		end)
 	end)
 end
 
--- Learned ("used") services are read in one frame and matched to known recipes by name, with no tooltips; the index of known
--- recipes by name is built in steps that always advance, so a slow machine finishes later (docs/client-notes.md, "Trainers").
+-- Learned ("used") services: the one atomic section reads their names and indices with the filter on (a frame of its own, timed); matching to
+-- known recipes and saving run in stepped frames, and the index of known recipes is built in steps too. Every step always advances at least
+-- one item, so a slow machine finishes later and never starves (docs/client-notes.md, "Trainers").
 local INDEX_STEP_MS = 2
-local knownIndex -- { list, cursor, byName, steps, ms }
+local MATCH_STEP_MS = 3
+local knownIndex -- { list, cursor, byLine, steps, ms, indexed }
+local knownGen = 0 -- counts the times the known set grew, so a trainer read short of names is asked again only when something new is known
+local learned = {} -- [npcID] = { attempts, done, waitGen }: this session's reads of that trainer's learned services
+local learnedQueued -- the npcID whose read is queued or running; one at a time
+
+-- The known set grew (a recipe learned, or one the account knows noted): the index is stale.
+function ns.DropKnownIndex()
+	knownIndex = nil
+	knownGen = knownGen + 1
+end
+
+ns.toolkit:EventFrame(ns.module, { NEW_RECIPE_LEARNED = ns.DropKnownIndex })
 
 local function NewKnownIndex()
 	local list, seen = {}, {}
@@ -301,11 +321,12 @@ local function NewKnownIndex()
 	end
 	for _, recipeID in pairs(ns.seed and ns.seed.taught or {}) do Add(recipeID) end
 	for recipeID in pairs(ns.db.met.recipes) do Add(recipeID) end
-	return { list = list, cursor = 1, byName = {}, steps = 0, ms = 0, indexed = 0 }
+	return { list = list, cursor = 1, byLine = {}, steps = 0, ms = 0, indexed = 0 }
 end
 
--- True once every candidate is read.
+-- Names of known recipes by skill line, so a name is matched only inside the trainer's own profession.
 local function AdvanceKnownIndex(index)
+	if index.cursor > #index.list then return end
 	local started = debugprofilestop()
 	local caps = ns.GetProfessionCaps()
 	index.steps = index.steps + 1
@@ -313,120 +334,270 @@ local function AdvanceKnownIndex(index)
 		local recipeID = index.list[index.cursor]
 		index.cursor = index.cursor + 1
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
-		if info and info.learned and info.name
-			and caps[ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))] ~= nil then
-			local ids = index.byName[info.name]
+		local line = info and info.learned and info.name and ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))
+		if line and caps[line] ~= nil then
+			local names = index.byLine[line]
+			if not names then
+				names = {}
+				index.byLine[line] = names
+			end
+			local ids = names[info.name]
 			if not ids then
 				ids = {}
-				index.byName[info.name] = ids
+				names[info.name] = ids
 			end
 			ids[#ids + 1] = recipeID
 			index.indexed = index.indexed + 1
 		end
 	until index.cursor > #index.list or debugprofilestop() - started >= INDEX_STEP_MS
 	index.ms = index.ms + (debugprofilestop() - started)
-	return index.cursor > #index.list
 end
 
-ns.toolkit:EventFrame(ns.module, { NEW_RECIPE_LEARNED = function() knownIndex = nil end })
+local ownTimer, ownDuring, ownNpc
+
+-- Closes the window for our own TRAINER_UPDATEs; says how many came inside the two filter calls (sync dispatch) and how many after (deferred).
+local function EndOwnWindow(reason)
+	if not ownWindow then return end
+	if ownTimer then ownTimer:Cancel() end
+	ownTimer, ownWindow = nil, nil
+	ns.toolkit:Trace(ns.module, "TRAINER_UPDATE for the learned read of npc %d: %d during the two filter calls, %d after (%s); filter used is %s",
+		ownNpc, ownDuring, (ownUpdates or 0) - ownDuring, reason, tostring(GetTrainerServiceTypeFilter("used")))
+end
+
+-- Blizzard's trainer list selection and gamepad focus, read only, for the Deck to compare before and after our filter calls.
+local function SelectionText()
+	local window = ClassTrainerFrame
+	local button = window and window.isFocused and SmartNavigation and SmartNavigation:GetCurrentButton()
+	return ("selection %s, window service %s, list focused %s, cursor on service %s"):format(tostring(GetTrainerSelectionIndex()),
+		tostring(window and window.selectedService), tostring(window and window.isFocused), tostring(button and button.displayIndex))
+end
 
 local function AtTrainer(npc)
 	local unitType, npcID = GUID(UnitGUID("npc"))
-	return unitType == "Creature" and npcID == npc.npcID and GetNumTrainerServices() > 0
+	return unitType == "Creature" and npcID == npc.npcID
 end
 
-local function ReadLearned(npc)
-	--@debug@
-	local perfStart = debugprofilestop()
-	--@end-debug@
-	local started = debugprofilestop()
-	local professionTrainer = IsTradeskillTrainer()
-	local rows, services, skipped = {}, 0, { n = 0 }
-	local function Skipped(reason)
-		skipped[reason] = (skipped[reason] or 0) + 1
+local function LearnedState(npcID)
+	local state = learned[npcID]
+	if not state then
+		state = { attempts = 0 }
+		learned[npcID] = state
 	end
-	ownWindow, ownUpdates = true, 0
-	SetTrainerServiceTypeFilter("used", 1)
-	local ok, failure = pcall(function()
-		local stepIndex = GetTrainerServiceStepIndex()
-		for index = 1, GetNumTrainerServices() do
-			local name, serviceType, _, _, _, category = GetTrainerServiceInfo(index)
-			if serviceType == "used" then
-				services = services + 1
-				if not name then
-					Skipped("no name")
-				elseif index == stepIndex or not category or category == "" then
-					Skipped("rank")
-				else
-					local _, skillRank = GetTrainerServiceSkillReq(index)
-					rows[#rows + 1] = { name = name, skill = skillRank, cost = (GetTrainerServiceCost(index)) }
-				end
-			end
-		end
-	end)
-	SetTrainerServiceTypeFilter("used", 0)
-	if not ok then geterrorhandler()(failure) end
-	local walkMs = debugprofilestop() - started
+	return state
+end
 
-	local matched, count, changed, cached = 0, 0, false, 0
-	for _, row in ipairs(rows) do
+-- Matching and saving, a few rows a frame; the last frame reports and finishes the visit's bookkeeping.
+local function LearnedMatch(job)
+	local npc = job.npc
+	if not AtTrainer(npc) then
+		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d: the window closed before %d of %d rows were matched, asked again on the next visit", npc.npcID, #job.rows - job.i + 1, #job.rows)
+		learnedQueued = nil
+		return
+	end
+	local started = debugprofilestop()
+	local done = 0
+	while job.i <= #job.rows and (done == 0 or debugprofilestop() - started < MATCH_STEP_MS) do
+		local row = job.rows[job.i]
+		job.i = job.i + 1
+		done = done + 1
 		local spellID = trainerSpells[npc.npcID .. ":" .. row.name]
 		if spellID then
-			cached = cached + 1
-			if not (professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
+			job.cached = job.cached + 1
+			if not (job.professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
 				spellID = nil
-				Skipped("not a profession")
+				job.Skipped("not a profession")
 			end
+		elseif not job.line then
+			job.Skipped("no skill line")
 		else
-			local ids = knownIndex.byName[row.name]
+			local ids = job.index.byLine[job.line] and job.index.byLine[job.line][row.name]
 			if not ids then
-				Skipped("no known recipe of that name")
+				job.Skipped("no known recipe of that name")
 			elseif #ids > 1 then
-				Skipped("ambiguous name")
+				job.Skipped("ambiguous name")
 				ns.toolkit:Trace(ns.module, "TRAINER learned service %s of npc %d matches %d known recipes, skipped", row.name, npc.npcID, #ids)
 			else
 				spellID = ids[1]
 			end
 		end
 		if spellID then
-			matched = matched + 1
-			local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = row.skill, cost = row.cost })
-			changed = changed or updated
-			if isNew then count = count + 1 end
+			job.matched = job.matched + 1
+			-- Blizzard hides a learned row's cost and shows no skill, so 0 is "not shown", never a value to save over a real one.
+			local details = {}
+			if row.skill and row.skill > 0 then details.skill = row.skill end
+			if row.cost and row.cost > 0 then details.cost = row.cost end
+			local isNew, updated = Save("recipes", spellID, "trainer", npc, details)
+			job.changed = job.changed or updated
+			if isNew then job.count = job.count + 1 end
 		end
 	end
-	if matched > 0 then NoteVisit(npc) end
-	learnedRead[npc.npcID] = true
 	local ms = debugprofilestop() - started
+	job.steps = job.steps + 1
+	job.ms = job.ms + ms
+	job.worstMs = math.max(job.worstMs, ms)
 	--@debug@
-	ns.Perf("trainer learned services", perfStart)
+	ns.PerfMs("trainer learned match step", ms)
 	--@end-debug@
-	ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d read in one frame, %.1f ms (%.1f ms filter on): %d read, %d matched (%d from the service cache), %d new; skipped: %s; known-recipe index %d of %d candidates in %d steps, %.1f ms",
-		npc.npcID, ms, walkMs, services, matched, cached, count, SkippedText(skipped), knownIndex.indexed, #knownIndex.list, knownIndex.steps, knownIndex.ms)
-	C_Timer.After(LEARNED_SETTLE, function()
-		ownWindow = nil
-		ns.toolkit:Trace(ns.module, "TRAINER_UPDATE fired %d times after the learned read of npc %d (the window redraws once per filter change)", ownUpdates or 0, npc.npcID)
+	if job.i <= #job.rows then
+		RunNextFrame(function() LearnedMatch(job) end)
+		return
+	end
+	RunNextFrame(function()
+		local finishStart = debugprofilestop()
+		if job.matched > 0 then NoteVisit(npc) end
+		local state = job.state
+		local skipped = job.skipped
+		if job.services == 0 or skipped["no name"] or skipped["no skill line"] then
+			state.waitGen = nil -- the client's data was not all there: the next rescan asks again
+		elseif skipped["no known recipe of that name"] then
+			state.waitGen = job.gen -- asked again once the known set has grown
+		else
+			state.done = true
+		end
+		if not state.done and state.attempts >= ns.MAX_ITEM_ATTEMPTS then
+			state.done = true
+			ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d read %d times, not asked again this session", npc.npcID, state.attempts)
+		end
+		learnedQueued = nil
+		FinishScan(job.count, npc, job.changed)
+		local finishMs = debugprofilestop() - finishStart
+		--@debug@
+		ns.PerfMs("trainer learned finish", finishMs)
+		--@end-debug@
+		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d: %d read, %d matched (%d from the service cache), %d new; skipped: %s; skill line %s; matched in %d steps, %.1f ms (worst %.1f ms), finished in %.1f ms; known-recipe index %d of %d candidates in %d steps, %.1f ms; attempt %d, %s",
+			npc.npcID, job.services, job.matched, job.cached, job.count, SkippedText(skipped), tostring(job.line), job.steps, job.ms, job.worstMs, finishMs,
+			job.index.indexed, #job.index.list, job.index.steps, job.index.ms, state.attempts, state.done and "done" or "asked again later")
 	end)
-	FinishScan(count, npc, changed)
 end
 
--- Once per trainer and session, after the scan, only when the player hides "used", out of combat, and still at that trainer.
-function LearnedStep(npc)
-	if learnedRead[npc.npcID] or trainerJob or not AtTrainer(npc) then return end
+-- The skill line a trainer teaches: the line of a service already read (its spell is cached), else its skill requirement's name among the
+-- character's professions (the client gives no line ID for a service).
+local function TrainerLine(npc, rows)
+	local lines
+	for _, row in ipairs(rows) do
+		local spellID = trainerSpells[npc.npcID .. ":" .. row.name]
+		if spellID and C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID) then
+			return ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID))
+		end
+		if row.skillName then
+			if not lines then
+				lines = {}
+				for _, index in pairs({ GetProfessions() }) do
+					local name, _, _, _, _, _, skillLine = GetProfessionInfo(index)
+					if name and skillLine then lines[name] = skillLine end
+				end
+			end
+			if lines[row.skillName] then return lines[row.skillName] end
+		end
+	end
+end
+
+-- The atomic section (docs/client-notes.md, "Trainers"): filter on, the walk, filter off, in one frame so the window never holds the change.
+-- Everything else about the read is in other frames.
+local function ReadLearned(npc, state, index)
+	--@debug@
+	local perfStart = debugprofilestop()
+	--@end-debug@
+	local started = debugprofilestop()
+	state.attempts = state.attempts + 1
+	local job = { npc = npc, state = state, index = index, gen = knownGen, rows = {}, services = 0, skipped = {}, i = 1, matched = 0, count = 0,
+		changed = false, cached = 0, steps = 0, ms = 0, worstMs = 0, professionTrainer = IsTradeskillTrainer() }
+	function job.Skipped(reason)
+		job.skipped[reason] = (job.skipped[reason] or 0) + 1
+	end
+	local shownBefore, selectionBefore = GetNumTrainerServices(), SelectionText()
+	local shownDuring, zeroCost, zeroSkill = 0, 0, 0
+	ownWindow, ownUpdates, ownNpc = true, 0, npc.npcID
+	SetTrainerServiceTypeFilter("used", true)
+	local ok, failure = pcall(function()
+		local stepIndex = GetTrainerServiceStepIndex()
+		shownDuring = GetNumTrainerServices()
+		for serviceIndex = 1, shownDuring do
+			local name, serviceType, _, _, _, category = GetTrainerServiceInfo(serviceIndex)
+			if serviceType == "used" then
+				job.services = job.services + 1
+				if not name then
+					job.Skipped("no name")
+				elseif serviceIndex == stepIndex or not category or category == "" then
+					job.Skipped("rank")
+				else
+					local skillName, skillRank = GetTrainerServiceSkillReq(serviceIndex)
+					local cost = GetTrainerServiceCost(serviceIndex)
+					if not cost or cost <= 0 then zeroCost = zeroCost + 1 end
+					if not skillRank or skillRank <= 0 then zeroSkill = zeroSkill + 1 end
+					job.rows[#job.rows + 1] = { name = name, skillName = skillName, skill = skillRank, cost = cost }
+				end
+			end
+		end
+	end)
+	SetTrainerServiceTypeFilter("used", false)
+	local filterBack = GetTrainerServiceTypeFilter("used")
+	if not ok then geterrorhandler()(failure) end
+	-- The window for our own updates ends on a timer set here, before any saving, so a slow save cannot leave it open for the player's change.
+	ownDuring = ownUpdates
+	local timer
+	timer = C_Timer.NewTimer(LEARNED_SETTLE, function()
+		if ownTimer == timer then EndOwnWindow("settled") end
+		ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d: after the window settled, %s", npc.npcID, SelectionText())
+	end)
+	ownTimer = timer
+	local walkMs = debugprofilestop() - started
+	--@debug@
+	ns.Perf("trainer learned walk", perfStart)
+	--@end-debug@
+	ns.toolkit:Trace(ns.module, "TRAINER learned walk of npc %d in one frame, %.1f ms: services shown %d before, %d with the filter on; %d used rows, %d with cost 0, %d with skill 0 (Blizzard hides them on used rows; saved only when above 0); filter used back %s%s; before: %s; after: %s",
+		npc.npcID, walkMs, shownBefore, shownDuring, job.services, zeroCost, zeroSkill, tostring(filterBack), filterBack and " (MISMATCH, expected off)" or "",
+		selectionBefore, SelectionText())
+	job.line = TrainerLine(npc, job.rows)
+	if #job.rows > 0 and not job.line then
+		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d: no skill line from a cached service or a skill requirement name, names not matched", npc.npcID)
+	end
+	RunNextFrame(function() LearnedMatch(job) end)
+end
+
+-- Once per trainer and session, after the scan's finish frame, only when the player hides "used", at a profession trainer, out of combat,
+-- and still at that trainer. hadRecipes: the scan saved a recipe here (some NPCs teach recipes without the trainer flag).
+function LearnedStep(npc, hadRecipes)
+	if trainerJob or not AtTrainer(npc) then -- a rescan is running and queues this again at its end
+		learnedQueued = nil
+		return
+	end
+	local state = LearnedState(npc.npcID)
+	if state.done or (state.waitGen and state.waitGen == knownGen) then
+		learnedQueued = nil
+		return
+	end
+	if not (IsTradeskillTrainer() or hadRecipes) then
+		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read: not a profession trainer", npc.npcID)
+		learnedQueued = nil
+		return
+	end
 	if InCombatLockdown() then
 		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read: in combat, asked again on the next visit", npc.npcID)
+		learnedQueued = nil
 		return
 	end
 	if GetTrainerServiceTypeFilter("used") then
-		learnedRead[npc.npcID] = true
+		state.done = true
+		learnedQueued = nil
 		return -- the window shows them, so the scan read them
 	end
 	knownIndex = knownIndex or NewKnownIndex()
-	if not AdvanceKnownIndex(knownIndex) then
-		RunNextFrame(function() LearnedStep(npc) end)
+	local index = knownIndex
+	if index.cursor <= #index.list then
+		-- A step of its own; the walk comes in a later frame.
+		AdvanceKnownIndex(index)
+		RunNextFrame(function() LearnedStep(npc, hadRecipes) end)
 		return
 	end
-	ReadLearned(npc)
+	ReadLearned(npc, state, index)
+end
+
+function QueueLearned(npc, hadRecipes)
+	local state = learned[npc.npcID]
+	if learnedQueued or (state and state.done) then return end
+	learnedQueued = npc.npcID
+	RunNextFrame(function() LearnedStep(npc, hadRecipes) end)
 end
 
 -- Starts the scan; true when the services are there, false when the window has none yet (the caller asks again on the next update).
@@ -447,6 +618,8 @@ local function RecordTrainer()
 	end
 	local services = GetNumTrainerServices()
 	if services == 0 then
+		-- A trainer whose every service is learned shows none under the player's filters; its learned services are still read.
+		QueueLearned(npc, false)
 		return false
 	end
 	local job = { npc = npc, professionTrainer = professionTrainer, index = 1, first = 1, services = services,
@@ -514,6 +687,7 @@ local function FinishVisit()
 	if trainerJob then
 		AbortTrainerJob(trainerJob, "the visit ended")
 	end
+	EndOwnWindow("the visit ended")
 	Announce(newSources, visitNPC and (ns.GetNPC(visitNPC.npcID) or {}).name)
 	newSources, visitNPC, record = 0, nil, nil
 	wipe(missingItems)

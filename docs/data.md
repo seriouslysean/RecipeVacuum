@@ -135,6 +135,8 @@ The total is a spoiler for a player who has not chosen public data (owner, 2026-
 | Self Found, Friends | "%d discovered" | none, the empty frame | the recipes found that can still be learned |
 | Public | "%d / %d discovered" | found over total | found out of all that can still be learned |
 
+Known gap: the alts' lists and counts grow account-wide, since a recipe any character on the account knows is met at Self Found (`ns.NoteKnown`).
+
 The bar changes when the setting does. With nothing found and no search or filter, the panel itself is hidden (docs/client-notes.md, "Panel").
 
 ## Skill-up arrows
