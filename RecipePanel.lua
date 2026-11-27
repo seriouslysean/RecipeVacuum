@@ -73,7 +73,7 @@ end
 
 -- Sets the waypoint and super-tracks it, as Blizzard's own pin links do (ItemRefHandlers.lua); nothing follows a pin that was not set. The world map is never opened: opening it from addon code taints (docs/client-notes.md, "Gamepad").
 function ns.ShowOnMap(target)
-	ns.toolkit:Trace(ns.module, "map pin label=%s map=%s", ns.toolkit.LogValue(target.label), tostring(target.mapID))
+	ns.toolkit:Trace(ns.module, "map pin", "label", target.label, "map", target.mapID)
 	if not C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(target.mapID, target.x, target.y)) then
 		return
 	end

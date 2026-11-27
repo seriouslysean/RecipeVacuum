@@ -1191,7 +1191,7 @@ describe("simulation", function()
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
 			CUSTOMER_CRAFTING_ORDERS_BROWSE_NO_RESULTS = "No recipes found"
-			pns.toolkit = setmetatable({ Trace = function(_, _, text, ...) traces[#traces + 1] = text:format(...) end }, { __index = pns.toolkit })
+			pns.toolkit = setmetatable({ Trace = function(self, _, event, ...) traces[#traces + 1] = self.LogLine(event, ...) end }, { __index = pns.toolkit })
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
 			init = function(skill) ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = skill or 40, maxSkillLevel = 75 }) end

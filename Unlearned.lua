@@ -35,7 +35,7 @@ local function ForgetSummaries(reason)
 	wipe(cache)
 	wipe(jobs) -- a running read sees its job gone and stops
 	wipe(partial)
-	ns.toolkit:Trace(ns.module, "summaries cleared reason=%s", ns.toolkit.LogValue(reason))
+	ns.toolkit:Trace(ns.module, "summaries cleared", "reason", reason)
 end
 
 ns.toolkit:EventFrame(ns.module, {
@@ -48,7 +48,7 @@ ns.toolkit:EventFrame(ns.module, {
 		ns.ClearRecipeLocks()
 		local snapshot = SkillSnapshot()
 		if snapshot == skillSnapshot then
-			ns.toolkit:Trace(ns.module, "skills unchanged event=SKILL_LINES_CHANGED")
+			ns.toolkit:Trace(ns.module, "skills unchanged", "event", "SKILL_LINES_CHANGED")
 			return
 		end
 		skillSnapshot = snapshot
@@ -173,7 +173,7 @@ local function ReadClient(professionID, job)
 			end
 		end
 	end
-	ns.toolkit:Trace(ns.module, "known id=%d found=%d new=%d no_trainer=%d line=%s", professionID, knownCount, knownNew, unsourced, tostring(line))
+	ns.toolkit:Trace(ns.module, "known", "id", professionID, "found", knownCount, "new", knownNew, "no_trainer", unsourced, "line", line)
 	return { candidates = candidates, established = established, complete = indexComplete and factionsComplete, skillChanges = skillChanges }
 end
 
@@ -193,7 +193,7 @@ local function RefreshSkill(professionID, read, job)
 		end
 	end
 	if answered then read.skillChanges = skillChanges end
-	ns.toolkit:Trace(ns.module, "difficulty reread id=%d recipes=%d complete=%s", professionID, #read.candidates, tostring(answered))
+	ns.toolkit:Trace(ns.module, "difficulty reread", "id", professionID, "recipes", #read.candidates, "complete", answered)
 	return answered
 end
 
@@ -266,12 +266,13 @@ local function Read(professionID, job)
 	return Summarize(professionID, read, job), read.complete and linksComplete and skillComplete
 end
 
-local function StageLine(job)
-	local names = {}
+-- Each stage's time as log pairs, "<stage>_ms", in a stable order.
+local function StagePairs(job)
+	local names, out = {}, {}
 	for name in pairs(job.stageMs) do names[#names + 1] = name end
 	table.sort(names)
-	for index, name in ipairs(names) do names[index] = ("%s_ms=%.1f"):format(name, job.stageMs[name]) end
-	return table.concat(names, " ")
+	for _, name in ipairs(names) do out[#out + 1], out[#out + 2] = name:lower() .. "_ms", job.stageMs[name] end
+	return out
 end
 
 -- Runs one slice of a job; true once it has finished. A job that was cleared meanwhile stops without a result.
@@ -299,8 +300,8 @@ local function Slice(professionID, job)
 	else
 		partial[professionID] = categories
 	end
-	ns.toolkit:Trace(ns.module, "recipes read id=%d slices=%d ms=%.1f %s worst_slice_ms=%.1f worst_stage=%s cached=%s", professionID,
-		job.slices, job.ms, StageLine(job), job.worst, tostring(job.worstStage), tostring(complete and true or false))
+	ns.toolkit:Trace(ns.module, "recipes read", "id", professionID, "slices", job.slices, "ms", job.ms,
+		"worst_slice_ms", job.worst, "worst_stage", job.worstStage, "cached", complete and true or false, unpack(StagePairs(job)))
 	return true
 end
 

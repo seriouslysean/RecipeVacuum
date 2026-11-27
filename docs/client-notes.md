@@ -3,7 +3,7 @@
 What WoW Forever's client does, where the addon depends on it. Measured in game on build 1.60.1.71037 unless a file is named. Blizzard's UI source for this client: [Gethe/wow-ui-source, `forever` branch](https://github.com/Gethe/wow-ui-source/tree/forever).
 
 
-Log lines are logfmt since 2026-11-27 (kit `docs/standards.md`, "Working build"; kit decision 0067). Measurements quoted below from earlier sessions keep the older prose form, as the logs of those dates hold them: `UI panel shown with …` is now `list shown id=… rows=… groups=… ms=… frames=…`, `UNLEARNED profession N: … known recipes marked met` is `known id=N found=… new=… no_trainer=…`, `TRAINER scan of N services …` is `trainer scan services=N steps=… ms=…`, `TRAINER learned pass …` is `trainer pass n=… npc=… used=…`, `SEEN …` lines are `window …`, `recipe seen …` and `shown profession read …`, and the LAYOUT lines come only from the Window Layout [Record] row.
+Log lines are logfmt since 2026-11-27, written by the kit from `toolkit:Trace(ns.module, "event", "key", value, ...)` (kit `docs/standards.md`, "Working build"; kit decision 0067). Measurements quoted below from earlier sessions keep the older prose form, as the logs of those dates hold them: `UI panel shown with …` is now `list shown id=… rows=… groups=… ms=… frames=…`, `UNLEARNED profession N: … known recipes marked met` is `known id=N found=… new=… no_trainer=…`, `TRAINER scan of N services …` is `trainer scan services=N steps=… ms=…`, `TRAINER learned pass …` is `trainer pass n=… npc=… used=…`, `SEEN …` lines are `window …`, `recipe seen …` and `shown profession …`, and the LAYOUT lines come only from the Window Layout [Record] row.
 
 ## Gamepad
 

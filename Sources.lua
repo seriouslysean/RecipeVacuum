@@ -395,7 +395,7 @@ function ns.LinkPending(yield)
 			local started = debugprofilestop()
 			local recipeID = ns.GetTaughtRecipe(itemID)
 			local ms = debugprofilestop() - started
-			if ms >= LINK_LOG_MS then ns.toolkit:Trace(ns.module, "item linked id=%d ms=%.1f", itemID, ms) end
+			if ms >= LINK_LOG_MS then ns.toolkit:Trace(ns.module, "item linked", "id", itemID, "ms", ms) end
 			if recipeID == nil then
 				linkAttempts[itemID] = (linkAttempts[itemID] or 0) + 1
 				-- Only a requested load answers with an event; cached data without a tooltip yet is asked again next time.

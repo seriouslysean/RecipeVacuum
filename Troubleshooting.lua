@@ -41,8 +41,9 @@ end)
 
 -- The log, watch and log commands are the toolkit's working-build log (its docs/standards.md, "Working
 -- build helpers"); the lines live in this addon's saved data (devLog, devLogRun, watch).
-local function Append(line, dated)
-	toolkit:Log(ns.module, line, dated)
+-- A troubleshooting answer in the log, as text; facts go through toolkit:Trace with their own keys.
+local function Append(text)
+	toolkit:Trace(ns.module, "command output", "text", text)
 end
 
 -- Watch lines go to the log only, so chat stays clear.
@@ -51,12 +52,6 @@ local logOnly
 -- A line from Voice.lua goes to chat and to the saved log with the same tag.
 local LOG_TAG = ns.module.title .. ": "
 local voice = ns.voice
-
--- A watch line: logged, and shown in chat through the kit unless a watch handler is running.
-local function Show(line)
-	Append(line)
-	if not logOnly then toolkit:Debug(line) end
-end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
 local function Say(line, ...)
@@ -69,7 +64,7 @@ end
 -- window; the player's own line is the release one for new finds (docs/voice.md).
 local function WatchFound(count)
 	if count > 0 then
-		Append(("watch found recipes=%d"):format(count))
+		toolkit:Trace(ns.module, "watch found", "recipes", count)
 	end
 end
 
@@ -90,8 +85,7 @@ end
 local function Where()
 	local mapID = C_Map.GetBestMapForUnit("player")
 	local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
-	return ("map=%s pos=%s instance=%s"):format(tostring(mapID),
-		position and ("%.3f,%.3f"):format(position:GetXY()) or "nil", tostring((IsInInstance())))
+	return "map", mapID, "pos", position and ("%.3f,%.3f"):format(position:GetXY()) or nil, "instance", (IsInInstance())
 end
 
 -- One entry per loot window (LOOT_READY can fire twice, then LOOT_OPENED), with the last spell target, which names gathered and chest objects.
@@ -106,8 +100,8 @@ local handlers = {
 	LOOT_READY = function(...)
 		if lootLogged then return end
 		lootLogged = true
-		Show(("loot args=%s cast_target=%s fishing=%s target=%s %s"):format(LV(DescribeAll(...)),
-			LV(Describe(castTarget)), Describe(IsFishingLoot()), LV(Describe(UnitGUID("target"))), Where()))
+		toolkit:Trace(ns.module, "loot", "args", DescribeAll(...), "cast_target", Describe(castTarget), "fishing", IsFishingLoot(),
+			"target", Describe(UnitGUID("target")), Where())
 		local recipes = 0
 		for slot = 1, GetNumLootItems() do
 			local link = GetLootSlotLink(slot)
@@ -118,9 +112,9 @@ local handlers = {
 			-- Containers opened from bags report an Item GUID with no item ID in it.
 			local container = type(source) == "string" and Readable(source)
 				and source:find("^Item%-") and C_Item.GetItemIDByGUID and C_Item.GetItemIDByGUID(source)
-			Show(("loot slot n=%d type=%s link=%s sources=%s%s"):format(slot, Describe(GetLootSlotType(slot)),
-				LV(Describe(GetLootSlotLink(slot))), LV(DescribeAll(GetLootSourceInfo(slot))),
-				container and (" container_item=" .. Describe(container)) or ""))
+			toolkit:Trace(ns.module, "loot slot", "n", slot, "type", Describe(GetLootSlotType(slot)),
+				"link", Describe(GetLootSlotLink(slot)), "sources", DescribeAll(GetLootSourceInfo(slot)),
+				"container_item", container or nil)
 		end
 		WatchFound(recipes)
 	end,
@@ -128,13 +122,13 @@ local handlers = {
 }
 handlers.LOOT_OPENED = handlers.LOOT_READY
 local function Quest(event)
-	Show(("quest event=%s id=%s npc=%s guid=%s %s"):format(event, Describe(GetQuestID()),
-		LV(Describe(UnitName("questnpc"))), LV(Describe(UnitGUID("questnpc"))), Where()))
+	toolkit:Trace(ns.module, "quest", "event", event, "id", GetQuestID(), "npc", Describe(UnitName("questnpc")),
+		"guid", Describe(UnitGUID("questnpc")), Where())
 	local recipes = 0
 	for _, kind in ipairs({ "reward", "choice" }) do
 		local count = kind == "reward" and GetNumQuestRewards() or GetNumQuestChoices()
 		for index = 1, count do
-			Show(("quest item kind=%s n=%d info=%s"):format(kind, index, LV(DescribeAll(GetQuestItemInfo(kind, index)))))
+			toolkit:Trace(ns.module, "quest item", "kind", kind, "n", index, "info", DescribeAll(GetQuestItemInfo(kind, index)))
 			if IsRecipeItem((select(6, GetQuestItemInfo(kind, index)))) then recipes = recipes + 1 end
 		end
 	end
@@ -144,22 +138,22 @@ handlers.QUEST_DETAIL = function() Quest("QUEST_DETAIL") end
 -- A group roll names the item but not what dropped it; the handle is logged in case it matches something later.
 handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
 	local link = GetLootRollItemLink(rollID)
-	Show(("roll id=%s item=%s handle=%s time=%s target=%s %s"):format(Describe(rollID), LV(Describe(link)),
-		LV(Describe(lootHandle)), Describe(rollTime), LV(Describe(UnitGUID("target"))), Where()))
+	toolkit:Trace(ns.module, "roll", "id", rollID, "item", Describe(link), "handle", Describe(lootHandle), "time", rollTime,
+		"target", Describe(UnitGUID("target")), Where())
 	local itemID = link and Readable(link) and C_Item.GetItemInfoInstant(link)
 	WatchFound(IsRecipeItem(itemID) and 1 or 0)
 end
 -- Vendors and trainers are recorded on window open, so the watch logs the visit: who and how many items or services.
 handlers.MERCHANT_SHOW = function()
-	Show(("vendor name=%s guid=%s faction=%s items=%d %s"):format(LV(Describe(UnitName("npc"))), LV(Describe(UnitGUID("npc"))),
-		Describe((UnitFactionGroup("npc"))), GetMerchantNumItems(), Where()))
+	toolkit:Trace(ns.module, "vendor", "name", Describe(UnitName("npc")), "guid", Describe(UnitGUID("npc")),
+		"faction", (UnitFactionGroup("npc")), "items", GetMerchantNumItems(), Where())
 	-- Each item with its class, since only the Recipe class (9) is recorded; log only.
 	local recipes = 0
 	for index = 1, GetMerchantNumItems() do
 		local itemID = GetMerchantItemID(index)
 		if IsRecipeItem(itemID) then recipes = recipes + 1 end
-		Append(("vendor item n=%d id=%s link=%s class=%s"):format(index, Describe(itemID), LV(Describe(GetMerchantItemLink(index))),
-			Describe(itemID and select(6, C_Item.GetItemInfoInstant(itemID)))))
+		toolkit:Trace(ns.module, "vendor item", "n", index, "id", itemID, "link", Describe(GetMerchantItemLink(index)),
+			"class", itemID and select(6, C_Item.GetItemInfoInstant(itemID)))
 	end
 	WatchFound(recipes)
 end
@@ -169,13 +163,13 @@ handlers.GOSSIP_SHOW = function()
 	for _, option in ipairs(C_GossipInfo.GetOptions()) do
 		table.insert(options, Describe(option.name))
 	end
-	Show(("gossip name=%s guid=%s quests=%d options=%s %s"):format(LV(Describe(UnitName("npc"))),
-		LV(Describe(UnitGUID("npc"))), C_GossipInfo.GetNumAvailableQuests(),
-		LV(#options > 0 and table.concat(options, "; ") or "none"), Where()))
+	toolkit:Trace(ns.module, "gossip", "name", Describe(UnitName("npc")), "guid", Describe(UnitGUID("npc")),
+		"quests", C_GossipInfo.GetNumAvailableQuests(), "options", #options > 0 and table.concat(options, "; ") or "none", Where())
 end
 handlers.TRAINER_SHOW = function()
-	Show(("trainer open name=%s guid=%s faction=%s profession_trainer=%s services=%d %s"):format(LV(Describe(UnitName("npc"))),
-		LV(Describe(UnitGUID("npc"))), Describe((UnitFactionGroup("npc"))), Describe(IsTradeskillTrainer()), GetNumTrainerServices(), Where()))
+	toolkit:Trace(ns.module, "trainer open", "name", Describe(UnitName("npc")), "guid", Describe(UnitGUID("npc")),
+		"faction", (UnitFactionGroup("npc")), "profession_trainer", IsTradeskillTrainer() and true or false,
+		"services", GetNumTrainerServices(), Where())
 end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
 
@@ -255,8 +249,8 @@ local function Report(scan)
 			none = none + 1
 		end
 	end
-	Append(("scan items recipe_items=%d teach=%d teach_none=%d unanswered=%d"):format(
-		#scan.items, known, none, #scan.items - known - none))
+	toolkit:Trace(ns.module, "scan items", "recipe_items", #scan.items, "teach", known, "teach_none", none,
+		"unanswered", #scan.items - known - none)
 	if not (ProfessionsFrame and ProfessionsFrame:IsShown()) then
 		Say(voice.scanNoWindow)
 		return
@@ -270,15 +264,15 @@ local function Report(scan)
 			if taught[recipeID] then
 				withItem = withItem + 1
 			else
-				table.insert(without, ("scan no_item id=%d name=%s"):format(recipeID, LV(info.name or "?")))
+				table.insert(without, { recipeID, info.name or "?" })
 			end
 		end
 	end
-	Append(("scan profession name=%s unlearned=%d with_item=%d without_item=%d"):format(
-		LV(profession.professionName or "?"), unlearned, withItem, #without))
-	table.sort(without)
+	toolkit:Trace(ns.module, "scan profession", "name", profession.professionName or "?", "unlearned", unlearned,
+		"with_item", withItem, "without_item", #without)
+	table.sort(without, function(a, b) return a[1] < b[1] end)
 	for index = 1, math.min(#without, MISSING_LINES) do
-		Append(without[index])
+		toolkit:Trace(ns.module, "scan no item", "id", without[index][1], "name", without[index][2])
 	end
 	-- The scan result is used at once as this session's layer, so the list redraws with the items it found.
 	UseScan(scan)
@@ -315,7 +309,7 @@ local function ReadTaught(scan)
 			if scan.teaches[itemID] == nil then scan.teaches[itemID] = NO_ANSWER end
 		end
 		timing.answered, timing.loadSeconds = answered, GetTime() - started
-		Append(("scan load asked=%d answered=%d seconds=%.1f"):format(#pending, answered, timing.loadSeconds))
+		toolkit:Trace(ns.module, "scan load", "asked", #pending, "answered", answered, "seconds", timing.loadSeconds)
 		local ok, problem = pcall(Report, scan)
 		if not ok then
 			scanning = nil
@@ -379,8 +373,8 @@ local function WalkItems()
 			Say(voice.scanFailed, Describe(done))
 			return
 		end
-		Append(("scan walk ids=%d items=%d highest=%d recipe_items=%d work_ms=%.0f seconds=%.1f"):format(
-			id, existing, lastItem, #found, cpu, GetTime() - started))
+		toolkit:Trace(ns.module, "scan walk", "ids", id, "items", existing, "highest", lastItem, "recipe_items", #found,
+			"work_ms", cpu, "seconds", GetTime() - started)
 		-- Loading costs a server request per item, so start only when the count is believable.
 		if #found == 0 or #found > ITEM_LIMIT then
 			scanning = nil
@@ -693,7 +687,7 @@ local function LayoutRecord(parts)
 	local function Pair(pane, measure, blizzard, ours)
 		record.pairs[#record.pairs + 1] = { pane = pane, measure = measure, blizzard = blizzard, ours = ours }
 		for side, values in pairs({ blizzard = blizzard, ours = ours }) do
-			if values.missing then Append(("layout missing measure=%s side=%s pane=%s"):format(LV(measure), side, pane)) end
+			if values.missing then toolkit:Trace(ns.module, "layout missing", "measure", measure, "side", side, "pane", pane) end
 		end
 	end
 	-- Both sides of one measure, each from its own pane.
@@ -834,7 +828,7 @@ local function RecordLayout()
 	record.recipe = parts.detail.recipeID and parts.detail.Name:GetText() or "no recipe selected"
 	record.when = date("%Y-%m-%d %H:%M:%S")
 	ns.db.devLayout[record.profession .. " / " .. record.recipe .. " @ " .. record.when] = record
-	Append(("layout recorded measures=%d profession=%s"):format(#record.pairs, LV(record.profession)))
+	toolkit:Trace(ns.module, "layout recorded", "measures", #record.pairs, "profession", record.profession)
 	return record
 end
 
@@ -886,12 +880,12 @@ end })
 table.insert(troubleshooting, { "mapopen", label = "Map Pin and Open", button = "Test", "Pin the last Map Pin place and open the map at it", function()
 	local target = ns.lastPin
 	if not target then
-		ns.toolkit:Trace(ns.module, "map open test result=skipped reason=\"no Map Pin pressed yet\"")
+		ns.toolkit:Trace(ns.module, "map open test", "result", "skipped", "reason", "no_map_pin_yet")
 		return ns.toolkit:Debug("Press Map Pin on a recipe first, then this.")
 	end
 	ns.ShowOnMap(target)
 	OpenWorldMap(target.mapID)
-	ns.toolkit:Trace(ns.module, "map open test map=%d shown=%s", target.mapID, tostring(WorldMapFrame and WorldMapFrame:IsShown()))
+	ns.toolkit:Trace(ns.module, "map open test", "map", target.mapID, "shown", WorldMapFrame and WorldMapFrame:IsShown())
 end })
 table.insert(troubleshooting, { "scan", label = "Recipe Items", button = "Find", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 

@@ -192,6 +192,52 @@ do
 	check("JigBoltgripToolkit.lua: constants are declared before they are read", #problems == 0, table.concat(problems, "; "))
 end
 
+-- Every log line is built by the kit (docs/standards.md, "Working build"): a Trace, Log or LogAll call names its event as a
+-- literal of one to three lowercase words and passes its facts as key, value pairs, never a format string or a built line.
+local function LogCallProblems(text)
+	local problems, code = {}, text:gsub("%-%-[^\n]*", "")
+	for position, method in code:gmatch("()[:.](%u%a+)%(") do
+		if method == "Trace" or method == "Log" or method == "LogAll" then
+			local open = code:find("(", position, true)
+			local depth, index, args, current, quote = 0, open + 1, {}, "", nil
+			while index <= #code do
+				local char = code:sub(index, index)
+				if quote then
+					current = current .. char
+					if char == "\\" then current = current .. code:sub(index + 1, index + 1); index = index + 1
+					elseif char == quote then quote = nil end
+				elseif char == '"' or char == "'" then
+					quote = char; current = current .. char
+				elseif char == "(" or char == "{" or char == "[" then
+					depth = depth + 1; current = current .. char
+				elseif char == ")" or char == "}" or char == "]" then
+					if depth == 0 then args[#args + 1] = current break end
+					depth = depth - 1; current = current .. char
+				elseif char == "," and depth == 0 then
+					args[#args + 1] = current; current = ""
+				else
+					current = current .. char
+				end
+				index = index + 1
+			end
+			local event = (args[method == "LogAll" and 1 or 2] or ""):match('^%s*"([^"]*)"%s*$')
+			local words = 0
+			for word in (event or ""):gmatch("%S+") do words = words + (word:match("^[a-z][a-z0-9]*$") and 1 or 99) end
+			if not event or words < 1 or words > 3 then
+				local line = select(2, code:sub(1, position):gsub("\n", ""))+ 1
+				problems[#problems + 1] = ("line %d: %s needs a literal event of 1 to 3 lowercase words, then key, value pairs"):format(line, method)
+			end
+		end
+	end
+	return problems
+end
+for _, file in ipairs(files) do
+	if file:find("%.lua$") then
+		local problems = LogCallProblems(Read(addonDir .. "/" .. file) or "")
+		check(file .. ": log lines go through the kit's event and pairs", #problems == 0, table.concat(problems, "; "))
+	end
+end
+
 local kitLookups = 0
 for _, file in ipairs(files) do
 	kitLookups = kitLookups + select(2, (Read(addonDir .. "/" .. file) or ""):gsub('LibStub%("JigBoltgripToolkit%-1%.0"%)', ""))

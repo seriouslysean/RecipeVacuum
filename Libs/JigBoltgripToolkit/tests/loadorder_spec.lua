@@ -173,6 +173,20 @@ describe("load order", function()
 			"the once-only reset clears every module's once-ever flags")
 	end)
 
+	-- Fails if the kit's log line drifts from logfmt: key order, quoting, nil, booleans or the ms rounding.
+	it("the kit writes logfmt lines", function()
+		NewClient()
+		Load(CURRENT)
+		local tk = LibStub("JigBoltgripToolkit-1.0")
+		local line = tk.LogLine("list shown", "id", 171, "name", "Mana Well", "kept", true, "gone", nil, "ms", 1.44, "tiny_ms", 0.044,
+			"rate", 2.5, "big", 1795795181)
+		assert(line == 'list shown id=171 name="Mana Well" kept=true gone=- ms=1.4 tiny_ms=0.04 rate=2.5 big=1795795181',
+			"the kit writes logfmt lines: " .. line)
+		assert(not pcall(tk.LogLine, "bad", "NotSnake", 1), "a key that is not snake_case is refused")
+		assert(tk.IsLogEvent("trainer read") and not tk.IsLogEvent("trainer read again now") and not tk.IsLogEvent("x=%d"),
+			"an event is one to three lowercase words")
+	end)
+
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()
 		NewClient()
@@ -398,7 +412,7 @@ describe("load order", function()
 		toolkit:TimeMs(one, "build", 4); toolkit:TimeMs(one, "build", 2); toolkit:TimeMs(two, "scan", 1)
 		local lines = toolkit:TimingLines(one)
 		assert(#lines == 1 and lines[1]:find("runs=2", 1, true) ~= nil
-			and lines[1]:find("max_ms=4.00", 1, true) ~= nil and #toolkit:TimingLines(two) == 1,
+			and lines[1]:find("max_ms=4.0", 1, true) ~= nil and #toolkit:TimingLines(two) == 1,
 			"timings are kept per module")
 	end)
 
