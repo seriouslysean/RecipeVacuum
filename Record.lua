@@ -208,24 +208,45 @@ local function TrainerStep(job)
 		RunNextFrame(function() TrainerStep(job) end)
 		return
 	end
-	-- The rank read (a tooltip too) and the closing work get a frame of their own.
-	RunNextFrame(function()
-		if trainerJob ~= job then return end
-		local lastStart = debugprofilestop()
-		-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step).
+	-- The closing work is one step a frame (the rank read is a tooltip, restoring the filters re-indexes the trainer's list, and the
+	-- finish saves and redraws), each timed, since together they took 12.6 ms in one frame on the Deck.
+	local function Closing(name, work, after, always)
+		RunNextFrame(function()
+			if trainerJob ~= job and not always then return end
+			local closeStart = debugprofilestop()
+			work()
+			local ms = debugprofilestop() - closeStart
+			job.closingMs = job.closingMs + ms
+			--@debug@
+			ns.PerfMs("trainer scan " .. name, ms)
+			--@end-debug@
+			if after then after() end
+		end)
+	end
+	Closing("rank", function()
+		-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step); read under the held filters.
 		if job.professionTrainer and ns.NoteTrainerRank(job.npc.npcID) then
-			NoteVisit(job.npc)
+			job.rankNoted = true
 		end
-		if job.recipes > 0 then NoteVisit(job.npc) end
-		EndTrainerJob(job)
-		local lastMs = debugprofilestop() - lastStart
-		--@debug@
-		ns.PerfMs("trainer scan tooltips", job.tooltipMs)
-		ns.PerfMs("trainer scan rest", job.ms - job.tooltipMs + lastMs)
-		--@end-debug@
-		ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips) and %.1f ms to finish; %d recipes, %d new",
-			job.services, job.steps, job.ms, job.tooltipMs or 0, lastMs, job.recipes, job.count)
-		FinishScan(job.count, job.npc, job.changed)
+	end, function()
+		Closing("visit", function()
+			if job.rankNoted or job.recipes > 0 then NoteVisit(job.npc) end
+		end, function()
+			Closing("filters", function() if trainerJob == job then EndTrainerJob(job) end end, function()
+				-- EndTrainerJob cleared trainerJob; the last step runs unguarded.
+				RunNextFrame(function()
+					local finishStart = debugprofilestop()
+					FinishScan(job.count, job.npc, job.changed)
+					local ms = debugprofilestop() - finishStart
+					--@debug@
+					ns.PerfMs("trainer scan finish", ms)
+					ns.PerfMs("trainer scan tooltips", job.tooltipMs)
+					--@end-debug@
+					ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips), closed in %.1f ms and finished in %.1f ms; %d recipes, %d new",
+						job.services, job.steps, job.ms, job.tooltipMs or 0, job.closingMs, ms, job.recipes, job.count)
+				end)
+			end, true)
+		end)
 	end)
 end
 
@@ -251,7 +272,7 @@ local function RecordTrainer()
 	end
 	local job = { shown = shown, npc = npc, professionTrainer = professionTrainer, index = 1, first = 1, services = services,
 		-- A recipe has a category; a profession rank has none.
-		stepIndex = GetTrainerServiceStepIndex(), count = 0, recipes = 0, changed = false, steps = 0, ms = 0, tooltipMs = 0 }
+		stepIndex = GetTrainerServiceStepIndex(), count = 0, recipes = 0, changed = false, steps = 0, ms = 0, tooltipMs = 0, closingMs = 0 }
 	trainerJob = job
 	TrainerStep(job)
 	return true
