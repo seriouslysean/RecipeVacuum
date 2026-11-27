@@ -895,6 +895,28 @@ describe("simulation", function()
 				assert(#said == 1, "the bags saw none of their own")
 			end)
 		end)
+		-- Fails if a linked profession is walked once from its first snapshot: a recipe whose info had not loaded, or one the list
+		-- gained on a later update, was never met at Self Found.
+		it("a linked profession is walked again on the list update until every recipe answered", function()
+			local priorClient, nextFrame = C_TradeSkillUI, RunNextFrame
+			local ids, loadedInfo = { 8001, 8002 }, { [8001] = true }
+			RunNextFrame = function(fn) fn() end
+			C_TradeSkillUI = { IsTradeSkillReady = function() return true end, IsTradeSkillLinked = function() return true end,
+			  IsTradeSkillGuild = function() return false end, IsTradeSkillGuildMember = function() return false end,
+			  GetAllRecipeIDs = function() return ids end, GetTradeSkillLineForRecipe = function() return 202 end,
+			  GetRecipeInfo = function(id) return loadedInfo[id] and { recipeID = id, learned = true } or nil end }
+			local heard = frames[#frames]
+			local ok, err = pcall(function()
+				heard.script(heard, "TRADE_SKILL_SHOW")
+				assert(h.db.met.recipes[8001] and not h.db.met.recipes[8002], "the recipe with no info yet is not met, and not passed over")
+				loadedInfo[8002], loadedInfo[8003] = true, true
+				ids = { 8001, 8002, 8003 }
+				heard.script(heard, "TRADE_SKILL_LIST_UPDATE")
+				assert(h.db.met.recipes[8002] and h.db.met.recipes[8003], "the list update walks it again")
+			end)
+			C_TradeSkillUI, RunNextFrame = priorClient, nextFrame
+			assert(ok, err)
+		end)
 	end)
 
 	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
@@ -1171,6 +1193,47 @@ describe("simulation", function()
 				assert(rawget(row, "Skill") == nil, "a row has no skill number")
 			end
 			clientDifficulty[101], clientDifficulty[102], clientCapped[101] = nil, nil, nil
+		end)
+		-- Fails if a skill change is marked as read while a candidate had no answer: the arrow then kept its old difficulty until a reload.
+		it("a skill change is read again until every candidate answers", function()
+			local answer = C_TradeSkillUI.GetRecipeInfo
+			local rawDifficulty = clientDifficulty[101]
+			clientDifficulty[101] = Enum.TradeskillRelativeDifficulty.Optimal
+			skillRank = 44
+			pns.ClearUnlearnedCache()
+			init(44)
+			Flush()
+			local function Fire()
+				for _, frame in ipairs(made) do
+					local scripts = rawget(frame, "scripts")
+					if scripts and scripts.OnEvent then pcall(scripts.OnEvent, frame, "SKILL_LINES_CHANGED") end
+				end
+			end
+			local function Difficulty()
+				for _, category in ipairs(pns.GetUnlearnedRecipes({ professionID = 164 }) or {}) do
+					for _, recipe in ipairs(category.recipes) do
+						if recipe.recipeID == 101 then return recipe.relativeDifficulty end
+					end
+				end
+			end
+			local ok, err = pcall(function()
+				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Optimal, "read at skill 44")
+				clientDifficulty[101] = Enum.TradeskillRelativeDifficulty.Trivial
+				skillRank = 60
+				C_TradeSkillUI.GetRecipeInfo = function(id) if id == 101 then return nil end return answer(id) end
+				Fire()
+				-- The panel waits on an incomplete read until the clock runs out, which a fixed test clock never does: a few frames only.
+				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
+				Difficulty()
+				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
+				C_TradeSkillUI.GetRecipeInfo = answer
+				Difficulty()
+				for _ = 1, 20 do if #queue > 0 then table.remove(queue, 1)() end end
+				assert(Difficulty() == Enum.TradeskillRelativeDifficulty.Trivial, "the difficulty is read again once the recipe answers")
+			end)
+			C_TradeSkillUI.GetRecipeInfo = answer
+			clientDifficulty[101] = rawDifficulty
+			assert(ok, err)
 		end)
 		-- Fails if events or Init calls with the same content rebuild the list: the owner's log showed "UI panel shown" every 2 to 30 seconds with
 		-- no input, which re-anchored the rows under the gamepad cursor. A skill rise inside a band and a refreshed cache change no content.

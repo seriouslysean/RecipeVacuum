@@ -175,16 +175,23 @@ local function ReadClient(professionID, job)
 end
 
 -- A rank or cap change moves only each recipe's difficulty and whether it can raise skill, so those are read again for the candidates.
+-- The change is marked as read only once every candidate answered: a nil answer (data not loaded yet) would keep the old difficulty
+-- under the new stamp. True when it did.
 local function RefreshSkill(professionID, read, job)
-	read.skillChanges = skillChanges
+	local answered = true
 	for _, recipeInfo in ipairs(read.candidates) do
 		Yield(job)
 		local fresh = C_TradeSkillUI.GetRecipeInfo(recipeInfo.recipeID)
 		if fresh then
 			recipeInfo.relativeDifficulty, recipeInfo.canSkillUp = fresh.relativeDifficulty, fresh.canSkillUp
+		else
+			answered = false
 		end
 	end
-	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: difficulty read again for %d candidates", professionID, #read.candidates)
+	if answered then read.skillChanges = skillChanges end
+	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: difficulty read again for %d candidates%s", professionID, #read.candidates,
+		answered and "" or ", some without data; read again on the next ask")
+	return answered
 end
 
 -- Stage two: sources first, since one known source keeps its whole category's header; then the categories and the list.
@@ -242,6 +249,7 @@ local function Read(professionID, job)
 	local linksComplete = not next(ns.db.pendingItems) or ns.LinkPending(job and function() Yield(job) end)
 	Yield(job)
 	local read = reads[professionID]
+	local skillComplete = true
 	if not read then
 		Stage(job, "client")
 		read = ReadClient(professionID, job)
@@ -249,10 +257,10 @@ local function Read(professionID, job)
 		if read.complete then reads[professionID] = read end
 	elseif read.skillChanges ~= skillChanges then
 		Stage(job, "difficulty")
-		RefreshSkill(professionID, read, job)
+		skillComplete = RefreshSkill(professionID, read, job)
 	end
 	Stage(job, "summaries")
-	return Summarize(professionID, read, job), read.complete and linksComplete
+	return Summarize(professionID, read, job), read.complete and linksComplete and skillComplete
 end
 
 local function StageLine(job)

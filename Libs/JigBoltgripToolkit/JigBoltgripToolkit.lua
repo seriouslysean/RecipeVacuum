@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 63
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 64
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -222,7 +222,7 @@ local function UsableSave(self, module, globalName, current)
 end
 
 -- Each table runs the steps above its own schema number, so a character table is brought up on its own login, whatever the
--- account's table has already done. A character table with no number is taken as current: it was made before the number was kept.
+-- account's table has already done. A character table with no number is taken as current: it was made before the number was kept, and no step ran for it.
 local function Upgrade(target, steps, from, to, ...)
 	for step = from + 1, to do
 		if steps and steps[step] then steps[step](target, ...) end
@@ -240,11 +240,25 @@ function lib:LoadSaved(module, globalName, spec)
 	if newer or characterNewer then
 		self:Print(spec.newer or L["Saved data is from a newer version of %s; it was left unchanged."]:format(module.title))
 	end
-	if usable then _G[globalName] = db end
-	if characterUsable then _G[spec.character] = characterDb end
+	-- Both saved variables are written together or not at all: a step, a stamp or a default written into one while the other
+	-- is left alone would pair data of two builds. Either one newer (or not a table) leaves both as they are, and the module
+	-- runs on empty copies.
+	if not (usable and (characterUsable ~= false)) then
+		self:Trace(module, "SAVED %s left unchanged; running on empty copies", globalName)
+		db, characterDb = {}, characterDb and {}
+		FillDefaults(db, spec.defaults)
+		db.schema = spec.schema
+		if characterDb then
+			FillDefaults(characterDb, spec.characterDefaults)
+			characterDb.schema = spec.schema
+		end
+		return db, characterDb
+	end
+	_G[globalName] = db
+	if characterDb then _G[spec.character] = characterDb end
 	local version = type(db.schema) == "number" and db.schema or (spec.legacy and spec.legacy(db)) or spec.schema
-	if not usable then version = spec.schema end
-	local characterVersion = characterDb and (type(characterDb.schema) == "number" and characterDb.schema or math.min(version, spec.schema))
+	-- An unnumbered character table is taken as current (docs/standards.md, "Saved data"), whatever the account's number is.
+	local characterVersion = characterDb and (type(characterDb.schema) == "number" and characterDb.schema or spec.schema)
 	-- The account's steps get the character table too, as the first character's login runs them (once, for the account).
 	Upgrade(db, spec.migrations, version, spec.schema, characterDb)
 	if characterDb then Upgrade(characterDb, spec.characterMigrations, characterVersion, spec.schema) end

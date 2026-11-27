@@ -233,17 +233,22 @@ local shownPending
 local shownRun = 0 -- a newer profession shown ends the walk of an older one
 local SHOWN_STEP_MS = 2
 
-local function ReadShownStep(run, ids, at, caps, started, learned)
+-- The walk is over a snapshot of the list, so it is only done once a pass found info for every id: a recipe whose info has not
+-- loaded stays pending, and the next list update walks the list again. Notes are idempotent, so a repeat pass costs only reads.
+local function ReadShownStep(run, ids, at, started, learned, missing)
 	if run ~= shownRun then return end
 	local stepStart = debugprofilestop()
 	local count = #ids
 	while at <= count do
-		-- The window closed or switched: its recipes are no longer the ones this walk was asked about.
+		-- The window closed or switched, or its data is reloading: shownPending is still set, so the next list update walks again.
 		if not C_TradeSkillUI.IsTradeSkillReady() then return end
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(ids[at])
-		if recipeInfo and recipeInfo.learned then
+		if not recipeInfo then
+			missing = missing + 1
+		elseif recipeInfo.learned then
 			learned = learned + 1
-			Note("recipes", ids[at], LEVEL.SELF, nil, caps)
+			-- No caps given: they are read where the recipe is counted, as an early read can come back empty.
+			Note("recipes", ids[at], LEVEL.SELF)
 		end
 		at = at + 1
 		if debugprofilestop() - stepStart >= SHOWN_STEP_MS then break end
@@ -252,9 +257,11 @@ local function ReadShownStep(run, ids, at, caps, started, learned)
 	ns.PerfMs("heard shown profession step", debugprofilestop() - stepStart)
 	--@end-debug@
 	if at <= count then
-		RunNextFrame(function() ReadShownStep(run, ids, at, caps, started, learned) end)
+		RunNextFrame(function() ReadShownStep(run, ids, at, started, learned, missing) end)
 	else
-		ns.toolkit:Trace(ns.module, "SEEN shown profession read: %d recipes, %d learned, %.1f ms since it began", count, learned, debugprofilestop() - started)
+		if missing == 0 then shownPending = nil end
+		ns.toolkit:Trace(ns.module, "SEEN shown profession read: %d recipes, %d learned, %d without info%s, %.1f ms since it began",
+			count, learned, missing, missing > 0 and " (read again on the next list update)" or "", debugprofilestop() - started)
 	end
 end
 
@@ -262,14 +269,14 @@ local function ReadShownProfession()
 	if not shownPending or not C_TradeSkillUI.IsTradeSkillReady() then
 		return
 	end
-	shownPending = nil
 	local linked = C_TradeSkillUI.IsTradeSkillLinked()
 	local guild = C_TradeSkillUI.IsTradeSkillGuild() or C_TradeSkillUI.IsTradeSkillGuildMember()
 	if not (linked or guild) then
+		shownPending = nil
 		return
 	end
 	shownRun = shownRun + 1
-	ReadShownStep(shownRun, C_TradeSkillUI.GetAllRecipeIDs(), 1, ns.GetProfessionCaps(), debugprofilestop(), 0)
+	ReadShownStep(shownRun, C_TradeSkillUI.GetAllRecipeIDs(), 1, debugprofilestop(), 0, 0)
 end
 
 -- A recipe item the player sees, in the bags or on any item tooltip, is met at Self Found: not where it came from
