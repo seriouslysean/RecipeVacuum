@@ -458,20 +458,35 @@ local function NameColor(recipeInfo)
 	return HIGHLIGHT_FONT_COLOR
 end
 
--- The arrow for a row and why: the first branch that decides. The dim name already says the recipe is above the skill or locked.
+-- Why a row has the arrow it has, as trace formats: the log formats a line only while logging, so a row passes numbers and a key,
+-- never a built string (docs/client-notes.md, "Panel").
+local SKILL_REASON = {
+	above = "UI row %d skill-up none: above skill %s > %s",
+	locked = "UI row %d skill-up none: locked or disabled",
+	cap = "UI row %d skill-up none: cap %s/%s",
+	client = "UI row %d skill-up none: client canSkillUp false at %s/%s",
+	difficulty = "UI row %d skill-up none: %s at skill %s",
+	arrow = "UI row %d skill-up arrow %s",
+}
+
+-- The arrow for a row, and the key and numbers of why: the first branch that decides. The dim name already says the recipe is above
+-- the skill or locked.
 local function SkillUpArrow(recipeInfo, dim)
 	local skill, cap = professionInfo and professionInfo.skillLevel or 0, professionInfo and professionInfo.maxSkillLevel or 0
 	if dim then
 		local required = recipeInfo.requiredSkill or 0
-		return nil, required > skill and ("none: above skill %d > %d"):format(required, skill) or "none: locked or disabled"
+		if required > skill then return nil, "above", required, skill end
+		return nil, "locked"
 	elseif not recipeInfo.canSkillUp then
-		return nil, cap > 0 and skill >= cap and ("none: cap %d/%d"):format(skill, cap) or ("none: client canSkillUp false at %d/%d"):format(skill, cap)
+		if cap > 0 and skill >= cap then return nil, "cap", skill, cap end
+		return nil, "client", skill, cap
 	end
 	local arrow = SKILL_UP_ATLAS[recipeInfo.relativeDifficulty]
+	local name = DIFFICULTY_NAMES[recipeInfo.relativeDifficulty]
 	if not arrow then
-		return nil, ("none: %s at skill %d"):format(DIFFICULTY_NAMES[recipeInfo.relativeDifficulty] or tostring(recipeInfo.relativeDifficulty), skill)
+		return nil, "difficulty", name or tostring(recipeInfo.relativeDifficulty), skill
 	end
-	return arrow, "arrow " .. DIFFICULTY_NAMES[recipeInfo.relativeDifficulty]
+	return arrow, "arrow", name
 end
 
 -- How many the bags and bank could make, as Blizzard's rows show it in brackets (Blizzard_ProfessionsRecipeList.lua, SetCraftableCount).
@@ -532,7 +547,7 @@ local function ShowRow(row, recipeInfo)
 	end
 	-- Blizzard's skill-up arrow (Blizzard_ProfessionsRecipeList.lua, SetRecipeInfo) from the client's own answer for this recipe at this
 	-- skill, which for unlearned recipes follows the thresholds and the rank cap (docs/client-notes.md, "Panel"). The row never shows a number.
-	local arrow, why = SkillUpArrow(recipeInfo, row.color == DISABLED_FONT_COLOR)
+	local arrow, why, first, second = SkillUpArrow(recipeInfo, row.color == DISABLED_FONT_COLOR)
 	if row.shownArrow ~= (arrow or false) then
 		row.shownArrow = arrow or false
 		row.SkillUps:SetShown(arrow ~= nil)
@@ -544,9 +559,9 @@ local function ShowRow(row, recipeInfo)
 			row.SkillUps.Text:Hide()
 		end
 	end
-	if row.shownWhy ~= why then
-		row.shownWhy = why
-		ns.toolkit:Trace(ns.module, "UI row %d skill-up %s", recipeInfo.recipeID, why)
+	if row.shownWhy ~= why or row.shownFirst ~= first or row.shownSecond ~= second then
+		row.shownWhy, row.shownFirst, row.shownSecond = why, first, second
+		ns.toolkit:Trace(ns.module, SKILL_REASON[why], recipeInfo.recipeID, first, second)
 	end
 	Lap("skill")
 	local markCount = ns.GetMarks(recipeInfo, row.markNames)
