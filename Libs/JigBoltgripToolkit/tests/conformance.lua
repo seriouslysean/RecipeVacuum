@@ -421,6 +421,12 @@ end
 local function Str(value) return type(value) == "string" and value or nil end
 local function Words(text) return select(2, text:gsub("%S+", "")) end
 local function Flag(list, row, why) list[#list + 1] = ("%q %s"):format(row, why) end
+-- A section whose heading is not in the locale file is a working-build test page (its text is written in place inside
+-- --@debug@ blocks, which releases drop), so the release rules skip it.
+local function Released(section)
+	local heading = Str(section.heading)
+	return not heading or english[heading] == true
+end
 local OPENINGS = { "Check this", "If enabled", "When checked", "Enable this option" }
 -- Each test gets (row, section, index of the row, list of problems, row name) and adds to the list.
 local OPTION_RULES = {
@@ -474,8 +480,8 @@ local OPTION_RULES = {
 		if row.kind == "choice" and tooltip and not tooltip:find("^Choose%f[%A]") then Flag(found, name, "does not start with \"Choose\"") end
 	end },
 	{ "Tooltips 7: a tooltip does not open with \"Check this\", \"If enabled\", \"When checked\" or \"Enable this option\"", function(row, _, _, found, name)
-		for _, opening in ipairs(OPENINGS) do
-			if Str(row.tooltip) and row.tooltip:find("^" .. opening) then Flag(found, name, "opens with " .. opening) end
+		for _, phrase in ipairs(OPENINGS) do
+			if Str(row.tooltip) and row.tooltip:find("^" .. phrase) then Flag(found, name, "opens with " .. phrase) end
 		end
 	end },
 	{ "Tooltips 9: a tooltip and a note never state the default", function(row, _, _, found, name)
@@ -526,7 +532,7 @@ for _, rule in ipairs(OPTION_RULES) do
 	local found = {}
 	for addon, sections in pairs(pages) do
 		for _, section in ipairs(sections) do
-			for index, row in ipairs(section.rows) do
+			for index, row in ipairs(Released(section) and section.rows or {}) do
 				local before = #found
 				rule[2](row, section, index, found, tostring(Str(row.label) or row.key or row.binding))
 				for at = before + 1, #found do found[at] = addon .. " " .. found[at] end
@@ -540,7 +546,7 @@ do
 	for addon, sections in pairs(pages) do
 		local seen = {}
 		for _, section in ipairs(sections) do
-			for _, row in ipairs(section.rows) do
+			for _, row in ipairs(Released(section) and section.rows or {}) do
 				local label = Str(row.label)
 				if label and seen[label] then Flag(found, addon .. " " .. label, "is used twice on a page") end
 				if label then seen[label] = true end
