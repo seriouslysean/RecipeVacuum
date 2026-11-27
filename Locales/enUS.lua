@@ -33,7 +33,7 @@ L["Nothing else is sent."] = true
 L["Personal Finds"] = true
 L["Track Personal Finds"] = true
 L["Remembers the trainers, vendors, quests and loot you see, on every character."] = true
-L["Announce New Finds"] = true
+L["Chat Alerts"] = true
 L["Prints a message in chat after visits and windows with new recipes."] = true
 
 -- Commands (Settings.lua)

@@ -48,7 +48,7 @@ local function Say(window)
 	local count = counts[window] or 0
 	counts[window] = nil
 	local announce = ns.db.announceNewFinds
-	ns.toolkit:Trace(ns.module, "SEEN %s closed: %d counted, %s", window, count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Announce New Finds is off")
+	ns.toolkit:Trace(ns.module, "SEEN %s closed: %d counted, %s", window, count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Chat Alerts is off")
 	if count > 0 and announce then
 		ns.toolkit:Say(ns.module, ns.voice.seen, count)
 	end
