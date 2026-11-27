@@ -5,7 +5,7 @@ exclude_files = { "Libs/JigBoltgripToolkit", "Libs/AceLocale-3.0", "Libs/AceComm
 globals = { "RecipeVacuumDB", "SlashCmdList", "SLASH_BOLTGRIP1", "BINDING_HEADER_JIGBOLTGRIPTOOLKIT" }
 max_line_length = false
 ignore = { "21./self", "212" }
-read_globals = {
+read_globals = { "OpenWorldMap", "WorldMapFrame",
 	"NUM_BAG_SLOTS", "NUM_CONTAINER_FRAMES", "C_Container", "IsAnyBagOpen", "C_Bank", "C_AuctionHouse",
 	"SetTextureWithAddressModeOptions",
 	"RunNextFrame", "geterrorhandler", "WowStyle1FilterDropdownStateEnabled", "WowStyle1FilterDropdownStateOver", "WowStyle1FilterDropdownStateDown", "WowStyle1FilterDropdownStateDownOver", "SMART_NAV_INPUT_DIRECTION", "SmartNavigation", "SmartNavigation_AddJumpNavigationOverride", "SmartNavigation_ClearJumpNavigationOverridesInDirection", "TextureKitConstants", "PlaySound", "SOUNDKIT", "ITEM_MIN_SKILL", "MAP_PIN", "CUSTOMER_CRAFTING_ORDERS_BROWSE_NO_RESULTS", "TRADESKILL_REAGENT_COUNT", "PROFESSIONS_REAGENT_CONTAINER_LABEL", "RED_FONT_COLOR", "InCombatLockdown", "GetUIPanel", "DIFFICULT_DIFFICULTY_COLOR", "FAIR_DIFFICULTY_COLOR", "EASY_DIFFICULTY_COLOR", "TRIVIAL_DIFFICULTY_COLOR", "GameTooltip_AddBlankLineToTooltip",

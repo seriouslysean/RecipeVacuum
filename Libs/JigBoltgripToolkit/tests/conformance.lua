@@ -87,7 +87,9 @@ local FORBIDDEN = {
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
 	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap",
 	"Settings%.OpenToCategory" }) do
-	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")",
+		-- Opening the map is under test, never proven tainting on its own (decision 0068); a working build may call it.
+		inDebug = name == "OpenWorldMap" or nil })
 end
 -- Blizzard's shared HelpTip pool: a module's HelpTip:Show writes onto pooled Blizzard frames, and Blizzard's action bar
 -- update then reads them tainted and is blocked in combat (Tackletron, 2026-11-27). Use a private HelpTipTemplate frame.

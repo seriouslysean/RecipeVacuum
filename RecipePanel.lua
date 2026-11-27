@@ -78,5 +78,6 @@ function ns.ShowOnMap(target)
 		return
 	end
 	C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+	ns.lastPin = target -- the working build's map-open test pins it again (decision 0068)
 	ns.toolkit:Say(ns.module, ns.voice.pinned, target.label)
 end
