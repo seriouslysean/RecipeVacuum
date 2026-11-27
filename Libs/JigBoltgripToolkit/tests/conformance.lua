@@ -78,9 +78,8 @@ end
 local FORBIDDEN = {
 	{ "DEFAULT_CHAT_FRAME", "chat goes through the kit (Say, Print)" },
 	{ "%f[%w_]print%s*%(", "chat goes through the kit (Say, Print)" },
-	-- A working-build block may call Blizzard's Settings builders. Control Test measures those rows and releases strip the block.
-	{ "Settings%.Create", "options rows are built by the kit (BuildOptions)", inDebug = true },
-	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)", inDebug = true },
+	{ "Settings%.Create", "options rows are built by the kit (BuildOptions)" },
+	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)" },
 	{ "SetCVar%(%s*\"scriptErrors\"", "working builds start with the kit's EnableWorkingBuild" },
 }
 -- Addon code that adds to Blizzard's lists, menus or panels is tainted, and the Gamepad UI then refuses
@@ -88,17 +87,14 @@ local FORBIDDEN = {
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
 	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap",
 	"Settings%.OpenToCategory" }) do
-	-- Same allowance as above, only for the Settings calls Control Test makes; CreateElementInitializer, the row that broke
-	-- d-pad navigation of a list (docs/standards.md, "Gamepad UI"), is never allowed.
-	local inDebug = name == "Settings%.CreateDropdown" or name == "Settings%.OpenToCategory"
-	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")", inDebug = inDebug })
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
 end
 -- The rest of docs/options.md, "Banned controls": each is measured on the Steam Deck or has no module that needs it.
 for _, name in ipairs({ "AddShownPredicate", "Settings%.RegisterInitializer", "Settings%.RegisterCanvasLayoutCategory",
 	"Settings%.RegisterCanvasLayoutSubcategory", "CreateSettingsCheckboxSliderInitializer",
 	"CreateSettingsCheckboxDropdownInitializer", "CreateSettingsExpandableSectionInitializer",
 	"CreateSettingsButtonInitializer", "CreateKeybindingEntryInitializer", "SetParentInitializer" }) do
-	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "a banned control (docs/options.md, \"Banned controls\")", inDebug = true })
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "a banned control (docs/options.md, \"Banned controls\")" })
 end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps
 -- them on the namespace, and the locale files take the addon's name from the TOC.
