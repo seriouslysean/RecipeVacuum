@@ -16,7 +16,7 @@ function ns.InitSettings()
 	local module = toolkit:RegisterModule(addonName)
 	toolkit:BuildOptions(module, ns.db, {
 		{ heading = L["Recipe Sources"], place = "sources", rows = {
-			{ kind = "choice", key = "sourceLevel", label = L["Recipe Sources"], default = LEVEL.FRIENDS,
+			{ kind = "choice", key = "sourceLevel", label = L["Learn Recipes From"], default = LEVEL.FRIENDS,
 				-- The kit words the options; Recipe Vacuum names what it tracks (the toolkit's docs/standards.md, "Options").
 				values = toolkit:SourceChoices({ self = L["Tracks only recipes you see for yourself."], friends = true,
 					public = L["Also tracks recipes people link in chat."] }),
@@ -25,15 +25,15 @@ function ns.InitSettings()
 					ns.SourcesChanged()
 				end },
 			{ kind = "checkbox", key = "shareFinds", label = L["Share My Finds"], default = true,
-				tooltip = L["Send what you find to party, guild and friends who use Recipe Vacuum."],
-				note = L["Sends your trainers, vendors, quests and drops to friends who use Recipe Vacuum. Nothing else is sent."],
+				tooltip = L["Sends what you find to party, guild and friends who use Recipe Vacuum."],
+				note = L["Nothing else is sent."],
 				onChange = function() ns.share:Update() end },
 		} },
 		{ heading = L["Personal Finds"], place = "features", rows = {
 			{ kind = "checkbox", key = "selfFound", label = L["Track Personal Finds"], default = true,
 				tooltip = L["Remembers the trainers, vendors, quests and loot you see, on every character."] },
 			{ kind = "checkbox", key = "announceNewFinds", label = L["Announce New Finds"], default = true, under = "selfFound",
-				tooltip = L["Print a message in chat after visits and windows with new recipes."] },
+				tooltip = L["Prints a message in chat after visits and windows with new recipes."] },
 		} },
 	})
 	toolkit:RegisterCommands(module, ns.commands)

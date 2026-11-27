@@ -24,16 +24,17 @@ L["dev"] = true
 
 -- Options (Settings.lua)
 L["Recipe Sources"] = true
+L["Learn Recipes From"] = true
 L["Tracks only recipes you see for yourself."] = true
 L["Also tracks recipes people link in chat."] = true
 L["Share My Finds"] = true
-L["Send what you find to party, guild and friends who use Recipe Vacuum."] = true
-L["Sends your trainers, vendors, quests and drops to friends who use Recipe Vacuum. Nothing else is sent."] = true
+L["Sends what you find to party, guild and friends who use Recipe Vacuum."] = true
+L["Nothing else is sent."] = true
 L["Personal Finds"] = true
 L["Track Personal Finds"] = true
 L["Remembers the trainers, vendors, quests and loot you see, on every character."] = true
 L["Announce New Finds"] = true
-L["Print a message in chat after visits and windows with new recipes."] = true
+L["Prints a message in chat after visits and windows with new recipes."] = true
 
 -- Commands (Settings.lua)
 L["Copy the recipe sources you found"] = true
