@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 80
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 81
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -20,7 +20,7 @@ do
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
 		"Working Build", "Read the working log. Working builds only.",
 		"Working Log", "Show",
-		"Opens every module's working log in the copy window.",
+		"Opens every module's working log in the copy window.", "Once-Only Lines", "Clears every module's once-only lines and tips, so each shows again.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
@@ -111,12 +111,34 @@ end
 -- A voiced line said once ever: db[key] remembers it, for the first time a module changes something the
 -- player did not set (docs/standards.md, "Game settings"). Returns whether it spoke.
 function lib:SayOnce(module, db, key, line, ...)
+	self:RememberOnce(module, db, key)
 	if db[key] then
 		return false
 	end
 	db[key] = true
 	self:Say(module, line, ...)
 	return true
+end
+
+-- Every once-ever flag a module keeps (SayOnce keys and any of its own, such as a tip shown), listed in its saved table
+-- so a working build can clear them all and say each line again (docs/standards.md, "Working build").
+lib.onceTables = lib.onceTables or {}
+function lib:RememberOnce(module, db, key)
+	db.onceKeys = db.onceKeys or {}
+	db.onceKeys[key] = true
+	self.onceTables[module.addon] = db
+end
+
+function lib:ResetOnce()
+	local cleared = 0
+	for _, db in pairs(self.onceTables) do
+		for key in pairs(db.onceKeys or {}) do
+			if db[key] ~= nil then cleared = cleared + 1 end
+			db[key] = nil
+		end
+	end
+	self:Debug(("Once-only lines reset: %d cleared; each says itself again."):format(cleared))
+	return cleared
 end
 
 -- A plain line with the mark: an error's text, a development command's answer.
@@ -1061,6 +1083,8 @@ local function AddKitWorkingRows()
 		L["Read the working log. Working builds only."]))
 	layout:AddInitializer(CreateSettingsButtonInitializer(L["Working Log"], L["Show"], function() KitCommand("log") end,
 		L["Opens every module's working log in the copy window."], false))
+	layout:AddInitializer(CreateSettingsButtonInitializer(L["Once-Only Lines"], RESET, function() lib:ResetOnce() end,
+		L["Clears every module's once-only lines and tips, so each shows again."], false))
 end
 
 local function AddWorkingRows(module)

@@ -159,6 +159,20 @@ describe("load order", function()
 			"a blocked action names gamepad fields an addon tainted")
 	end)
 
+	-- Fails if a working build's reset leaves a once-only line silenced, or misses a module's own flag.
+	it("the once-only reset clears every module's once-ever flags", function()
+		NewClient()
+		Load(CURRENT)
+		local tk = LibStub("JigBoltgripToolkit-1.0")
+		local one, two = { addon = "One", title = "One" }, { addon = "Two", title = "Two" }
+		local dbOne, dbTwo = {}, { tipShown = true }
+		tk:SayOnce(one, dbOne, "told", "noise", "Report!")
+		tk:RememberOnce(two, dbTwo, "tipShown")
+		local cleared = tk:ResetOnce()
+		assert(cleared == 2 and dbOne.told == nil and dbTwo.tipShown == nil and tk:SayOnce(one, dbOne, "told", "noise", "Report!"),
+			"the once-only reset clears every module's once-ever flags")
+	end)
+
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()
 		NewClient()
