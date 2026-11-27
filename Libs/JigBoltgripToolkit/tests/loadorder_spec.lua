@@ -32,6 +32,7 @@ local function NewClient()
 	IsLoggedIn = function() return false end
 	CreateFrame = function() return { SetScript = function() end, RegisterEvent = function() end } end
 	EventUtil = { ContinueOnPlayerLogin = function(callback) callback() end, ContinueOnAddOnLoaded = function() end }
+	C_Timer = { After = function() end }
 	-- Blizzard's Settings page order (GameplaySettingsGroup.lua), enUS titles.
 	CUSTOM_GAMEPLAY_SETTINGS_ORDER = { ["Combat"] = 10, ["Keybindings"] = 14 }
 	SETTINGS_KEYBINDINGS_LABEL = "Keybindings"

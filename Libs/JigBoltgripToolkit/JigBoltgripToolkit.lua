@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 77
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 78
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -385,6 +385,9 @@ function lib:EnableWorkingBuild()
 		lib:OnBlocked(event, addon, action)
 	end)
 	if not first then return end
+	EventUtil.ContinueOnPlayerLogin(function()
+		C_Timer.After(MEMORY_SETTLE_SECONDS, function() lib:SampleMemoryAtLogin() end)
+	end)
 	-- "Interface action failed because of an AddOn": gamepad navigation shows it for a call from tainted
 	-- code without firing either event above (Blizzard_GamepadSmartNavigation, EnsureIsSecure), so the
 	-- message itself is logged where Blizzard prints it (ChatFrameUtil.lua), with the stack that led there.
@@ -534,16 +537,43 @@ local function DeviceLine()
 		pad and "on" or "off", tostring(pad and C_GamePad.GetActiveDeviceID() or "-"))
 end
 
+-- Memory as Blizzard's AddOns list reads it (UpdateAddOnMemoryUsage, then GetAddOnMemoryUsage, AddonList.lua:775), once
+-- MEMORY_SETTLE_SECONDS after login and once at logout, so a session's growth shows; the update walks every addon, so
+-- never more often (docs/standards.md, "Performance").
+local MEMORY_SETTLE_SECONDS = 10
+lib.memoryAtLogin = lib.memoryAtLogin or {}
+
+local function OwnMemory(addon)
+	return GetAddOnMemoryUsage and GetAddOnMemoryUsage(addon) or nil
+end
+
+function lib:SampleMemoryAtLogin()
+	if not UpdateAddOnMemoryUsage then return end
+	UpdateAddOnMemoryUsage()
+	for addon in pairs(self.logs) do self.memoryAtLogin[addon] = OwnMemory(addon) end
+end
+
+local function MemoryLine(addon)
+	local now, start = OwnMemory(addon), lib.memoryAtLogin[addon]
+	if not now then return nil end
+	return ("MEMORY own %.0f KB at logout | %s at login + %d s | growth %s | all Lua %.1f MB"):format(now,
+		start and ("%.0f KB"):format(start) or "?", MEMORY_SETTLE_SECONDS, start and ("%+.0f KB"):format(now - start) or "?",
+		collectgarbage("count") / 1024)
+end
+
 local function WriteTimings()
+	if UpdateAddOnMemoryUsage then UpdateAddOnMemoryUsage() end
 	for _, log in pairs(lib.logs) do
 		local lines = log.watching and lib:TimingLines(log.module) or {}
 		local cpu = log.watching and ProfilerLine(log.module.addon)
-		if #lines > 0 or cpu then
+		local memory = log.watching and MemoryLine(log.module.addon)
+		if #lines > 0 or cpu or memory then
 			local version, build = GetBuildInfo()
 			lib:Log(log.module, "")
 			lib:Log(log.module, ("%s PERF session on %s (%s), %s level %d"):format(date("%Y-%m-%d %H:%M:%S"), version,
 				build, UnitName("player") or UNKNOWN, UnitLevel("player") or 0), true)
 			if cpu then lib:Log(log.module, cpu) end
+			if memory then lib:Log(log.module, memory) end
 			for _, line in ipairs(lines) do
 				lib:Log(log.module, line)
 			end
