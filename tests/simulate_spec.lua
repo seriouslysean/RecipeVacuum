@@ -129,13 +129,13 @@ describe("simulation", function()
 
 	-- 1. Schema 3 -> 4 on the owner's real save
 	local a, db, before, beforeRecipes, beforeItems, beforeRevision
-	it("schema is 12", function()
+	it("schema is 13", function()
 		dofile(savedFile); before = RecipeVacuumDB
 		beforeRecipes, beforeItems = count(before.found)
 		beforeRevision = before.exchange.revision
 		a = boot(savedFile)
 		db = a.db
-		assert(db.schema == 12, "schema is 12")
+		assert(db.schema == 13, "schema is 13")
 	end)
 	it("trainerNames dropped", function()
 		assert(db.found.trainerNames == nil and db.shared.trainerNames == nil, "trainerNames dropped")
@@ -1316,6 +1316,6 @@ describe("simulation", function()
 		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, SourcesChanged = function() end }
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-		assert(c.db.schema == 12 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
+		assert(c.db.schema == 13 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
 	end)
 end)

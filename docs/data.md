@@ -199,6 +199,10 @@ Migration 10 (2026-11-25, Astra review): trainer rank records made before the sk
 
 The mark sits right of the window's link button, as our own Button under `UIParent` that follows the crafting page by hooks (docs/client-notes.md, "Panel"); it shows when the open profession's cap has a source with a place; the other faction's are left out. Ranks are kept per account and not shared yet. Unverified in game: the 5-second window, a trainer the character has outgrown, and a quest rank (Nat Pagle).
 
+## Trainer spells
+
+`RecipeVacuumDB.trainerSpells[npcID][service name] = spellID` is the spell a trainer's service teaches, taken from the service's tooltip (`C_TooltipInfo.GetTrainerService`; docs/client-notes.md, "Trainers"). It is account-wide, so a trainer is read once on any character, and it is a cache, not a source: a trainer source is saved by recipe ID only after the ID is matched to a profession recipe. The name is only the key; it is the client's own text, so another language reads its names again and finds the same IDs. Nothing clears it; a wrong entry would need a trainer to change a service's spell under the same name (not seen).
+
 ## Schema
 
 `RecipeVacuumDB.schema` is the saved layout's version; `Core.lua` runs the migrations in order.
@@ -215,4 +219,5 @@ The mark sits right of the window's link button, as our own Button under `UIPare
 | 10 | Trainer rank records are dropped, to be recorded again with the skill-step check |
 | 11 | The options of the rows once added to Blizzard's recipe list (`showUnlearned`, `showUnavailable`, `sourceFilter`) and the first-run tip flag (`levelTipSeen`) are removed |
 | 12 | The panel step (`panelStep`) is removed; the panel groups by rank band instead |
+| 13 | `trainerSpells` is added, the spell cache below; nothing is converted |
 

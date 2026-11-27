@@ -170,7 +170,6 @@ local function Note(bucket, id, level, window)
 		return
 	end
 	met[id] = level
-	if bucket == "recipes" then ns.DropKnownIndex() end
 	if level == LEVEL.SELF and bucket == "recipes" then
 		window = window or Target()
 		if not window then
@@ -197,7 +196,6 @@ function ns.NoteKnown(recipeID)
 	local met = ns.db.met.recipes
 	if met[recipeID] == LEVEL.SELF then return false end
 	met[recipeID] = LEVEL.SELF
-	ns.DropKnownIndex() -- the trainer read's candidates come from this table
 	return true
 end
 

@@ -8,7 +8,7 @@ local toolkit = ns.toolkit
 ns.module = toolkit:NewModule(addonName, "DRUID")
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 12
+local SCHEMA = 13
 
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
 
@@ -35,6 +35,8 @@ local defaults = {
 	itemRecipe = {},       -- [recipe itemID] = recipeID
 	recipeItems = {},      -- [recipeID] = { recipe itemIDs }
 	pendingItems = {},     -- [recipe itemID] = {} until its data loads and names the recipe it teaches
+	-- The spell each trainer service teaches, read from its tooltip once, on any character (Record.lua): [trainer npcID][service name] = spellID
+	trainerSpells = {},
 -- recipeFacts: per-build facts from recipe tooltips (Sources.lua), rebuilt on a new game build.
 }
 
@@ -188,6 +190,11 @@ end
 -- Schema 12 drops the panel's step choice; the panel groups by rank band instead (docs/client-notes.md, "Panel").
 migrations[12] = function(db)
 	db.panelStep = nil
+end
+
+-- Schema 13 adds the trainer spell cache (docs/data.md, "Trainer spells"); the defaults make it, the step keeps the order.
+migrations[13] = function(db)
+	db.trainerSpells = db.trainerSpells or {}
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
