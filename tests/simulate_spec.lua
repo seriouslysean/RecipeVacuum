@@ -1464,6 +1464,45 @@ describe("simulation", function()
 			end
 			assert(Builds() == builds, "an event with unchanged content does not rebuild")
 		end)
+		-- Fails if a craft blanks the shown list: a skill rise clears the summaries, the list reads as not ready for a frame,
+		-- and the panel hid it, then rebuilt it from nothing (owner's Deck video, 2026-11-27).
+		it("a list read again after a craft stays shown and refreshes in place", function()
+			pns.ClearUnlearnedCache()
+			init(300)
+			Flush()
+			local scroll
+			for _, frame in ipairs(made) do if rawget(frame, "revealed") ~= nil then scroll = frame end end
+			assert(scroll and scroll.revealed, "the list is shown before the craft")
+			local hidden = false
+			scroll.SetAlpha = function(_, alpha) if alpha == 0 then hidden = true end end
+			local builds, listed, notReady = Builds(), pns.GetListedRecipes, true
+			pns.GetListedRecipes = function(...) if notReady then notReady = false; return nil end return listed(...) end
+			local ok, err = pcall(function()
+				pns.ClearUnlearnedCache()
+				init(301)
+				Flush()
+				init(301)
+				Flush()
+			end)
+			pns.GetListedRecipes = listed
+			assert(ok, err)
+			assert(not hidden and Builds() == builds, "a list read again after a craft stays shown and refreshes in place")
+		end)
+		-- Fails if a content change blanks a list already shown: the rows are relabelled in place while it stays up.
+		it("a content change keeps the shown list up while it rebuilds", function()
+			local scroll
+			for _, frame in ipairs(made) do if rawget(frame, "revealed") ~= nil then scroll = frame end end
+			local hidden = false
+			scroll.SetAlpha = function(_, alpha) if alpha == 0 then hidden = true end end
+			local box, builds = ProfessionsFrame.CraftingPage.RecipeList.SearchBox, Builds()
+			box.text = "zzz"
+			init(301)
+			Flush()
+			box.text = ""
+			init(301)
+			Flush()
+			assert(not hidden and Builds() == builds + 2, "a content change keeps the shown list up while it rebuilds")
+		end)
 		-- Fails if choosing a recipe resizes or moves the details or the list: the list scrolled and moved under the gamepad cursor when
 		-- the details sized to their reagents.
 		it("choosing a recipe leaves the list and the details where they are", function()

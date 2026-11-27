@@ -661,6 +661,7 @@ end
 
 local function Finish()
 	Reveal()
+	empty:SetShown(#items == 0) -- a list kept shown through its rebuild skipped Reveal's own check
 	if scroll.refreshWanted then
 		scroll.refreshWanted = false
 		Request() -- an update that came during the build; its refresh gets a frame of its own
@@ -1354,6 +1355,13 @@ local function Update()
 	-- Not ready: the client's list update comes back through the events below. Until then the last profession's rows and count
 	-- must not stay on screen to be chosen.
 	if not list then
+		-- This profession's list already on screen stays up while its recipes are read again (a craft's skill rise clears the
+		-- summaries), so a craft never blanks it (docs/client-notes.md, "Panel"). The read's end comes back here, and the same
+		-- content then refreshes in place.
+		if builtProfession == professionInfo.professionID and shownSignature and scroll.revealed then
+			ns.toolkit:Trace(ns.module, "UI keeps the shown list while profession %d's recipes are read again", professionInfo.professionID)
+			return
+		end
 		scroll:SetAlpha(0)
 		opening.holdBack("list not ready")
 		shownSignature = nil
@@ -1434,8 +1442,14 @@ local function Update()
 	wipe(lapMs)
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
-	scroll:SetAlpha(0) -- shown by Reveal, once the frames in view are placed
-	scroll.revealed = false
+	-- A new profession stays hidden until the frames in view are placed (Reveal). A shown list of the same profession keeps
+	-- showing while its rows are relabelled in place, a few frames at most, so a content change never blanks it.
+	local keepShown = scroll.revealed and builtProfession == professionInfo.professionID
+	if not keepShown then
+		scroll:SetAlpha(0)
+		scroll.revealed = false
+	end
+	ns.toolkit:Trace(ns.module, "UI rebuild of %d rows, %s", rowCount, keepShown and "the shown list stays up" or "hidden until placed")
 	if builtProfession ~= professionInfo.professionID then
 		builtProfession = professionInfo.professionID
 		opening.held = nil
