@@ -141,7 +141,8 @@ local function ReadClient(professionID, job)
 	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
 		Yield(job)
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
-		if not recipeInfo then
+		-- A recipe without its name is as unloaded as no recipe: the sort and the search fold read the name.
+		if not (recipeInfo and recipeInfo.name) then
 			indexComplete = false
 		-- professionID is the window's open skill line, so another expansion's recipes of the same profession are not candidates (docs/data.md, "Show rule").
 		elseif C_TradeSkillUI.IsRecipeInSkillLine(recipeID, professionID) then
