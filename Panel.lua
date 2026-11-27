@@ -92,6 +92,7 @@ local FORM_BORDER_ATLAS, FORM_SLICE = "common-insideframe", 53
 -- -13, 16 (NineSliceLayouts.lua:20), the ring spanning 5 to 71 of the 95 px art.
 local RING_FROM = 5 -- the portrait ring starts this far into its 95 px corner art
 local OUTPUT_RING_INSET = (58 - 47) / 2 -- the output ring's drawn edge to its button (ProfessionsOutputButtonTemplate, 47 px)
+local OUTPUT_BACKING_SIZE = 56 -- a disc inside the 58 px ring, over the 53 px icon (Camelot/Blizzard_ProfessionsCrafting.lua:14)
 -- The window's frame line is its edge; the pane frame's line sits inside the box's edge, so the ring moves by that much more to
 -- hang off the line as the portrait does (measured against the window's portrait on the Deck).
 local LINE_IN_LEFT, LINE_IN_TOP = 2, 5
@@ -1921,6 +1922,16 @@ local function CreatePanel()
 	detail.Output = CreateFrame("Button", nil, detail, "ProfessionsOutputButtonTemplate")
 	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", OUTPUT_LEFT, RING_RISE - OUTPUT_RING_INSET)
 	detail.Output:SetFrameLevel(ICON_LEVEL)
+	-- A dark disc behind the round icon, inside its ring, so the list above never shows through the ring's open middle; the
+	-- window's own icon sits on its pane. The circle is the mask Blizzard gives the icon (ItemButtonTemplate.xml:32).
+	local backing = detail.Output:CreateTexture(nil, "BACKGROUND")
+	backing:SetColorTexture(0, 0, 0, 1)
+	backing:SetPoint("CENTER")
+	backing:SetSize(OUTPUT_BACKING_SIZE, OUTPUT_BACKING_SIZE)
+	local disc = detail.Output:CreateMaskTexture()
+	disc:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+	disc:SetAllPoints(backing)
+	backing:AddMaskTexture(disc)
 	detail.Output:SetScript("OnEnter", function(self)
 		-- The d-pad reaching the made item brings its name back into view; a mouse resting on it leaves the scroll alone.
 		if ns.toolkit.IsGamepadUI() then detailScroll:SetVerticalScroll(0) end
