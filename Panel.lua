@@ -244,6 +244,9 @@ local function SyncNav()
 		return
 	end
 	navPending = false
+	--@debug@
+	local navStarted = debugprofilestop()
+	--@end-debug@
 	ClearNav()
 	if not (panel and panel:IsShown()) then return end
 	-- Up and down walk the list in its own order: left to itself, the d-pad goes to the nearest button on screen, and a row
@@ -311,6 +314,9 @@ local function SyncNav()
 			end
 		end
 	end
+	--@debug@
+	ns.Perf("panel nav sync whole", navStarted)
+	--@end-debug@
 	ns.toolkit:Trace(ns.module, "UI nav override set: %d rows to the details, %d controls back", rowCount, count)
 end
 
@@ -1656,7 +1662,13 @@ function pool.rescan()
 		return
 	end
 	local caps = ns.GetProfessionCaps()
+	--@debug@
+	local idsStarted = debugprofilestop()
+	--@end-debug@
 	pool.scan = { ids = pool.ids(), at = 1, rows = {}, bands = {}, lines = 0, caps = caps }
+	--@debug@
+	ns.Perf("pool ids", idsStarted)
+	--@end-debug@
 	pool.kick()
 end
 
