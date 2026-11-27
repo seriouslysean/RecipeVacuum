@@ -447,6 +447,29 @@ describe("load order", function()
 			"a working build always logs, even after an older build turned it off")
 	end)
 
+	-- Errors and blocks go once, to the module the stack names, not to every log, and not to whichever module's kit
+	-- copy the game blamed (the Deck, 2026-11-27: AutoOmniadjustor blamed for kit code).
+	local function Holds(t, text)
+		for _, line in ipairs(t.devLog) do if line:find(text, 1, true) then return true end end
+		return false
+	end
+	it("an error goes once, to the module whose own file is in its stack", function()
+		toolkit:OnLuaError("boom one", "Interface/AddOns/Other/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua:10: in x\n"
+			.. "Interface/AddOns/Fresh/Core.lua:42: in y")
+		assert(Holds(freshSaved, "Lua error: boom one") and not Holds(otherSaved, "boom one") and not Holds(saved, "boom one"),
+			"an error goes once, to the module whose own file is in its stack")
+	end)
+	it("an error through kit code only goes to the module whose copy ran it, tagged as the kit's", function()
+		toolkit:OnLuaError("boom two", "Interface/AddOns/Other/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua:10: in x")
+		assert(Holds(otherSaved, "boom two [kit, via Other's copy]") and not Holds(freshSaved, "boom two"),
+			"an error through kit code only goes to the module whose copy ran it, tagged as the kit's")
+	end)
+	it("a block with no addon file in its stack goes to the module the game blamed", function()
+		toolkit:LogBlamed("ADDON_ACTION_FORBIDDEN: Fresh, Thing()", "[C]: in function", "Fresh")
+		assert(Holds(freshSaved, "Thing() [game blames Fresh]") and not Holds(otherSaved, "Thing()"),
+			"a block with no addon file in its stack goes to the module the game blamed")
+	end)
+
 	-- Fails if the library holds a packager token, even in a comment: the packager turns "--@debug@" into the
 	-- start of a block comment, so everything after it would vanish from release builds.
 	it("the library holds no packager tokens", function()

@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 79
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 80
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -359,16 +359,51 @@ function lib:ScanTaint()
 	return out
 end
 
+-- The module an error or block belongs to, from its stack: the game blames whichever module's kit copy ran. Returns the
+-- module (first frame in a module's own file; else the module whose kit copy ran it; else the game's pick) and a tag
+-- (docs/client-notes.md, taint blame).
+function lib:BlameFromStack(stack, gameAddon)
+	local kitVia
+	for folder, rest in tostring(stack or ""):gmatch("AddOns[/\\]([^/\\]+)[/\\]([^\n:\"]*)") do
+		if self.logs[folder] then
+			if rest:find("^Libs[/\\]JigBoltgripToolkit") then
+				kitVia = kitVia or folder
+			else
+				return folder, ""
+			end
+		end
+	end
+	if kitVia then return kitVia, (" [kit, via %s's copy]"):format(kitVia) end
+	if gameAddon and self.logs[gameAddon] then return gameAddon, (" [game blames %s]"):format(gameAddon) end
+	return self.logOrder[1], (" [no module in the stack; game blames %s]"):format(tostring(gameAddon))
+end
+
+-- One error or block, written once, to the log of the module its stack names, with the stack under it.
+function lib:LogBlamed(line, stack, gameAddon, extra)
+	local owner, tag = self:BlameFromStack(stack, gameAddon)
+	local log = owner and self.logs[owner]
+	self:Debug(("%s%s"):format(line, tag))
+	if not (log and log.watching) then return end
+	self:Log(log.module, line .. tag)
+	if stack then self:Log(log.module, stack) end
+	for _, more in ipairs(extra or {}) do self:Log(log.module, more) end
+end
+
 -- Methods, so a newer copy's handler replaces an older copy's on the one listener.
 function lib:OnBlocked(event, addon, action)
 	local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
-	self:Debug(line)
-	-- Shared context: every log keeps it, with the call stack, to read after a reload.
-	self:LogAll(line)
-	self:LogAll(debugstack(3, 12, 0))
 	local fields = self:ScanTaint()
-	self:LogAll(("tainted gamepad fields: %d%s"):format(#fields, #fields >= TAINT_MAX and " (first " .. TAINT_MAX .. ")" or ""))
-	for _, field in ipairs(fields) do self:LogAll("  " .. field) end
+	local extra = { ("tainted gamepad fields: %d%s"):format(#fields, #fields >= TAINT_MAX and " (first " .. TAINT_MAX .. ")" or "") }
+	for _, field in ipairs(fields) do extra[#extra + 1] = "  " .. field end
+	self:LogBlamed(line, debugstack(3, 12, 0), addon, extra)
+end
+
+function lib:OnInterfaceBlocked(text, stack)
+	self:LogBlamed("interface action blocked (no event): " .. tostring(text), stack)
+end
+
+function lib:OnLuaError(message, stack)
+	self:LogBlamed("Lua error: " .. tostring(message), stack or tostring(message))
 end
 
 function lib:EnableWorkingBuild()
@@ -394,18 +429,28 @@ function lib:EnableWorkingBuild()
 			C_Timer.After(MEMORY_SETTLE_SECONDS, function() lib:SampleMemoryAtLogin() end)
 		end)
 	end
-	if not first then return end
-	-- "Interface action failed because of an AddOn": gamepad navigation shows it for a call from tainted
-	-- code without firing either event above (Blizzard_GamepadSmartNavigation, EnsureIsSecure), so the
-	-- message itself is logged where Blizzard prints it (ChatFrameUtil.lua), with the stack that led there.
-	if ChatFrameUtil and ChatFrameUtil.AddSystemMessage then
-		hooksecurefunc(ChatFrameUtil, "AddSystemMessage", function(text)
-			if lib.Readable(text) and text == INTERFACE_ACTION_BLOCKED then
-				lib:LogAll("interface action blocked (no event): " .. tostring(text))
-				lib:LogAll(debugstack(3, 12, 0))
-			end
+	-- "Interface action failed because of an AddOn" fires no event above (SmartNavigation's EnsureIsSecure), so it is
+	-- logged where Blizzard prints it (ChatFrameUtil.lua). Hooked once, calling methods, so later copies' code runs.
+	if not lib.blameHooks then
+		lib.blameHooks = true
+		if ChatFrameUtil and ChatFrameUtil.AddSystemMessage then
+			hooksecurefunc(ChatFrameUtil, "AddSystemMessage", function(text)
+				if lib.Readable(text) and text == INTERFACE_ACTION_BLOCKED then
+					lib:OnInterfaceBlocked(text, debugstack(3, 12, 0))
+				end
+			end)
+		end
+		-- Lua errors, as Blizzard's error window receives them (Blizzard_ScriptErrorsFrame.lua, DisplayMessageInternal);
+		-- the client's own error handler list takes secure code only (AddLuaErrorHandler asserts issecure()).
+		EventUtil.ContinueOnAddOnLoaded("Blizzard_ScriptErrorsFrame", function()
+			hooksecurefunc(ScriptErrorsFrame, "DisplayMessageInternal", function(_, message, _, stack)
+				if not issecretvalue(message) then
+					lib:OnLuaError(message, stack and not issecretvalue(stack) and stack or nil)
+				end
+			end)
 		end)
 	end
+	if not first then return end
 	-- Gamepad navigation, one line per d-pad release: where the cursor landed, and whether its state is
 	-- tainted and by which addon (issecurevariable), since tainted state makes it drop the move
 	-- (SmartNavigation.lua, HandleNavigationInput calls EnsureIsSecure first).
@@ -424,16 +469,6 @@ function lib:EnableWorkingBuild()
 			lib:LogAll(("pad %s -> %s%s | cursor %s"):format(directions[direction] or "?",
 				button and button.GetDebugName and button:GetDebugName() or "nothing",
 				recipe and (" recipe " .. recipe) or "", Taint(nav, "currentButton")))
-		end)
-	end)
-	-- Lua errors, as Blizzard's error window receives them (Blizzard_ScriptErrorsFrame.lua, DisplayMessageInternal);
-	-- the client's own error handler list takes secure code only (AddLuaErrorHandler asserts issecure()).
-	EventUtil.ContinueOnAddOnLoaded("Blizzard_ScriptErrorsFrame", function()
-		hooksecurefunc(ScriptErrorsFrame, "DisplayMessageInternal", function(_, message, _, stack)
-			if not issecretvalue(message) then
-				lib:LogAll("Lua error: " .. tostring(message))
-				if stack and not issecretvalue(stack) then lib:LogAll(stack) end
-			end
 		end)
 	end)
 end
