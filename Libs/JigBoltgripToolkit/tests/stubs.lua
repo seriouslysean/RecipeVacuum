@@ -22,6 +22,13 @@ end
 client.unset = { LibStub = true }
 setmetatable(_G, { __index = function(globals, name)
 	if client.unset[name] then return nil end
+	-- The game's emote slash commands are plain strings (EMOTE98_CMD1 is "/thank"); modules label rows with them.
+	local emote, command = name:match("^EMOTE(%d+)_CMD(%d+)$")
+	if emote then
+		local text = ("/emote%s%s"):format(emote, command == "1" and "" or "_" .. command)
+		rawset(globals, name, text)
+		return text
+	end
 	local stub = client.Stub(name)
 	rawset(globals, name, stub)
 	return stub

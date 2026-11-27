@@ -912,8 +912,48 @@ end, quiet = true })
 -- The same record, taken by itself whenever the panel draws a different view: another profession, recipe or build (owner,
 -- 2026-11-26: the layout is part of the working build's logging, not a step for the player). Half a second after the
 -- details draw, so the frames have settled; never in combat.
+-- What the client itself says about a recipe's skill-up, for learned and unlearned recipes alike: whether the panel's colors can come
+-- from the game instead of the seed (owner, 2026-11-26: "you shouldn't need static data"). Once per recipe, and once per profession a
+-- tally over every recipe, split by learned; logged by selecting rows, since typing on the Deck is not an option.
+local difficultySeen, difficultyTallied = {}, {}
+local function LogDifficulty(professionID, recipeID)
+	local skill = professionID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID or 0)
+	if professionID and not difficultyTallied[professionID] then
+		difficultyTallied[professionID] = true
+		local tally = { learned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 }, unlearned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 } }
+		for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
+			local info = C_TradeSkillUI.GetRecipeInfo(id)
+			if info then
+				local t = info.learned and tally.learned or tally.unlearned
+				t.n = t.n + 1
+				if info.relativeDifficulty then t.difficulty = t.difficulty + 1 end
+				if (info.maxTrivialLevel or 0) > 0 then t.trivial = t.trivial + 1 end
+				if (info.numSkillUps or 0) > 0 then t.skillUps = t.skillUps + 1 end
+			end
+		end
+		for _, kind in ipairs({ "learned", "unlearned" }) do
+			local t = tally[kind]
+			ns.Trace("DIFFICULTY profession %s, %s %d: relativeDifficulty %d, maxTrivialLevel>0 %d, numSkillUps>0 %d",
+				tostring(professionID), kind, t.n, t.difficulty, t.trivial, t.skillUps)
+		end
+	end
+	if not recipeID or difficultySeen[recipeID] then return end
+	difficultySeen[recipeID] = true
+	local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
+	if not info then return ns.Trace("DIFFICULTY recipe %d: no recipe info", recipeID) end
+	local seed = ns.seed
+	ns.Trace("DIFFICULTY recipe %d %s: learned %s, relativeDifficulty %s, maxTrivialLevel %s, numSkillUps %s, canSkillUp %s, skill %s; seed low %s high %s",
+		recipeID, info.name, tostring(info.learned), tostring(info.relativeDifficulty), tostring(info.maxTrivialLevel),
+		tostring(info.numSkillUps), tostring(info.canSkillUp), tostring(skill and skill.skillLevel),
+		tostring(seed and seed.trivialLow and seed.trivialLow[recipeID]), tostring(seed and seed.trivialHigh and seed.trivialHigh[recipeID]))
+	for _, requirement in ipairs(C_TradeSkillUI.GetRecipeRequirements(recipeID) or {}) do
+		ns.Trace("DIFFICULTY recipe %d requirement: %s, met %s", recipeID, tostring(requirement.name), tostring(requirement.met))
+	end
+end
+
 local lastLayoutKey
 function ns.OnPanelDrawn(professionID, recipeID)
+	LogDifficulty(professionID, recipeID)
 	local key = ("%s:%s:%s"):format(tostring(professionID), tostring(recipeID), tostring(C_AddOns.GetAddOnMetadata(addonName, "Version")))
 	if key == lastLayoutKey then return end
 	C_Timer.After(0.5, function()

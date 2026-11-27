@@ -301,6 +301,8 @@ local SENTENCE_WORDS = 16 -- a simple sentence
 
 local RULES = {}
 function RULES.titleCase(text)
+	-- A game slash command (an EMOTEnn_CMD1 string such as "/thank") is the game's own text, lowercase by design.
+	if text:find("^/[%l%d_]+$") then return end
 	local first = true
 	-- A hyphenated name is one word, so a gnomish "-o-" name (Alarm-o-Bot, the game's own) passes on its first letter.
 	for word in text:gmatch("[%a'%-]+") do
