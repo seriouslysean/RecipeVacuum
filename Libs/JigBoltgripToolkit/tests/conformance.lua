@@ -157,6 +157,39 @@ for _, file in ipairs(files) do
 	end
 end
 
+-- A file-level constant read above its own `local NAME =` line reads the global of that name instead: nil, and the
+-- lint cannot see it because reading globals is allowed (113). Found in the kit, 2026-11-27 (MEMORY_SETTLE_SECONDS).
+local function ConstantOrder(text)
+	local declared, problems, number = {}, {}, 0
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		number = number + 1
+		local name = line:match("^local%s+([%u][%u%d_]+)%s*=")
+		if name and not declared[name] then declared[name] = number end
+	end
+	number = 0
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		number = number + 1
+		local code = line:gsub("%-%-.*$", ""):gsub('"[^"]*"', '""')
+		for name, at in pairs(declared) do
+			if number < at and code:find("%f[%w_]" .. name .. "%f[^%w_]") then
+				problems[#problems + 1] = ("line %d reads %s, declared at line %d"):format(number, name, at)
+				declared[name] = nil
+			end
+		end
+	end
+	return problems
+end
+for _, file in ipairs(files) do
+	if file:find("%.lua$") then
+		local problems = ConstantOrder(Read(addonDir .. "/" .. file) or "")
+		check(file .. ": constants are declared before they are read", #problems == 0, table.concat(problems, "; "))
+	end
+end
+do
+	local problems = ConstantOrder(Read(kitDir .. "/JigBoltgripToolkit.lua") or "")
+	check("JigBoltgripToolkit.lua: constants are declared before they are read", #problems == 0, table.concat(problems, "; "))
+end
+
 local kitLookups = 0
 for _, file in ipairs(files) do
 	kitLookups = kitLookups + select(2, (Read(addonDir .. "/" .. file) or ""):gsub('LibStub%("JigBoltgripToolkit%-1%.0"%)', ""))

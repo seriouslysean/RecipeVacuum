@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 78
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 79
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -329,6 +329,9 @@ local function ApplyWorkingCVars()
 end
 
 -- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
+-- Seconds after login before the first memory reading, so loading has settled.
+local MEMORY_SETTLE_SECONDS = 10
+
 -- Gamepad tables on paths blocked on the Deck. taintLog names only globals read, so a blocked action also lists each
 -- field here an addon wrote (issecurevariable), naming the writer; bounded, working builds only (client-notes.md).
 local TAINT_ROOTS = { "GamepadSharedUtility", "GamepadMainActionBarFrame", "SmartNavigation", "GamepadMode", "CVarCallbackRegistry" }
@@ -384,10 +387,14 @@ function lib:EnableWorkingBuild()
 		end
 		lib:OnBlocked(event, addon, action)
 	end)
+	-- Scheduled by whichever copy gets here first that knows to, since an older copy may have made the listener.
+	if not lib.memorySampleScheduled then
+		lib.memorySampleScheduled = true
+		EventUtil.ContinueOnPlayerLogin(function()
+			C_Timer.After(MEMORY_SETTLE_SECONDS, function() lib:SampleMemoryAtLogin() end)
+		end)
+	end
 	if not first then return end
-	EventUtil.ContinueOnPlayerLogin(function()
-		C_Timer.After(MEMORY_SETTLE_SECONDS, function() lib:SampleMemoryAtLogin() end)
-	end)
 	-- "Interface action failed because of an AddOn": gamepad navigation shows it for a call from tainted
 	-- code without firing either event above (Blizzard_GamepadSmartNavigation, EnsureIsSecure), so the
 	-- message itself is logged where Blizzard prints it (ChatFrameUtil.lua), with the stack that led there.
@@ -540,7 +547,6 @@ end
 -- Memory as Blizzard's AddOns list reads it (UpdateAddOnMemoryUsage, then GetAddOnMemoryUsage, AddonList.lua:775), once
 -- MEMORY_SETTLE_SECONDS after login and once at logout, so a session's growth shows; the update walks every addon, so
 -- never more often (docs/standards.md, "Performance").
-local MEMORY_SETTLE_SECONDS = 10
 lib.memoryAtLogin = lib.memoryAtLogin or {}
 
 local function OwnMemory(addon)
