@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 64
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 65
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -986,7 +986,7 @@ local function AddWorkingRows(module)
 	end
 end
 
--- Working builds name themselves in the bottom-left corner as "jbg57 / rv.a81c4ef@08 / sc.7bd31fa+@42": kit MINOR, then
+-- Working builds name themselves in the top-left corner as "jbg57 / rv.a81c4ef@08 / sc.7bd31fa+@42": kit MINOR, then
 -- each module's short name (module.short, else the capitals of its title) and the first word of its TOC Version.
 function lib:ShowBuilds()
 	local parts = { "jbg" .. MINOR }
@@ -1000,7 +1000,7 @@ function lib:ShowBuilds()
 	end
 	if not self.buildText then
 		self.buildText = UIParent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-		self.buildText:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
+		self.buildText:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 4, -4)
 	end
 	self.buildText:SetText(table.concat(parts, " / "))
 end
