@@ -845,9 +845,13 @@ local function RecordLayout()
 	-- script (kit standards, "Side panels": measure, then draw). Each is top and bottom, or nil when not shown.
 	local function Edge(name, region)
 		local scale = region and region:GetEffectiveScale()
-		local top, bottom = region and region:IsVisible() and region:GetTop(), region and region:IsVisible() and region:GetBottom()
-		record.edges[#record.edges + 1] = { name = name, top = top and top * scale, bottom = bottom and bottom * scale }
-		toolkit:Trace(ns.module, "layout edge", "name", name, "top", top and top * scale, "bottom", bottom and bottom * scale)
+		local shown = region and region:IsVisible()
+		local top, bottom = shown and region:GetTop(), shown and region:GetBottom()
+		local left, right = shown and region:GetLeft(), shown and region:GetRight()
+		record.edges[#record.edges + 1] = { name = name, top = top and top * scale, bottom = bottom and bottom * scale,
+			left = left and left * scale, right = right and right * scale }
+		toolkit:Trace(ns.module, "layout edge", "name", name, "top", top and top * scale, "bottom", bottom and bottom * scale,
+			"left", left and left * scale, "right", right and right * scale)
 	end
 	record.edges = {}
 	local form = page.SchematicForm
@@ -864,6 +868,17 @@ local function RecordLayout()
 	Edge("ours details", parts.detail)
 	Edge("ours reagents label", parts.detail and parts.detail.ReagentsLabel)
 	Edge("ours map pin", parts.mapButton and parts.mapButton:IsShown() and parts.mapButton or parts.mapMore)
+	-- Scroll arrows: Blizzard's list bar against ours, and the details bar (MinimalScrollBar's Back and Forward buttons).
+	local function Bar(name, bar)
+		Edge(name .. " up arrow", bar and bar.Back)
+		Edge(name .. " down arrow", bar and bar.Forward)
+		Edge(name .. " track", bar and bar.Track)
+	end
+	Bar("blizzard list bar", page.RecipeList and page.RecipeList.ScrollBar)
+	Bar("ours list bar", parts.scroll and parts.scroll.ScrollBar)
+	Bar("ours details bar", parts.detailScroll and parts.detailScroll.ScrollBar)
+	Edge("ours first heading", parts.headings and parts.headings[1])
+	Edge("ours details box", parts.detail)
 	ns.db.devLayout = ns.db.devLayout or {}
 	-- Every record is kept, by view and time, so each view and each build of it stays to be read: debugging data, nothing is
 	-- dropped (owner, 2026-11-26).

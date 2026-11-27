@@ -2077,7 +2077,7 @@ end)
 --@debug@
 -- The layout command measures our frames beside Blizzard's (Troubleshooting.lua, docs/development.md "Working build").
 function ns.DevPanelParts()
-	return { panel = panel, listArea = listArea, scroll = scroll, rankBar = rankBar, detail = detail, rows = rows, headings = headings,
+	return { panel = panel, listArea = listArea, scroll = scroll, detailScroll = detailScroll, rankBar = rankBar, detail = detail, rows = rows, headings = headings,
 		reagentRows = reagentRows, mapButton = mapButton, mapMore = mapMore }
 end
 --@end-debug@
