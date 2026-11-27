@@ -8,13 +8,16 @@ local L = ns.L
 -- Blizzard_ProfessionsCrafting.xml:138-139: the window's recipe list sits 5 px in from its frame's left and bottom.
 -- Here that inset is on both sides, so the portrait frame's border does not eat the list's width (docs/client-notes.md, "Panel").
 local FRAME_INSET = 5
-local LIST_WIDTH = 242 -- usable width of the list between its left inset and the scroll bar column
 -- Blizzard_ProfessionsRecipeList.xml:61-66 (ProfessionsRecipeListTemplate.ScrollBox): the list's left inset, the
 -- column right of it that the scroll bar fills and the gap below it.
 local LIST_LEFT = 8
 local SCROLLBAR_WIDTH = 20
+-- The window's own recipe column is 304 wide (Camelot/Blizzard_ProfessionsCrafting.lua:25, RecipeList:SetWidth), its ScrollBox
+-- from x 8 to right -20 (Blizzard_ProfessionsRecipeList.xml:76-79): the same 304 here, so names fit as the window's do.
+local RECIPE_COLUMN_WIDTH = 304
+local LIST_WIDTH = RECIPE_COLUMN_WIDTH - LIST_LEFT - SCROLLBAR_WIDTH -- usable width between the left inset and the scroll bar column
 local LIST_BOTTOM_INSET = 5
-local PANEL_WIDTH = LIST_WIDTH + LIST_LEFT + SCROLLBAR_WIDTH + 2 * FRAME_INSET -- about 230 px are free beside the tab column at 1280x800; the quest tracker may be overlapped a little
+local PANEL_WIDTH = LIST_WIDTH + LIST_LEFT + SCROLLBAR_WIDTH + 2 * FRAME_INSET -- covers the quest tracker a little more on the Deck's 1280x800 (docs/client-notes.md, "Panel")
 -- NineSliceLayouts.lua:20 (PortraitFrameTemplate): the top left and bottom left corners stand this far outside the frame, so
 -- the panel keeps that much extra from the tab column and the corner never covers a tab.
 local CORNER_OVERHANG = 13
