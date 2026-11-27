@@ -64,13 +64,6 @@ local function Voiced(line)
 	toolkit:Print(line)
 end
 
--- A failure: the voiced line, then the error itself on a plain line so it stays exact.
-local function Malfunction(where, problem)
-	Voiced(voice.malfunction:format(where))
-	Append(problem)
-	toolkit:Print(problem)
-end
-
 local function Say(line, ...)
 	line = select("#", ...) > 0 and line:format(...) or line
 	Append(LOG_TAG .. line)
@@ -85,17 +78,6 @@ local function WatchFound(count)
 end
 
 local IsRecipeItem = ns.IsRecipeItem
-
--- Wraps a watch callback so its lines skip chat; the flag is cleared even when it errors.
-local function LogOnly(callback)
-	return function(...)
-		logOnly = true
-		local ok, problem = pcall(callback, ...)
-		logOnly = nil
-		if not ok then Malfunction("the watch", tostring(problem)) end
-	end
-end
-
 
 -- The watch logs loot windows, quest dialogs and spell targets, to learn what Forever reports for loot and quest givers and rewards.
 
@@ -195,16 +177,9 @@ handlers.GOSSIP_SHOW = function()
 		Describe(UnitGUID("npc")), C_GossipInfo.GetNumAvailableQuests(),
 		#options > 0 and table.concat(options, "; ") or "none", Where()))
 end
--- Services can arrive after the window opens and its filter hides some, so count them later with every filter on, then restore the player's filter. The
--- per-service tooltip listing is gone: it ran twelve tooltips in one frame, and the recorder's own TRAINER trace says what each scan read.
-local TRAINER_LIST_DELAY = 0.5
 handlers.TRAINER_SHOW = function()
 	Show(("TRAINER %s %s | faction %s | profession trainer %s | %d services shown | %s"):format(Describe(UnitName("npc")),
 		Describe(UnitGUID("npc")), Describe((UnitFactionGroup("npc"))), Describe(IsTradeskillTrainer()), GetNumTrainerServices(), Where()))
-	C_Timer.After(TRAINER_LIST_DELAY, LogOnly(function() ns.WithAllTrainerServices(function(shown)
-		Show(("  with every filter on: %d services (filter was available %s, unavailable %s, used %s)"):format(
-			GetNumTrainerServices(), Describe(shown.available), Describe(shown.unavailable), Describe(shown.used)))
-	end) end))
 end
 handlers.QUEST_COMPLETE = function() Quest("QUEST_COMPLETE") end
 

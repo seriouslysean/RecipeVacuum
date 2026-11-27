@@ -104,59 +104,62 @@ local function IsRecipeItem(itemID)
 end
 
 -- Some NPCs teach recipes without the profession trainer flag, so a service counts only when its spell belongs to a profession (docs/client-notes.md, "Trainers").
--- All three filters are on for the read; the player's choice is put back after.
+-- The scan reads what the window shows under the player's own filters and never sets one: a filter change makes Blizzard's trainer list
+-- rebuild (TRAINER_UPDATE), which showed as a flicker (docs/client-notes.md, "Trainers").
 local TRAINER_SERVICE_TYPES = { "available", "unavailable", "used" }
-
--- The filter is held on while a read runs (the services are indexed under it) and put back after.
-function ns.HoldAllTrainerServices()
-	local shown = {}
-	for _, serviceType in ipairs(TRAINER_SERVICE_TYPES) do
-		shown[serviceType] = not not GetTrainerServiceTypeFilter(serviceType)
-		if not shown[serviceType] then
-			SetTrainerServiceTypeFilter(serviceType, true)
-		end
-	end
-	return shown
-end
-
-function ns.RestoreTrainerServices(shown)
-	for serviceType, wasShown in pairs(shown) do
-		if not wasShown then
-			SetTrainerServiceTypeFilter(serviceType, false)
-		end
-	end
-end
-
--- Runs read with every trainer service shown, then restores the player's filter, also when read fails; read is given the old filter.
-function ns.WithAllTrainerServices(read)
-	local shown = ns.HoldAllTrainerServices()
-	local ok, first, second, third, fourth = pcall(read, shown)
-	ns.RestoreTrainerServices(shown)
-	if not ok then
-		error(first, 0)
-	end
-	return first, second, third, fourth
-end
 
 local trainerSpells = {} -- "npcID:service name" = spell, for this session
 local trainerMisses = {} -- same key = tooltip reads that gave no spell; capped like an item that never answers
-local trainerJob -- the scan in progress: { shown, npc, professionTrainer, index, services, ... }
+local trainerJob -- the scan in progress: { npc, professionTrainer, index, services, skipped, ... }
 
 -- The first read of a trainer is a tooltip per service (about 1.5 ms each on the Deck, 23 to 33 ms in all), so it runs in steps of
--- TRAINER_STEP_MS, one frame apart, with the player's filters held on across the steps (the services are indexed under them) and put back
--- in the last one; a trainer already read this session costs no tooltips (docs/client-notes.md, "Trainers").
-local TRAINER_STEP_MS = 4
+-- TRAINER_STEP_MS, one frame apart; a trainer already read this session costs no tooltips. A step ends before a tooltip would pass the
+-- 5 ms frame bar, so the budget is the bar less one tooltip (docs/client-notes.md, "Trainers").
+local TRAINER_STEP_MS = 3
+local TRAINER_MAX_RESTARTS = 5 -- the list changed under a scan this many times (filters, a purchase): stop and let the next update ask again
 local FinishScan -- defined below, after Scan's pieces
 
 local function EndTrainerJob(job)
-	ns.RestoreTrainerServices(job.shown)
 	if trainerJob == job then trainerJob = nil end
+end
+
+local function Skip(job, reason)
+	job.skipped[reason] = (job.skipped[reason] or 0) + 1
+end
+
+-- "used 1, no spell 2" for the trace.
+local function SkippedText(skipped)
+	local parts = {}
+	for reason, n in pairs(skipped) do
+		parts[#parts + 1] = reason .. " " .. n
+	end
+	table.sort(parts)
+	return #parts > 0 and table.concat(parts, ", ") or "none"
+end
+
+-- Which of the player's filters hide a type of service, for the trace; they are only read.
+local function HiddenTypes()
+	local hidden = {}
+	for _, serviceType in ipairs(TRAINER_SERVICE_TYPES) do
+		if not GetTrainerServiceTypeFilter(serviceType) then
+			hidden[#hidden + 1] = serviceType
+		end
+	end
+	return #hidden > 0 and table.concat(hidden, ", ") or "none"
 end
 
 local function ReadTrainerService(job, index)
 	local npc = job.npc
 	local name, serviceType, _, _, _, category = GetTrainerServiceInfo(index)
-	if name and serviceType ~= "header" and index ~= job.stepIndex and category and category ~= "" then
+	if not name then
+		Skip(job, "no name yet")
+	elseif serviceType == "header" then
+		Skip(job, "header")
+	elseif index == job.stepIndex then
+		Skip(job, "rank step")
+	elseif not category or category == "" then
+		Skip(job, "no category")
+	else
 		local _, skillRank = GetTrainerServiceSkillReq(index)
 		local cost = GetTrainerServiceCost(index)
 		-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id. One trainer's service of a name teaches the same
@@ -182,24 +185,45 @@ local function ReadTrainerService(job, index)
 			end
 		end
 		-- No Spell tooltip means no recipe ID; skip it.
-		if spellID and (job.professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
+		if not spellID then
+			Skip(job, "no spell")
+		elseif job.professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID) then
 			local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })
 			job.recipes = job.recipes + 1
 			job.changed = job.changed or updated
 			if isNew then job.count = job.count + 1 end
+		else
+			Skip(job, "not a profession")
 		end
 	end
 end
 
 local function TrainerStep(job)
-	if trainerJob ~= job then return end -- the window closed or another trainer opened: that already put the filters back
+	if trainerJob ~= job then return end -- the window closed or another trainer opened
 	local started = debugprofilestop()
+	-- The player changed a filter (or a purchase moved the list): the indices read so far are stale, so read again from the top. Services
+	-- already asked for cost no tooltip (trainerSpells), so a restart is cheap.
+	if job.stale then
+		job.stale = nil
+		job.restarts = job.restarts + 1
+		if job.restarts > TRAINER_MAX_RESTARTS then
+			ns.toolkit:Trace(ns.module, "TRAINER scan stopped after %d restarts: the list kept changing", TRAINER_MAX_RESTARTS)
+			EndTrainerJob(job)
+			return
+		end
+		ns.toolkit:Trace(ns.module, "TRAINER list changed at service %d of %d, read again from the top (restart %d)", job.index, job.services, job.restarts)
+		job.services, job.stepIndex = GetNumTrainerServices(), GetTrainerServiceStepIndex()
+		job.index, job.first, job.recipes, job.tooltipMs = 1, 1, 0, 0
+		wipe(job.skipped)
+	end
 	job.steps = job.steps + 1
 	while job.index <= job.services and (job.index == job.first or debugprofilestop() - started < TRAINER_STEP_MS) do
 		ReadTrainerService(job, job.index)
 		job.index = job.index + 1
 	end
-	job.ms = job.ms + (debugprofilestop() - started)
+	local stepMs = debugprofilestop() - started
+	job.ms = job.ms + stepMs
+	job.worstMs = math.max(job.worstMs, stepMs)
 	--@debug@
 	ns.PerfMs("trainer scan step", debugprofilestop() - started)
 	--@end-debug@
@@ -208,11 +232,11 @@ local function TrainerStep(job)
 		RunNextFrame(function() TrainerStep(job) end)
 		return
 	end
-	-- The closing work is one step a frame (the rank read is a tooltip, restoring the filters re-indexes the trainer's list, and the
-	-- finish saves and redraws), each timed, since together they took 12.6 ms in one frame on the Deck.
-	local function Closing(name, work, after, always)
+	-- The closing work is one step a frame (the rank read is a tooltip, the finish saves and redraws), each timed (docs/client-notes.md, "Trainers").
+	local function Closing(name, work, after)
 		RunNextFrame(function()
-			if trainerJob ~= job and not always then return end
+			if trainerJob ~= job then return end
+			if job.stale then return TrainerStep(job) end
 			local closeStart = debugprofilestop()
 			work()
 			local ms = debugprofilestop() - closeStart
@@ -224,7 +248,7 @@ local function TrainerStep(job)
 		end)
 	end
 	Closing("rank", function()
-		-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step); read under the held filters.
+		-- The trainer's next rank for this character (Blizzard's trainer window shows it apart, as its skill step).
 		if job.professionTrainer and ns.NoteTrainerRank(job.npc.npcID) then
 			job.rankNoted = true
 		end
@@ -232,20 +256,19 @@ local function TrainerStep(job)
 		Closing("visit", function()
 			if job.rankNoted or job.recipes > 0 then NoteVisit(job.npc) end
 		end, function()
-			Closing("filters", function() if trainerJob == job then EndTrainerJob(job) end end, function()
-				-- EndTrainerJob cleared trainerJob; the last step runs unguarded.
-				RunNextFrame(function()
-					local finishStart = debugprofilestop()
-					FinishScan(job.count, job.npc, job.changed)
-					local ms = debugprofilestop() - finishStart
-					--@debug@
-					ns.PerfMs("trainer scan finish", ms)
-					ns.PerfMs("trainer scan tooltips", job.tooltipMs)
-					--@end-debug@
-					ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips), closed in %.1f ms and finished in %.1f ms; %d recipes, %d new",
-						job.services, job.steps, job.ms, job.tooltipMs or 0, job.closingMs, ms, job.recipes, job.count)
-				end)
-			end, true)
+			-- The job is over; the last step runs unguarded.
+			EndTrainerJob(job)
+			RunNextFrame(function()
+				local finishStart = debugprofilestop()
+				FinishScan(job.count, job.npc, job.changed)
+				local ms = debugprofilestop() - finishStart
+				--@debug@
+				ns.PerfMs("trainer scan finish", ms)
+				ns.PerfMs("trainer scan tooltips", job.tooltipMs)
+				--@end-debug@
+				ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips, worst step %.1f ms), closed in %.1f ms and finished in %.1f ms; %d recipes, %d new; skipped: %s; filters off: %s; restarts %d",
+					job.services, job.steps, job.ms, job.tooltipMs or 0, job.worstMs, job.closingMs, ms, job.recipes, job.count, SkippedText(job.skipped), HiddenTypes(), job.restarts)
+			end)
 		end)
 	end)
 end
@@ -264,16 +287,19 @@ local function RecordTrainer()
 		ns.toolkit:Trace(ns.module, "TRAINER scan already running, not started again")
 		return true
 	end
-	local shown = ns.HoldAllTrainerServices()
 	local services = GetNumTrainerServices()
 	if services == 0 then
-		ns.RestoreTrainerServices(shown)
 		return false
 	end
-	local job = { shown = shown, npc = npc, professionTrainer = professionTrainer, index = 1, first = 1, services = services,
+	local job = { npc = npc, professionTrainer = professionTrainer, index = 1, first = 1, services = services,
 		-- A recipe has a category; a profession rank has none.
-		stepIndex = GetTrainerServiceStepIndex(), count = 0, recipes = 0, changed = false, steps = 0, ms = 0, tooltipMs = 0, closingMs = 0 }
+		stepIndex = GetTrainerServiceStepIndex(), count = 0, recipes = 0, changed = false, steps = 0, ms = 0, worstMs = 0, tooltipMs = 0, closingMs = 0, restarts = 0, skipped = {} }
 	trainerJob = job
+	local hidden = HiddenTypes()
+	if hidden ~= "none" then
+		-- Services of a hidden type are not in the list, so they are not seen and their count is not known without changing the filter.
+		ns.toolkit:Trace(ns.module, "TRAINER filters off: %s; their services are not read this visit", hidden)
+	end
 	TrainerStep(job)
 	return true
 end
@@ -379,7 +405,11 @@ local function OnVisitEvent(event, itemID)
 	elseif (event == "TRAINER_CLOSED" and record == RecordTrainer)
 		or (event == "MERCHANT_CLOSED" and record == RecordVendor) then
 		FinishVisit()
-	elseif not ((record == RecordTrainer and event == "TRAINER_SERVICE_INFO_NAME_UPDATE")
+	elseif event == "TRAINER_UPDATE" and trainerJob then
+		-- Filters and purchases fire it; a scan in progress reads again from the top.
+		trainerJob.stale = true
+		return
+	elseif not ((record == RecordTrainer and (event == "TRAINER_SERVICE_INFO_NAME_UPDATE" or event == "TRAINER_UPDATE"))
 		or (record == RecordVendor and (event == "MERCHANT_UPDATE" or missingItems[itemID]))) then
 		return
 	end
@@ -389,7 +419,7 @@ local function OnVisitEvent(event, itemID)
 end
 
 local visitHandlers = {}
-for _, event in ipairs({ "TRAINER_SHOW", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED", "MERCHANT_SHOW",
+for _, event in ipairs({ "TRAINER_SHOW", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_UPDATE", "TRAINER_CLOSED", "MERCHANT_SHOW",
 	"MERCHANT_UPDATE", "MERCHANT_CLOSED", "GET_ITEM_INFO_RECEIVED" }) do
 	visitHandlers[event] = function(...)
 		if ns.db then OnVisitEvent(event, ...) end
