@@ -822,6 +822,29 @@ local function RecordLayout()
 	record.build = select(2, GetBuildInfo())
 	record.version = C_AddOns.GetAddOnMetadata(addonName, "Version")
 	record.windowScale, record.panelScale = ProfessionsFrame:GetEffectiveScale(), parts.panel:GetEffectiveScale()
+	-- Section edges on screen, in pixels from the bottom, so ours can be lined up with the crafting page's own sections by a
+	-- script (kit standards, "Side panels": measure, then draw). Each is top and bottom, or nil when not shown.
+	local function Edge(name, region)
+		local scale = region and region:GetEffectiveScale()
+		local top, bottom = region and region:IsVisible() and region:GetTop(), region and region:IsVisible() and region:GetBottom()
+		record.edges[#record.edges + 1] = { name = name, top = top and top * scale, bottom = bottom and bottom * scale }
+		toolkit:Trace(ns.module, "layout edge", "name", name, "top", top and top * scale, "bottom", bottom and bottom * scale)
+	end
+	record.edges = {}
+	local form = page.SchematicForm
+	Edge("blizzard window", ProfessionsFrame)
+	Edge("blizzard recipe list", page.RecipeList)
+	Edge("blizzard recipe list rows", page.RecipeList and page.RecipeList.ScrollBox)
+	Edge("blizzard schematic", form)
+	Edge("blizzard reagents label", form and form.Reagents and form.Reagents.Label)
+	Edge("blizzard create button", page.CreateButton)
+	Edge("ours panel", parts.panel)
+	Edge("ours rank bar", parts.rankBar)
+	Edge("ours list", parts.listArea)
+	Edge("ours list rows", parts.scroll)
+	Edge("ours details", parts.detail)
+	Edge("ours reagents label", parts.detail and parts.detail.ReagentsLabel)
+	Edge("ours map pin", parts.mapButton and parts.mapButton:IsShown() and parts.mapButton or parts.mapMore)
 	ns.db.devLayout = ns.db.devLayout or {}
 	-- Every record is kept, by view and time, so each view and each build of it stays to be read: debugging data, nothing is
 	-- dropped (owner, 2026-11-26).
