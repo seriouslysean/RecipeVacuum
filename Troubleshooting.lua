@@ -54,14 +54,14 @@ local voice = ns.voice
 -- A watch line: logged, and shown in chat through the kit unless a watch handler is running.
 local function Show(line)
 	Append(line)
-	if not logOnly then toolkit:Print(line) end
+	if not logOnly then toolkit:Debug(line) end
 end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
 local function Say(line, ...)
 	line = select("#", ...) > 0 and line:format(...) or line
 	Append(LOG_TAG .. line)
-	if not logOnly then toolkit:Print(line) end
+	if not logOnly then toolkit:Debug(line) end
 end
 
 -- What a watch event found, in the log only: the working build always watches, so a chat line here would repeat on every
@@ -453,11 +453,11 @@ local troubleshooting = {}
 table.insert(troubleshooting, { "item", label = "Item Tooltip Data", button = "Save", "Save an item's tooltip data to the log", function(text)
 	local itemID = tonumber(text)
 	if not itemID then
-		return ns.toolkit:Print("Give an item ID: /recipevacuum item 16083")
+		return ns.toolkit:Debug("Give an item ID: /recipevacuum item 16083")
 	end
 	if not C_Item.IsItemDataCachedByID(itemID) then
 		C_Item.RequestLoadItemDataByID(itemID)
-		return ns.toolkit:Print("Item data requested. Run the command again in a moment.")
+		return ns.toolkit:Debug("Item data requested. Run the command again in a moment.")
 	end
 	local tooltip = C_TooltipInfo.GetItemByID(itemID)
 	ns.db.devItems = ns.db.devItems or {}
@@ -477,7 +477,7 @@ table.insert(troubleshooting, { "item", label = "Item Tooltip Data", button = "S
 	lines[#lines + 1] = ("class %s subclass %s | item spell %s %s"):format(tostring(classID), tostring(subclassID),
 		tostring(spellID), tostring(spellName))
 	ns.db.devItems[itemID] = lines
-	ns.toolkit:Print(("Saved %d tooltip lines for item %d. Reload to write them."):format(#lines - 1, itemID))
+	ns.toolkit:Debug(("Saved %d tooltip lines for item %d. Reload to write them."):format(#lines - 1, itemID))
 end, quiet = true })
 -- Rank book test data, for this session only (not saved): the Expert book vendors from Wowhead's WoW Forever
 -- pages (npc and item pages read 2026-11-25), so the rank mark can be checked without visiting them.
@@ -517,7 +517,7 @@ table.insert(troubleshooting, { "mockranks", label = "Test Rank Sources", button
 	ns.included.npcs[quest.npc] = { name = quest.name, positions = { [quest.map] = { x = quest.x, y = quest.y, seen = now } } }
 	Add(quest.skillLine, quest.fromCap).quests[quest.quest] = quest.npc
 	ns.SourcesChanged()
-	ns.toolkit:Print("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
+	ns.toolkit:Debug("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
 end, quiet = true })
 
 -- Facts cache test: drops the cache, so the next unlearned-recipe build runs cold without it.
@@ -526,7 +526,7 @@ table.insert(troubleshooting, { "nofacts", label = "Recipe Facts Cache", button 
 	ns.db.recipeFacts = nil
 	ns.ClearRecipeLocks()
 	ns.SourcesChanged()
-	ns.toolkit:Print("Recipe facts cache dropped. Reload to build the unlearned recipes cold.")
+	ns.toolkit:Debug("Recipe facts cache dropped. Reload to build the unlearned recipes cold.")
 end, quiet = true })
 table.insert(troubleshooting, { "perf", label = "Window Timings", button = "Show", "Show how long the window and its lookups took", function()
 	local function Ms(value)
@@ -839,8 +839,8 @@ end
 
 table.insert(troubleshooting, { "layout", label = "Window Layout", button = "Record", "Record Blizzard's profession window and our panel layout", function()
 	local record, reason = RecordLayout()
-	if not record then return ns.toolkit:Print(reason) end
-	ns.toolkit:Print(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
+	if not record then return ns.toolkit:Debug(reason) end
+	ns.toolkit:Debug(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
 end, quiet = true })
 
 -- The same record, taken by itself whenever the panel draws a different view: another profession, recipe or build (owner,
@@ -876,7 +876,7 @@ table.insert(troubleshooting, { "sharetest", label = "Sharing", button = "Test",
 	local scratch = { npcs = {}, objects = {}, shared = ns.NewLayer(), itemRecipe = {}, pendingItems = {} }
 	ns.share:SelfTest(function(line)
 		table.insert(real.devShareTest, line)
-		ns.toolkit:Print(line)
+		ns.toolkit:Debug(line)
 	end, function(rows)
 		ns.db = scratch
 		local ok, changed, skipped = pcall(ns.share.Merge, ns.share, rows)

@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 75
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 76
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -122,6 +122,12 @@ end
 -- A plain line with the mark: an error's text, a development command's answer.
 function lib:Print(text)
 	AddLine(MARK .. " " .. text)
+end
+
+-- A working-build line, never a player's: grey with a [Debug] tag, so it reads apart from the module's own lines in chat
+-- and in a screenshot (docs/standards.md, "Working build"). Blizzard's grey, GRAY_FONT_COLOR (SharedColorConstants.lua).
+function lib:Debug(text)
+	AddLine(MARK .. " " .. GRAY_FONT_COLOR:WrapTextInColorCode("[Debug] " .. text))
 end
 
 -- Several lines that belong together: the header carries the mark, the rows sit under its text.
@@ -338,7 +344,7 @@ function lib:EnableWorkingBuild()
 			return
 		end
 		local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
-		lib:Print(line)
+		lib:Debug(line)
 		-- Shared context: every log keeps it, with the call stack, to read after a reload.
 		lib:LogAll(line)
 		lib:LogAll(debugstack(2, 12, 0))
@@ -446,7 +452,7 @@ local function UpdateWatchEvents()
 					if not ok then
 						local line = ("Malfunction in %s! %s"):format(event, tostring(problem))
 						lib:Log(log.module, line)
-						lib:Print(("%s: %s"):format(log.module.title, line))
+						lib:Debug(("%s: %s"):format(log.module.title, line))
 					end
 				end
 			end
@@ -514,7 +520,7 @@ function lib:StartLog(module, saved, handlers)
 	self:EnableWorkingBuild()
 	-- Without its saved table a module keeps no log; a working build must not break over it.
 	if type(saved) ~= "table" then
-		self:Print(("%s: no saved table for the log yet; nothing is logged this session."):format(tostring(module.title)))
+		self:Debug(("%s: no saved table for the log yet; nothing is logged this session."):format(tostring(module.title)))
 		return
 	end
 	local log = self.logs[module.addon]
@@ -691,7 +697,7 @@ function lib:SetWatch(module, on, quiet)
 	log.saved.watch = on and true or false
 	UpdateWatchEvents()
 	if not quiet then
-		self:Print(("%s: %s"):format(module.title, on and "Watch enabled!" or "Watch disabled!"))
+		self:Debug(("%s: %s"):format(module.title, on and "Watch enabled!" or "Watch disabled!"))
 	end
 end
 
@@ -734,14 +740,14 @@ local function KitCommand(name, word)
 			local saved = lib.logs[addon].saved
 			saved.devLog, saved.devLogRun = {}, nil
 		end
-		lib:Print("Logs purged!")
+		lib:Debug("Logs purged!")
 	elseif word == "all" or word == "" then
 		for _, addon in ipairs(lib.logOrder) do
 			lib.logs[addon].viewStart = nil
 		end
 		lib:ShowAllLogs(word == "all")
 	else
-		lib:Print(WORKING_BUILD_ROWS[1])
+		lib:Debug(WORKING_BUILD_ROWS[1])
 	end
 	return true
 end

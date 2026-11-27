@@ -24,6 +24,7 @@ local function NewClient()
 	dofile(LIBSTUB)
 	SlashCmdList = {}
 	NORMAL_FONT_COLOR = { WrapTextInColorCode = function(_, text) return "|cffffd100" .. text .. "|r" end }
+	GRAY_FONT_COLOR = { WrapTextInColorCode = function(_, text) return "|cff808080" .. text .. "|r" end }
 	ChatTypeInfo = { SYSTEM = { r = 1, g = 1, b = 0, id = 1 }, MONSTER_SAY = { r = 1, g = 1, b = 0.5, id = 12 } }
 	DEFAULT_CHAT_FRAME = { AddMessage = function(_, text, r, g, b) table.insert(chat, text); chat.color = { r, g, b } end }
 	RAID_CLASS_COLORS = { MAGE = { r = 0, g = 0, b = 1 } }
@@ -134,6 +135,15 @@ describe("load order", function()
 			assert(Count(buttons, "canvas", "Jig Boltgrip's Toolkit") == 0, order.name .. ": no canvas page")
 		end)
 	end
+
+	-- Fails if a working-build line reads like a player's line: it must be grey and tagged.
+	it("a debug line is grey and tagged [Debug]", function()
+		NewClient()
+		Load(CURRENT)
+		LibStub("JigBoltgripToolkit-1.0"):Debug("probe")
+		local line = chat[#chat]
+		assert(line:find("|cff808080[Debug] probe|r", 1, true) ~= nil, "a debug line is grey and tagged [Debug]")
+	end)
 
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()
