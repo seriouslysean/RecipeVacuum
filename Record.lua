@@ -134,6 +134,7 @@ function ns.WithAllTrainerServices(read)
 end
 
 local ReadTrainerServices
+local trainerSpells = {} -- "npcID:service name" = spell, for this session
 
 local function RecordTrainer()
 	if not ns.db.selfFound then
@@ -160,9 +161,14 @@ function ReadTrainerServices(npc, professionTrainer)
 		if name and serviceType ~= "header" and index ~= stepIndex and category and category ~= "" then
 			local _, skillRank = GetTrainerServiceSkillReq(index)
 			local cost = GetTrainerServiceCost(index)
-			-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id.
-			local tooltip = C_TooltipInfo.GetTrainerService(index)
-			local spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
+			-- Forever's TooltipUtil.GetDisplayedSpell checks the tooltip type before reading id. The tooltip is the costly read (about 1.5 ms a
+			-- service on the Deck), and one trainer's service of a name teaches the same spell, so it is read once per trainer and name a session.
+			local spellID = trainerSpells[npc.npcID .. ":" .. name]
+			if spellID == nil then
+				local tooltip = C_TooltipInfo.GetTrainerService(index)
+				spellID = tooltip and tooltip.type == Enum.TooltipDataType.Spell and tooltip.id
+				if spellID then trainerSpells[npc.npcID .. ":" .. name] = spellID end
+			end
 			-- No Spell tooltip means no recipe ID; skip it.
 			if spellID and (professionTrainer or C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID)) then
 				local isNew, updated = Save("recipes", spellID, "trainer", npc, { skill = skillRank, cost = cost })

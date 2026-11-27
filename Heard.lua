@@ -358,7 +358,7 @@ frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_ADDED")
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
 frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
-frame:SetScript("OnEvent", function(_, event, message, loaded)
+local function OnEvent(_, event, message, loaded)
 	if not ns.db then
 		return
 	end
@@ -416,7 +416,17 @@ frame:SetScript("OnEvent", function(_, event, message, loaded)
 		shownPending = true
 	end
 	ReadShownProfession()
-end)
+end
+--@debug@
+-- Each event's own cost in the timing table, by name, so a slow frame is traced to the event that ran in it.
+local handle = OnEvent
+function OnEvent(self, event, ...)
+	local started = debugprofilestop()
+	handle(self, event, ...)
+	ns.Perf("heard " .. event, started)
+end
+--@end-debug@
+frame:SetScript("OnEvent", OnEvent)
 
 --@debug@
 -- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").

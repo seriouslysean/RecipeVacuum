@@ -454,10 +454,10 @@ end
 
 -- How many the bags and bank could make, as Blizzard's rows show it in brackets (Blizzard_ProfessionsRecipeList.lua, SetCraftableCount).
 -- The client counts only learned recipes, so an unlearned one is counted from its basic reagents. A reagent list never changes, so it is
--- read once per recipe.
-local recipeNeeds = {}
+-- read once per recipe; the count held of each reagent is read once until the bags or bank change (the events below clear it).
+local craftable = { needs = {}, held = {} }
 local function CraftableCount(recipeID)
-	local needs = recipeNeeds[recipeID]
+	local needs = craftable.needs[recipeID]
 	if not needs then
 		needs = {}
 		local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
@@ -466,12 +466,17 @@ local function CraftableCount(recipeID)
 			local reagent = slot.reagentType == Enum.CraftingReagentType.Basic and slot.reagents[1]
 			if reagent and reagent.itemID then needs[#needs + 1] = { reagent.itemID, slot.quantityRequired } end
 		end
-		recipeNeeds[recipeID] = needs
+		craftable.needs[recipeID] = needs
 	end
 	if #needs == 0 then return 0 end
 	local count = math.huge
 	for _, need in ipairs(needs) do
-		count = math.min(count, math.floor(C_Item.GetItemCount(need[1], true) / need[2]))
+		local held = craftable.held[need[1]]
+		if not held then
+			held = C_Item.GetItemCount(need[1], true)
+			craftable.held[need[1]] = held
+		end
+		count = math.min(count, math.floor(held / need[2]))
 	end
 	return count
 end
@@ -600,7 +605,8 @@ end
 local function Finish()
 	Reveal()
 	SyncNav() -- the rows built after the list showed
-	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames", recipeCount, bandCount, buildMs, buildSteps)
+	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames, worst frame %.1f ms, most items in a frame %d",
+		recipeCount, bandCount, buildMs, buildSteps, scroll.worstStepMs or 0, scroll.mostStepItems or 0)
 	--@debug@
 	local parts = {}
 	for part, ms in pairs(lapMs) do parts[#parts + 1] = ("%s %.1f"):format(part, ms) end
@@ -625,9 +631,10 @@ local function BuildStep(buildGeneration)
 		return
 	end
 	local started = debugprofilestop()
-	-- Only making a frame is limited; filling one that exists is cheap, so a pooled list is one pass.
-	local made = 0
-	while nextItem <= #items and (made == 0 or (made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS)) do
+	-- A frame ends at the budget whether it made frames or filled them (a cold row reads the client's recipe and tooltip data); one item is always done.
+	local made, done = 0, 0
+	while nextItem <= #items and (done == 0 or (made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS)) do
+		done = done + 1
 		local item = items[nextItem]
 		local frame
 		if item.recipe then
@@ -656,9 +663,11 @@ local function BuildStep(buildGeneration)
 		slots[nextItem] = frame
 		nextItem = nextItem + 1
 	end
-	buildMs = buildMs + (debugprofilestop() - started)
+	local stepMs = debugprofilestop() - started
+	buildMs = buildMs + stepMs
+	scroll.worstStepMs, scroll.mostStepItems = math.max(scroll.worstStepMs or 0, stepMs), math.max(scroll.mostStepItems or 0, done)
 	--@debug@
-	lapMs.worstStep = math.max(lapMs.worstStep or 0, debugprofilestop() - started)
+	lapMs.worstStep = scroll.worstStepMs
 	--@end-debug@
 	buildSteps = buildSteps + 1
 	if nextItem <= #items then
@@ -1297,6 +1306,7 @@ local function Update()
 	ClearNav() -- the rows are reused for other recipes; the build's end sets them again
 	lastFocused = nil
 	nextItem, buildMs, buildSteps = 1, 0, 0
+	scroll.worstStepMs, scroll.mostStepItems = 0, 0
 	wipe(lapMs)
 	child:SetHeight(math.max(height, 1))
 	empty:Hide()
@@ -1311,6 +1321,17 @@ local function Update()
 	for index = headingCount + 1, #headings do headings[index]:Hide() end
 	BuildStep(generation)
 end
+--@debug@
+-- The whole redraw in one frame: the list read, the unlearned recipes, the signature and the start of the build.
+do
+	local redraw = Update
+	Update = function()
+		local started = debugprofilestop()
+		redraw()
+		ns.Perf("panel update", started)
+	end
+end
+--@end-debug@
 
 -- Frames made ahead of need, out of combat, in slices of BUILD_BUDGET_MS (docs/client-notes.md, "Panel"), so a profession only fills
 -- frames that exist. The target is what the character's professions would list now, plus these margins for finds that arrive meanwhile.
@@ -1444,6 +1465,17 @@ function pool.step()
 	ns.Trace("POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms)
 	pool.kick()
 end
+--@debug@
+-- The slice's own cost in the timing table, so a frame over the budget is named (docs/client-notes.md, "Panel").
+do
+	local slice = pool.step
+	pool.step = function()
+		local started = debugprofilestop()
+		slice()
+		ns.Perf("pool slice", started)
+	end
+end
+--@end-debug@
 
 -- Counts again what the professions would list; the frames already made stay.
 function pool.rescan()
@@ -1733,7 +1765,7 @@ end
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
 local eventFrame = CreateFrame("Frame")
 for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
-	"BAG_UPDATE_DELAYED", "PLAYER_LOGIN" }) do -- bags change the counts; the same content refreshes rows in place
+	"BAG_UPDATE_DELAYED", "PLAYER_LOGIN", "PLAYERBANKSLOTS_CHANGED", "PLAYERREAGENTBANKSLOTS_CHANGED" }) do -- bags change the counts; the same content refreshes rows in place
 	eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event)
@@ -1747,7 +1779,10 @@ eventFrame:SetScript("OnEvent", function(_, event)
 		pool.resume()
 	elseif event == "PLAYER_LOGIN" then
 		pool.afterLogin()
+	elseif event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERREAGENTBANKSLOTS_CHANGED" then
+		wipe(craftable.held) -- the next draw reads the bank's counts again; a bank change alone asks for no redraw
 	else
+		if event == "BAG_UPDATE_DELAYED" then wipe(craftable.held) end
 		Request()
 	end
 end)
