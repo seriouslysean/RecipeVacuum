@@ -58,6 +58,6 @@ Reference material lives in `docs/`; code comments stay short and point there.
 | [docs/client-notes.md](docs/client-notes.md) | What the Forever client does where the addon depends on it, as measured |
 | [docs/voice.md](docs/voice.md) | The chat voice: rules, sources, delivery |
 | [docs/development.md](docs/development.md) | Setup, checks, the working build, troubleshooting commands, seeding, release |
-| [Toolkit docs/decisions.md](https://github.com/seriouslysean/JigBoltgripToolkit/blob/main/docs/decisions.md) | Every choice, Recipe Vacuum's included, with why and what would reopen it; add Recipe Vacuum's there |
+| [Toolkit docs/decisions/](https://github.com/seriouslysean/JigBoltgripToolkit/blob/main/docs/decisions/README.md) | Every choice, Recipe Vacuum's included, one file each with dates, cited reasons, versions and tests; add Recipe Vacuum's there |
 
 Run `scripts/check` before every commit (docs/development.md, "Checks").
