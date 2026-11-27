@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 56
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 57
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -20,6 +20,7 @@ do
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
 		"Working Build", "Working build only: reload and the development commands, as buttons.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
+		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
 		"Also tracks what your party, guild and friends find.", "Boltgrip's %s %s.",
 	}) do
@@ -29,6 +30,7 @@ do
 		or setmetatable({}, { __index = function(_, text) return text end })
 end
 lib.modules = lib.modules or {}
+lib.records = lib.records or {} -- module records made by NewModule, by addon name, before settings load
 
 -- Header for modules' key bindings: a module's Bindings.xml uses category="BINDING_HEADER_JIGBOLTGRIPTOOLKIT".
 BINDING_HEADER_JIGBOLTGRIPTOOLKIT = lib.title
@@ -95,13 +97,30 @@ local function DeviceName(module)
 	return InDeviceColor(module, module.title)
 end
 
--- A voiced line: the mark, "Boltgrip's", the device's name and the noise it makes, then its own report.
--- noise is a short present-tense phrase with no end mark ("whirs and rattles"); the library adds the
--- period. report is one or more robot-speak beats, each ending in "!" ("Intake complete! 2 recipes from X!").
-function lib:Say(module, noise, report)
+-- A voiced line: the mark, "Boltgrip's", the device's name and the noise it makes (no end mark; the library adds
+-- the period), then the report, robot-speak beats each ending in "!". line is a Voice.lua entry
+-- ({ noise, report, reportOne }): the arguments format the report, and a first argument of 1 picks reportOne.
+function lib:Say(module, line, ...)
+	local noise, report = line, ...
+	if type(line) == "table" then
+		noise = line.noise
+		report = (... == 1 and line.reportOne) or line.report
+		if type(report) == "string" and select("#", ...) > 0 then report = report:format(...) end
+	end
 	assert(type(noise) == "string" and noise ~= "" and type(report) == "string" and report ~= "",
 		("%s: a voiced line needs a noise and a report (docs/standards.md, \"Voice\")"):format(tostring(module.title)))
 	AddLine(("%s %s %s"):format(MARK, L["Boltgrip's %s %s."]:format(DeviceName(module), noise), report))
+end
+
+-- A voiced line said once ever: db[key] remembers it, for the first time a module changes something the
+-- player did not set (docs/standards.md, "Game settings"). Returns whether it spoke.
+function lib:SayOnce(module, db, key, line, ...)
+	if db[key] then
+		return false
+	end
+	db[key] = true
+	self:Say(module, line, ...)
+	return true
 end
 
 -- A plain line with the mark: an error's text, a development command's answer.
@@ -117,8 +136,84 @@ function lib:PrintBlock(header, rows)
 	end
 end
 
+-- The gamepad interface is chosen before load, so this is fixed for a session.
 local function GamepadUI()
-	return InputUtil ~= nil and InputUtil.IsGamepadUIEnabled()
+	return InputUtil ~= nil and InputUtil.IsGamepadUIEnabled ~= nil and InputUtil.IsGamepadUIEnabled() or false
+end
+lib.IsGamepadUI = GamepadUI
+
+-- Values the client may hide from addons (issecretvalue). Readable is false for nil and for a hidden value;
+-- Describe is tostring that never touches one; GUID gives a GUID's kind and its numeric ID ("Creature",
+-- 1234), nothing for an unreadable or missing GUID. An Item or Player GUID has no ID field, so its ID is nil.
+function lib.Readable(value)
+	return value ~= nil and not (issecretvalue and issecretvalue(value))
+end
+
+function lib.Describe(value)
+	if issecretvalue and issecretvalue(value) then
+		return "<secret>"
+	end
+	return tostring(value)
+end
+
+function lib.GUID(guid)
+	if not lib.Readable(guid) or type(guid) ~= "string" then
+		return nil
+	end
+	local kind, _, _, _, _, id = strsplit("-", guid)
+	return kind, tonumber(id)
+end
+
+-- A module's record exists from file load, so every file can name the module to the kit before the Settings
+-- category does (RegisterModule fills it in later). command is the slash word, the addon's name in lower
+-- case unless given.
+function lib:NewModule(addonName, class, command)
+	local module = self.records[addonName]
+	if not module then
+		module = { addon = addonName, title = C_AddOns.GetAddOnMetadata(addonName, "Title"),
+			notes = C_AddOns.GetAddOnMetadata(addonName, "Notes") }
+		self.records[addonName] = module
+	end
+	module.class = class or module.class
+	module.command = command or module.command or addonName:lower()
+	return module
+end
+
+-- Saved data: schema, ordered migrations and defaults, run once the saved variable has loaded (docs/standards.md,
+-- "Data"). A save from a newer build is left untouched and the module runs on an empty copy.
+local function CopyDefault(value)
+	if type(value) ~= "table" then return value end
+	local copy = {}
+	for key, item in pairs(value) do copy[key] = CopyDefault(item) end
+	return copy
+end
+
+local function FillDefaults(db, defaults)
+	for key, value in pairs(defaults or {}) do
+		if db[key] == nil then db[key] = CopyDefault(value) end
+	end
+end
+
+function lib:LoadSaved(module, globalName, spec)
+	local db = _G[globalName] or {}
+	local characterDb = spec.character and (_G[spec.character] or {}) or nil
+	local version = db.schema or (spec.legacy and spec.legacy(db)) or spec.schema
+	if version > spec.schema then
+		db, characterDb = {}, characterDb and {}
+		version = spec.schema
+		self:Print(spec.newer or L["Saved data is from a newer version of %s; it was left unchanged."]:format(module.title))
+	else
+		_G[globalName] = db
+		if characterDb then _G[spec.character] = characterDb end
+	end
+	for step = version + 1, spec.schema do
+		spec.migrations[step](db, characterDb)
+		db.schema = step
+	end
+	db.schema = spec.schema
+	FillDefaults(db, spec.defaults)
+	if characterDb then FillDefaults(characterDb, spec.characterDefaults) end
+	return db, characterDb
 end
 
 -- One registration per addon, so a second copy loading the same module cannot add a second page.
@@ -134,7 +229,9 @@ function lib:RegisterModule(addonName, class)
 	local notes = C_AddOns.GetAddOnMetadata(addonName, "Notes")
 	local parent, parentLayout = self:GetCategory()
 	local category, layout = Settings.RegisterVerticalLayoutSubcategory(parent, title)
-	local module = { addon = addonName, title = title, notes = notes, category = category, layout = layout, class = class }
+	local module = self.records[addonName] or { addon = addonName }
+	module.title, module.notes, module.category, module.layout = title, notes, category, layout
+	module.class = class or module.class
 	table.insert(self.modules, module)
 	-- The gamepad interface is chosen before load (changing it reloads the UI); there the page's own list
 	-- already reaches each module, and an Open button would select a category from addon code.
@@ -365,6 +462,7 @@ end
 
 -- Starts the module's log once its saved table is loaded; resumes a watch left on.
 function lib:StartLog(module, saved, handlers)
+	self:EnableWorkingBuild()
 	-- Without its saved table a module keeps no log; a working build must not break over it.
 	if type(saved) ~= "table" then
 		self:Print(("%s: no saved table for the log yet; nothing is logged this session."):format(tostring(module.title)))
@@ -402,36 +500,69 @@ function lib:StartLog(module, saved, handlers)
 end
 
 -- A line for the module's log while it is logging; nothing otherwise, and nothing in a release, where no
--- log is started. For events worth reading back but not worth a chat line (sharing, timers).
-function lib:Trace(module, line)
+-- log is started. For events worth reading back but not worth a chat line (sharing, timers). With format
+-- arguments the line is built only while logging, so a call costs nothing otherwise.
+function lib:Trace(module, line, ...)
 	local log = self.logs[module.addon]
 	if log and log.watching then
-		self:Log(module, line)
+		self:Log(module, select("#", ...) > 0 and line:format(...) or line)
 	end
 end
 
--- Every event a module's frame receives, counted and written once a second as "EVENT name xN", so the log shows what fired around
--- a problem without each handler tracing it. Working builds call it from their debug block; the count costs nothing while not logging.
-function lib:WatchEvents(module, frame)
-	local counts, flushing = {}, false
-	local function Flush()
-		flushing = false
-		local names = {}
-		for name in pairs(counts) do names[#names + 1] = name end
-		table.sort(names)
-		for _, name in ipairs(names) do
-			lib:Trace(module, counts[name] > 1 and ("EVENT %s x%d"):format(name, counts[name]) or "EVENT " .. name)
-		end
-		counts = {}
+-- Every event a module's frames receive, counted and written once a second as "EVENT name xN", so the log
+-- shows what fired around a problem without each handler tracing it. The kit's own frames call this from
+-- their one dispatcher; the count costs nothing while not logging.
+lib.eventCounts = lib.eventCounts or {}
+function lib:CountEvent(module, event)
+	local log = self.logs[module.addon]
+	if not (log and log.watching) then return end
+	local state = self.eventCounts[module.addon]
+	if not state then
+		state = { counts = {} }
+		self.eventCounts[module.addon] = state
 	end
-	frame:HookScript("OnEvent", function(_, event)
-		local log = lib.logs[module.addon]
-		if not (log and log.watching) then return end
-		counts[event] = (counts[event] or 0) + 1
-		if not flushing then
-			flushing = true
-			C_Timer.After(1, Flush)
+	state.counts[event] = (state.counts[event] or 0) + 1
+	if not state.flushing then
+		state.flushing = true
+		C_Timer.After(1, function()
+			state.flushing = false
+			local names = {}
+			for name in pairs(state.counts) do names[#names + 1] = name end
+			table.sort(names)
+			for _, name in ipairs(names) do
+				lib:Trace(module, state.counts[name] > 1 and ("EVENT %s x%d"):format(name, state.counts[name]) or "EVENT " .. name)
+			end
+			state.counts = {}
+		end)
+	end
+end
+
+-- A frame that listens for events (docs/standards.md, "Working build helpers"): the kit sets its one OnEvent, which
+-- counts the event for the log and runs handlers[event](...). options: unit = { EVENT = "player" }, later = { EVENT = true }.
+function lib:EventFrame(module, handlers, options)
+	options = options or {}
+	local frame = CreateFrame("Frame")
+	for event in pairs(handlers) do
+		local unit = options.unit and options.unit[event]
+		if unit then
+			frame:RegisterUnitEvent(event, unit)
+		elseif not (options.later and options.later[event]) then
+			frame:RegisterEvent(event)
 		end
+	end
+	frame:SetScript("OnEvent", function(_, event, ...)
+		lib:CountEvent(module, event)
+		local handler = handlers[event]
+		if handler then handler(...) end
+	end)
+	return frame
+end
+
+-- Counts a frame's events by a hook. Kept for older modules; a SetScript("OnEvent") after it drops the
+-- count, which is why new frames come from EventFrame.
+function lib:WatchEvents(module, frame)
+	frame:HookScript("OnEvent", function(_, event)
+		lib:CountEvent(module, event)
 	end)
 end
 
@@ -804,8 +935,8 @@ local function AddWorkingRows(module)
 	end
 end
 
--- Working builds name themselves in the bottom-left corner, kit MINOR and each module's short name and deploy stamp, so a
--- screenshot shows which builds it caught. module.short names it, else the capitals of its title ("Recipe Vacuum" is rv).
+-- Working builds name themselves in the bottom-left corner as "jbg57 / rv.a81c4ef@08 / sc.7bd31fa+@42": kit MINOR, then
+-- each module's short name (module.short, else the capitals of its title) and the first word of its TOC Version.
 function lib:ShowBuilds()
 	local parts = { "jbg" .. MINOR }
 	for _, name in ipairs(self.logOrder or {}) do
@@ -813,14 +944,14 @@ function lib:ShowBuilds()
 		if module and module.workingSection then
 			local short = module.short or (module.title or name):gsub("[^%u]", ""):lower()
 			local stamp = (C_AddOns.GetAddOnMetadata(name, "Version") or "?"):match("^(%S+)") or "?"
-			table.insert(parts, short .. " " .. stamp)
+			table.insert(parts, short .. "." .. stamp)
 		end
 	end
 	if not self.buildText then
 		self.buildText = UIParent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 		self.buildText:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
 	end
-	self.buildText:SetText(table.concat(parts, " · "))
+	self.buildText:SetText(table.concat(parts, " / "))
 end
 
 function lib:AddWorkingSection(module)
@@ -978,12 +1109,23 @@ local function SetSlashHandler(name)
 end
 
 -- Registers a module's command table; name is its slash word, e.g. "recipevacuum".
+-- name is optional: without it the slash word is the module's command (NewModule). The kit adds the
+-- "open the options" entry first and "help" last, unless the table has its own.
 function lib:RegisterCommands(module, name, entries)
-	name = name:lower()
+	if type(name) == "table" then
+		name, entries = nil, name
+	end
+	name = (name or module.command or module.addon):lower()
 	module.command = name
-	local hasHelp = false
+	local hasHelp, hasOptions = false, false
 	for _, entry in ipairs(entries) do
 		hasHelp = hasHelp or entry.action == "help"
+		hasOptions = hasOptions or entry.action == ""
+	end
+	if not hasOptions then
+		table.insert(entries, 1, { action = "", description = L["Open the options"], run = function()
+			lib:OpenOptions(module)
+		end })
 	end
 	if not hasHelp then
 		table.insert(entries, { action = "help", description = L["List these commands"],
@@ -1171,14 +1313,6 @@ function lib:ShareFrame()
 			lib:ShareEvent(event, ...)
 		end)
 	end
-	-- The frame's events go into every module's working-build log, once each.
-	self.shareWatched = self.shareWatched or {}
-	for _, share in ipairs(self.shareList) do
-		if not self.shareWatched[share.module.addon] then
-			self.shareWatched[share.module.addon] = true
-			self:WatchEvents(share.module, self.shareFrame)
-		end
-	end
 	return self.shareFrame
 end
 
@@ -1195,6 +1329,10 @@ function lib:UpdateShareEvents()
 end
 
 function lib:ShareEvent(event, ...)
+	-- The frame's events go into every sharing module's working-build log.
+	for _, share in ipairs(self.shareList) do
+		self:CountEvent(share.module, event)
+	end
 	for _, share in ipairs(self.shareList) do
 		share:OnEvent(event, ...)
 	end

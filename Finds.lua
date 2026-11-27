@@ -204,12 +204,12 @@ function ns.ExportFinds()
 		observations = rows,
 	})
 	ns.toolkit:ShowText(
-		ns.title .. ": " .. L["Recipe Sources"], json)
+		ns.module.title .. ": " .. L["Recipe Sources"], json)
 end
 
 -- The saved collection and revisions are Recipe Vacuum's; the toolkit's share runs the exchange. Protocol 2 is
 -- the wire this addon has always spoken (prefix RecipeVacuum2): raise it only when a row's meaning changes.
-ns.share = ns.toolkit:NewShare(ns.device, {
+ns.share = ns.toolkit:NewShare(ns.module, {
 	protocol = 2,
 	kinds = KNOWN_KINDS,
 	wire = WireRow,

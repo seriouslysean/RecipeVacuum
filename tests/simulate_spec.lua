@@ -789,7 +789,8 @@ describe("simulation", function()
 			local function Event(event) frames[#frames].script(frames[#frames], event) end
 			it("closing the auction house says one line with the new recipes of the character's professions", function()
 				said = {}
-				h.Say = function(noise, report) said[#said + 1] = report end
+				h.toolkit = setmetatable({ Say = function(_, _, line, total) said[#said + 1] = (total == 1 and line.reportOne or line.report):format(total) end },
+					{ __index = h.toolkit })
 				h.db.announceNewFinds = true
 				h.db.met.recipes[7000], h.db.met.recipes[7001], h.db.met.recipes[7002], h.db.met.recipes[7003] = nil, nil, nil, nil
 				bagsOpen = false
@@ -1009,7 +1010,7 @@ describe("simulation", function()
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
 			CUSTOMER_CRAFTING_ORDERS_BROWSE_NO_RESULTS = "No recipes found"
-			pns.Trace = function(text, ...) traces[#traces + 1] = text:format(...) end
+			pns.toolkit = setmetatable({ Trace = function(_, _, text, ...) traces[#traces + 1] = text:format(...) end }, { __index = pns.toolkit })
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
 			init = function(skill) ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = skill or 40, maxSkillLevel = 75 }) end

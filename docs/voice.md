@@ -28,6 +28,6 @@ Read real in-game gnome text before writing a line, and model on it without copy
 
 ## Delivery
 
-`ns.Say(noise, report)` prints a voiced line (the device's noise, then the report) and `ns.Log(text)` a plain one, both through the toolkit library, which owns the mark, the prefix and the colors. The Vacuum's name takes the Druid class color (`ns.device.class`, `Core.lua`).
+`toolkit:Say(ns.module, line, ...)` prints a voiced line (the entry's noise, then its report formatted with the arguments, or `reportOne` for a first argument of 1) and `toolkit:Print(text)` a plain one, both through the toolkit library, which owns the mark, the prefix and the colors. The Vacuum's name takes the Druid class color (`NewModule`, `Core.lua`).
 
 When standing out and matching the game pull in different directions, match the game.

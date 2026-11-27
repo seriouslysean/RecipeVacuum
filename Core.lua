@@ -2,12 +2,14 @@ local addonName, ns = ...
 -- The libraries, looked up once; every file uses these.
 ns.toolkit = LibStub("JigBoltgripToolkit-1.0")
 ns.L = LibStub("AceLocale-3.0"):GetLocale(addonName)
-local L, toolkit = ns.L, ns.toolkit
+local toolkit = ns.toolkit
+
+-- The module's record, named to the toolkit from file load on; the druid's color is the Vacuum's name in chat.
+ns.module = toolkit:NewModule(addonName, "DRUID")
 
 -- Saved data layout and migrations: docs/data.md.
 local SCHEMA = 12
 
-ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
 
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
@@ -35,25 +37,6 @@ local defaults = {
 	pendingItems = {},     -- [recipe itemID] = {} until its data loads and names the recipe it teaches
 -- recipeFacts: per-build facts from recipe tooltips (Sources.lua), rebuilt on a new game build.
 }
-
--- Chat goes through the toolkit library, which owns the line's shape and colors (docs/voice.md).
--- ns.Say is a voiced line: "Boltgrip's Recipe Vacuum <noise>. <report>". ns.Log is a plain one.
-ns.device = { addon = addonName, title = ns.title, class = "DRUID" } -- the class whose color the Vacuum's name takes in chat
-
-function ns.Say(noise, report)
-	toolkit:Say(ns.device, noise, report)
-end
-
-function ns.Log(text)
-	toolkit:Print(text)
-end
-
--- A line for the working build's log, read back after play; nothing while the log is paused or in a release.
-function ns.Trace(text, ...)
-	if toolkit:IsLogging(ns.device) then
-		toolkit:Trace(ns.device, text:format(...))
-	end
-end
 
 function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 	local npc = npcs[npcID]
@@ -208,26 +191,8 @@ migrations[12] = function(db)
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
-	local db = RecipeVacuumDB or {}
-	local version = db.schema or (db.sources and 1) or SCHEMA
-	if version > SCHEMA then
-		-- Newer save: leave it alone and run on an empty session copy.
-		db = {}
-		version = SCHEMA
-		ns.Log(L["Saved data is from a newer version of Recipe Vacuum; it was left unchanged."])
-	else
-		RecipeVacuumDB = db
-	end
-	for step = version + 1, SCHEMA do
-		migrations[step](db)
-		db.schema = step
-	end
-	db.schema = SCHEMA
-	for key, value in pairs(defaults) do
-		if db[key] == nil then
-			db[key] = value
-		end
-	end
+	local db = toolkit:LoadSaved(ns.module, addonName .. "DB", { schema = SCHEMA, migrations = migrations, defaults = defaults,
+		legacy = function(saved) return saved.sources and 1 end })
 	-- A newer seed can take over saved links and waiting items, so each load drops the ones it covers.
 	local seeded = ns.seed and ns.seed.taught or {}
 	for itemID, recipeID in pairs(db.itemRecipe) do

@@ -5,10 +5,7 @@ local LEVEL = ns.LEVEL
 
 -- Player commands; Troubleshooting.lua adds diagnostics. One table drives the chat help and the Commands rows.
 ns.commands = ns.commands or {}
-table.insert(ns.commands, 1, { action = "", description = L["Open the options"], run = function()
-	ns.toolkit:OpenOptions(ns.module)
-end })
-table.insert(ns.commands, 2, { action = "export", description = L["Copy the recipe sources you found"],
+table.insert(ns.commands, 1, { action = "export", description = L["Copy the recipe sources you found"],
 	note = L["Opens a window of every recipe source you found, ready to copy."], run = function()
 	ns.ExportFinds()
 end })
@@ -16,8 +13,7 @@ end })
 -- Called once saved variables load. Sections follow Blizzard's pages; labels are capitalized as Blizzard's are.
 function ns.InitSettings()
 	local toolkit = ns.toolkit
-	local module = toolkit:RegisterModule(addonName, ns.device.class)
-	ns.module = module
+	local module = toolkit:RegisterModule(addonName)
 	toolkit:BuildOptions(module, ns.db, {
 		{ heading = L["Recipe Sources"], place = "sources", rows = {
 			{ kind = "choice", key = "sourceLevel", label = L["Recipe Sources"], default = LEVEL.FRIENDS,
@@ -40,6 +36,6 @@ function ns.InitSettings()
 				tooltip = L["Print a message in chat after visits and windows with new recipes."] },
 		} },
 	})
-	toolkit:RegisterCommands(module, "recipevacuum", ns.commands)
+	toolkit:RegisterCommands(module, ns.commands)
 	toolkit:FinishModule(module)
 end

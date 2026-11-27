@@ -4,35 +4,31 @@ local addonName, ns = ...
 --@debug@
 
 local UseScan -- defined below
--- Lua errors shown and blocked actions reported, and timing, from the toolkit's working-build helpers.
 local toolkit = ns.toolkit
-toolkit:EnableWorkingBuild()
 
--- Timing is kept by the library per module; ns.device stands in for the module until settings load.
+-- Timing is kept by the library per module.
 function ns.PerfMs(name, ms)
-	toolkit:TimeMs(ns.device, name, ms)
+	toolkit:TimeMs(ns.module, name, ms)
 end
 
 function ns.Perf(name, started)
-	toolkit:Time(ns.device, name, started)
+	toolkit:Time(ns.module, name, started)
 end
 
 local function PerfLines()
-	return toolkit:TimingLines(ns.device)
+	return toolkit:TimingLines(ns.module)
 end
 
 -- Times the profession window's opening for the perf command.
 local openStarted, openMs
-local openTimer = CreateFrame("Frame")
-openTimer:RegisterEvent("TRADE_SKILL_SHOW")
-openTimer:RegisterEvent("TRADE_SKILL_CLOSE")
-openTimer:SetScript("OnEvent", function(_, event)
-	if event == "TRADE_SKILL_SHOW" then
+toolkit:EventFrame(ns.module, {
+	TRADE_SKILL_SHOW = function()
 		openStarted, openMs = debugprofilestop(), nil
-	else
+	end,
+	TRADE_SKILL_CLOSE = function()
 		openStarted = nil
-	end
-end)
+	end,
+})
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", function()
 		if openStarted and C_TradeSkillUI.IsTradeSkillReady() then
@@ -45,19 +41,15 @@ end)
 -- The log, watch and log commands are the toolkit's working-build log (its docs/standards.md, "Working
 -- build helpers"); the lines live in this addon's saved data (devLog, devLogRun, watch).
 local function Append(line, dated)
-	toolkit:Log(ns.device, line, dated)
+	toolkit:Log(ns.module, line, dated)
 end
 
 -- Watch lines go to the log only, so chat stays clear.
 local logOnly
 
--- A line from Voice.lua goes to chat through ns.Log and to the saved log with the same tag.
-local LOG_TAG = ns.title .. ": "
+-- A line from Voice.lua goes to chat and to the saved log with the same tag.
+local LOG_TAG = ns.module.title .. ": "
 local voice = ns.voice
-
-local function Chat(line)
-	ns.Log(line)
-end
 
 -- A watch line: logged, and shown in chat through the kit unless a watch handler is running.
 local function Show(line)
@@ -69,20 +61,20 @@ end
 -- A development line: logged, and shown as a plain line in chat.
 local function Voiced(line)
 	Append(LOG_TAG .. line)
-	Chat(line)
+	toolkit:Print(line)
 end
 
 -- A failure: the voiced line, then the error itself on a plain line so it stays exact.
 local function Malfunction(where, problem)
 	Voiced(voice.malfunction:format(where))
 	Append(problem)
-	Chat(problem)
+	toolkit:Print(problem)
 end
 
 local function Say(line, ...)
 	line = select("#", ...) > 0 and line:format(...) or line
 	Append(LOG_TAG .. line)
-	if not logOnly then Chat(line) end
+	if not logOnly then toolkit:Print(line) end
 end
 
 -- The one chat line a watch event may print: it found recipes (voice rules: docs/voice.md; Homing Robot OOX-17/TN is the model).
@@ -107,13 +99,7 @@ end
 
 -- The watch logs loot windows, quest dialogs and spell targets, to learn what Forever reports for loot and quest givers and rewards.
 
--- tostring that never touches a secret value (Forever can hand addons secret GUIDs and names).
-local function Describe(value)
-	if issecretvalue(value) then
-		return "<secret>"
-	end
-	return tostring(value)
-end
+local Describe, Readable = toolkit.Describe, toolkit.Readable
 
 local function DescribeAll(...)
 	local parts = {}
@@ -147,12 +133,12 @@ local handlers = {
 		local recipes = 0
 		for slot = 1, GetNumLootItems() do
 			local link = GetLootSlotLink(slot)
-			if link and not issecretvalue(link) and IsRecipeItem(link) then
+			if link and Readable(link) and IsRecipeItem(link) then
 				recipes = recipes + 1
 			end
 			local source = GetLootSourceInfo(slot)
 			-- Containers opened from bags report an Item GUID with no item ID in it.
-			local container = type(source) == "string" and not issecretvalue(source)
+			local container = type(source) == "string" and Readable(source)
 				and source:find("^Item%-") and C_Item.GetItemIDByGUID and C_Item.GetItemIDByGUID(source)
 			Show(("  slot %d type %s %s | sources %s%s"):format(slot, Describe(GetLootSlotType(slot)),
 				Describe(GetLootSlotLink(slot)), DescribeAll(GetLootSourceInfo(slot)),
@@ -182,7 +168,7 @@ handlers.START_LOOT_ROLL = function(rollID, rollTime, lootHandle)
 	local link = GetLootRollItemLink(rollID)
 	Show(("ROLL %s | item %s | handle %s | time %s | unit target %s | %s"):format(Describe(rollID), Describe(link),
 		Describe(lootHandle), Describe(rollTime), Describe(UnitGUID("target")), Where()))
-	local itemID = link and not issecretvalue(link) and C_Item.GetItemInfoInstant(link)
+	local itemID = link and Readable(link) and C_Item.GetItemInfoInstant(link)
 	WatchFound(IsRecipeItem(itemID) and 1 or 0)
 end
 -- Vendors and trainers are recorded on window open, so the watch logs the visit: who and how many items or services.
@@ -270,7 +256,7 @@ end
 
 function ns.StartWorkingLog()
 	UseKeptScan()
-	toolkit:StartLog(ns.device, ns.db, WatchHandlers())
+	toolkit:StartLog(ns.module, ns.db, WatchHandlers())
 end
 
 
@@ -493,13 +479,13 @@ for name, label in pairs({ AddSourceLines = "source tooltip", MergeFinds = "merg
 	end
 end
 
-local perfWriter = CreateFrame("Frame")
-perfWriter:RegisterEvent("PLAYER_LOGOUT")
-perfWriter:SetScript("OnEvent", function()
-	-- Retired probes' data, so it does not stay in the saved file.
-	if ns.db.devScan then ns.db.devScan.ranks = nil end -- the scan no longer reads rank books
-	ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
-end)
+toolkit:EventFrame(ns.module, {
+	PLAYER_LOGOUT = function()
+		-- Retired probes' data, so it does not stay in the saved file.
+		if ns.db.devScan then ns.db.devScan.ranks = nil end -- the scan no longer reads rank books
+		ns.db.devHover, ns.db.devHoverLog, ns.db.devSpecLines, ns.db.devChatColors = nil, nil, nil, nil
+	end,
+})
 
 -- Each command logs the toolkit's header plus the open profession, runs, then shows its lines; "log" only shows them.
 local function ProfessionLine()
@@ -519,11 +505,11 @@ local troubleshooting = {}
 table.insert(troubleshooting, { "item", "Save an item's tooltip data to the log", function(text)
 	local itemID = tonumber(text)
 	if not itemID then
-		return ns.Log("Give an item ID: /recipevacuum item 16083")
+		return ns.toolkit:Print("Give an item ID: /recipevacuum item 16083")
 	end
 	if not C_Item.IsItemDataCachedByID(itemID) then
 		C_Item.RequestLoadItemDataByID(itemID)
-		return ns.Log("Item data requested. Run the command again in a moment.")
+		return ns.toolkit:Print("Item data requested. Run the command again in a moment.")
 	end
 	local tooltip = C_TooltipInfo.GetItemByID(itemID)
 	ns.db.devItems = ns.db.devItems or {}
@@ -543,7 +529,7 @@ table.insert(troubleshooting, { "item", "Save an item's tooltip data to the log"
 	lines[#lines + 1] = ("class %s subclass %s | item spell %s %s"):format(tostring(classID), tostring(subclassID),
 		tostring(spellID), tostring(spellName))
 	ns.db.devItems[itemID] = lines
-	ns.Log(("Saved %d tooltip lines for item %d. Reload to write them."):format(#lines - 1, itemID))
+	ns.toolkit:Print(("Saved %d tooltip lines for item %d. Reload to write them."):format(#lines - 1, itemID))
 end, quiet = true })
 -- Rank book test data, for this session only (not saved): the Expert book vendors from Wowhead's WoW Forever
 -- pages (npc and item pages read 2026-11-25), so the rank mark can be checked without visiting them.
@@ -583,7 +569,7 @@ table.insert(troubleshooting, { "mockranks", "Add test rank sources for this ses
 	ns.included.npcs[quest.npc] = { name = quest.name, positions = { [quest.map] = { x = quest.x, y = quest.y, seen = now } } }
 	Add(quest.skillLine, quest.fromCap).quests[quest.quest] = quest.npc
 	ns.SourcesChanged()
-	ns.Log("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
+	ns.toolkit:Print("Expert books and Nat Pagle's quest added for this session. Reopen the profession window.")
 end, quiet = true })
 
 -- Facts cache test: drops the cache, so the next unlearned-recipe build runs cold without it.
@@ -592,7 +578,7 @@ table.insert(troubleshooting, { "nofacts", "Drop the recipe facts cache for a ti
 	ns.db.recipeFacts = nil
 	ns.ClearRecipeLocks()
 	ns.SourcesChanged()
-	ns.Log("Recipe facts cache dropped. Reload to build the unlearned recipes cold.")
+	ns.toolkit:Print("Recipe facts cache dropped. Reload to build the unlearned recipes cold.")
 end, quiet = true })
 table.insert(troubleshooting, { "perf", "Show how long the window and its lookups took", function()
 	local function Ms(value)
@@ -646,27 +632,27 @@ local function CaptureArea(event)
 	end
 end
 
-local areaCapture = CreateFrame("Frame")
+local areaHandlers = {}
 for _, event in ipairs({ "PLAYER_ENTERING_WORLD", "ZONE_CHANGED", "ZONE_CHANGED_INDOORS", "ZONE_CHANGED_NEW_AREA" }) do
-	areaCapture:RegisterEvent(event)
-end
-areaCapture:SetScript("OnEvent", function(_, event)
-	if ns.db then
-		CaptureArea(event)
+	areaHandlers[event] = function()
+		if ns.db then
+			CaptureArea(event)
+		end
 	end
-end)
+end
+toolkit:EventFrame(ns.module, areaHandlers)
 -- Layout measuring: Blizzard's profession window and our panel, each element relative to its pane's own top-left in the pane's own
 -- scale, read only (docs/development.md, "Working build"; tools/layout-diff.lua prints the differences).
 
 local function Number(value)
-	if type(value) == "number" and not issecretvalue(value) then return value end
+	if type(value) == "number" and Readable(value) then return value end
 end
 
 -- A value read from a frame that may not have the method or may hold a secret.
 local function Read(object, method, ...)
 	if not (object and object[method]) then return end
 	local ok, first, second, third = pcall(object[method], object, ...)
-	if ok and not issecretvalue(first) then return first, second, third end
+	if ok and Readable(first) then return first, second, third end
 end
 
 local function ScaleOf(region)
@@ -905,8 +891,8 @@ end
 
 table.insert(troubleshooting, { "layout", "Record Blizzard's profession window and our panel layout", function()
 	local record, reason = RecordLayout()
-	if not record then return ns.Log(reason) end
-	ns.Log(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
+	if not record then return ns.toolkit:Print(reason) end
+	ns.toolkit:Print(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
 end, quiet = true })
 
 -- The same record, taken by itself whenever the panel draws a different view: another profession, recipe or build (owner,
@@ -933,21 +919,21 @@ local function LogDifficulty(professionID, recipeID)
 		end
 		for _, kind in ipairs({ "learned", "unlearned" }) do
 			local t = tally[kind]
-			ns.Trace("DIFFICULTY profession %s, %s %d: relativeDifficulty %d, maxTrivialLevel>0 %d, numSkillUps>0 %d",
+			ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s, %s %d: relativeDifficulty %d, maxTrivialLevel>0 %d, numSkillUps>0 %d",
 				tostring(professionID), kind, t.n, t.difficulty, t.trivial, t.skillUps)
 		end
 	end
 	if not recipeID or difficultySeen[recipeID] then return end
 	difficultySeen[recipeID] = true
 	local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
-	if not info then return ns.Trace("DIFFICULTY recipe %d: no recipe info", recipeID) end
+	if not info then return ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d: no recipe info", recipeID) end
 	local seed = ns.seed
-	ns.Trace("DIFFICULTY recipe %d %s: learned %s, relativeDifficulty %s, maxTrivialLevel %s, numSkillUps %s, canSkillUp %s, skill %s; seed low %s high %s",
+	ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d %s: learned %s, relativeDifficulty %s, maxTrivialLevel %s, numSkillUps %s, canSkillUp %s, skill %s; seed low %s high %s",
 		recipeID, info.name, tostring(info.learned), tostring(info.relativeDifficulty), tostring(info.maxTrivialLevel),
 		tostring(info.numSkillUps), tostring(info.canSkillUp), tostring(skill and skill.skillLevel),
 		tostring(seed and seed.trivialLow and seed.trivialLow[recipeID]), tostring(seed and seed.trivialHigh and seed.trivialHigh[recipeID]))
 	for _, requirement in ipairs(C_TradeSkillUI.GetRecipeRequirements(recipeID) or {}) do
-		ns.Trace("DIFFICULTY recipe %d requirement: %s, met %s", recipeID, tostring(requirement.name), tostring(requirement.met))
+		ns.toolkit:Trace(ns.module, "DIFFICULTY recipe %d requirement: %s, met %s", recipeID, tostring(requirement.name), tostring(requirement.met))
 	end
 end
 
@@ -980,7 +966,7 @@ table.insert(troubleshooting, { "sharetest", "Test sharing without a second play
 	local scratch = { npcs = {}, objects = {}, shared = ns.NewLayer(), itemRecipe = {}, pendingItems = {} }
 	ns.share:SelfTest(function(line)
 		table.insert(real.devShareTest, line)
-		ns.Log(line)
+		ns.toolkit:Print(line)
 	end, function(rows)
 		ns.db = scratch
 		local ok, changed, skipped = pcall(ns.share.Merge, ns.share, rows)
@@ -1000,7 +986,7 @@ for _, command in ipairs(troubleshooting) do
 	local action, description, run = command[1], command[2], command[3]
 	-- Quiet commands print to chat only, so the profession window stays in view.
 	table.insert(ns.commands, { action = action, usage = command.usage, description = description, troubleshooting = true,
-		run = command.quiet and run or toolkit:LoggedCommand(ns.device, action, run, ProfessionLine) })
+		run = command.quiet and run or toolkit:LoggedCommand(ns.module, action, run, ProfessionLine) })
 end
 
 -- Saved variables load time: the client reads them after the addon's last file (this one) and before
@@ -1009,6 +995,4 @@ local filesDone = debugprofilestop()
 EventUtil.ContinueOnAddOnLoaded(addonName, function()
 	ns.PerfMs("saved variables load", debugprofilestop() - filesDone)
 end)
--- Every event these frames receive goes into the working-build log.
-for _, watched in ipairs({ openTimer, perfWriter, areaCapture }) do toolkit:WatchEvents(ns.device, watched) end
 --@end-debug@

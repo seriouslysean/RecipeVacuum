@@ -22,18 +22,14 @@ end
 local GetPlayerLocation = ns.GetPlayerLocation
 
 local BUILD = ns.BUILD
+local Readable, GUID = ns.toolkit.Readable, ns.toolkit.GUID
 
 -- The NPC being talked to, or nil when the client hides it (secret values); saved by NoteVisit only for an NPC with a recipe.
 local function CurrentNPC()
-	local guid = UnitGUID("npc")
-	if issecretvalue(guid) or not guid then
-		return nil
-	end
-	local unitType, _, _, _, _, npcID = strsplit("-", guid)
+	local unitType, npcID = GUID(UnitGUID("npc"))
 	if unitType ~= "Creature" then
 		return nil
 	end
-	npcID = tonumber(npcID)
 	local seen = GetServerTime()
 	local mapID, x, y = GetPlayerLocation()
 	return { field = "npc", value = npcID, npcID = npcID, faction = (UnitFactionGroup("player")), seen = seen,
@@ -92,8 +88,7 @@ end
 
 local function Announce(count, name)
 	if count > 0 and ns.db.announceNewFinds then
-		local intake = ns.voice.intake
-		ns.Say(intake.noise, (count == 1 and intake.reportOne or intake.report):format(count, name or UNKNOWN))
+		ns.toolkit:Say(ns.module, ns.voice.intake, count, name or UNKNOWN)
 	end
 end
 
@@ -226,7 +221,7 @@ end
 
 -- Coalesce late names within the visit and report the total once; filter changes also fire TRAINER_UPDATE, so wait for service names.
 local SCAN_DELAY = 0.2
-local frame = CreateFrame("Frame")
+local frame -- made below, once its handlers exist
 local record, timer, visitNPC
 local newSources = 0
 
@@ -265,16 +260,7 @@ local function Scan()
 	return ready
 end
 
-frame:RegisterEvent("TRAINER_SHOW")
-frame:RegisterEvent("TRAINER_SERVICE_INFO_NAME_UPDATE")
-frame:RegisterEvent("TRAINER_CLOSED")
-frame:RegisterEvent("MERCHANT_SHOW")
-frame:RegisterEvent("MERCHANT_UPDATE")
-frame:RegisterEvent("MERCHANT_CLOSED")
-frame:SetScript("OnEvent", function(_, event, itemID)
-	if not ns.db then
-		return
-	end
+local function OnVisitEvent(event, itemID)
 	if event == "TRAINER_SHOW" or event == "MERCHANT_SHOW" then
 		FinishVisit()
 		record = event == "TRAINER_SHOW" and RecordTrainer or RecordVendor
@@ -291,14 +277,23 @@ frame:SetScript("OnEvent", function(_, event, itemID)
 	if record and not timer then
 		timer = C_Timer.NewTimer(SCAN_DELAY, Scan)
 	end
-end)
+end
+
+local visitHandlers = {}
+for _, event in ipairs({ "TRAINER_SHOW", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_CLOSED", "MERCHANT_SHOW",
+	"MERCHANT_UPDATE", "MERCHANT_CLOSED", "GET_ITEM_INFO_RECEIVED" }) do
+	visitHandlers[event] = function(...)
+		if ns.db then OnVisitEvent(event, ...) end
+	end
+end
+-- The item event is asked for only while a scan waits on item data.
+frame = ns.toolkit:EventFrame(ns.module, visitHandlers, { later = { GET_ITEM_INFO_RECEIVED = true } })
 
 -- Loot windows, read once each; sources come from GetLootSourceInfo and fishing is kept by zone (docs/client-notes.md, "Loot, quests and vendors").
 local castTarget, castAt, lootRead
 -- An object's name is the target of the cast that opened it. Opening, mining and herb casts run at most
 -- about five seconds, so an older cast was at something else and its target is not this object's name.
 local OPEN_CAST_SECONDS = 6
-local loot = CreateFrame("Frame")
 
 -- Where a drop happened, by ID: the dungeon or raid when inside one, else the subzone at the spot
 -- (docs/data.md, "Drops").
@@ -312,21 +307,20 @@ local function DropPlace(mapID, x, y)
 end
 
 local function LootSource(guid)
-	if not guid or issecretvalue(guid) then
+	if not Readable(guid) then
 		return nil
 	end
 	if IsFishingLoot() then
 		local mapID, x, y = GetPlayerLocation()
 		return mapID and Source("fishing", mapID), { map = mapID, x = x, y = y }, C_Spell.GetSpellName(ns.FISHING_SPELL_ID)
 	end
-	local unitType, _, _, _, _, id = strsplit("-", guid)
+	local unitType, id = GUID(guid)
 	local mapID, x, y = GetPlayerLocation()
-	id = tonumber(id)
 	if (unitType == "Creature" or unitType == "Vehicle") and id then
 		-- The target's GUID and name can be secret (unit identity restricted); comparing one errors.
 		local targetGUID = UnitGUID("target")
-		local name = not issecretvalue(targetGUID) and targetGUID == guid and UnitName("target") or nil
-		if issecretvalue(name) then name = nil end
+		local name = Readable(targetGUID) and targetGUID == guid and UnitName("target") or nil
+		if not Readable(name) then name = nil end
 		ns.NoteNPC(ns.db.npcs, id, name, mapID, x, y, GetServerTime())
 		local area, instance = DropPlace(mapID, x, y)
 		return Source("npc", id), { map = mapID, x = x, y = y, area = area, instance = instance }, (ns.GetNPC(id) or {}).name
@@ -398,9 +392,8 @@ local function ReadQuest(event)
 	-- The quest NPC is saved only when the quest rewards a recipe (NoteQuestNPC).
 	local details, questNPC = {}, nil
 	local guid = UnitGUID("questnpc")
-	if guid and not issecretvalue(guid) then
-		local unitType, _, _, _, _, id = strsplit("-", guid)
-		id = tonumber(id)
+	local unitType, id = GUID(guid)
+	if unitType then
 		if unitType == "Creature" and id then
 			local mapID, x, y = GetPlayerLocation()
 			questNPC = { id, UnitName("questnpc"), mapID, x, y, GetServerTime(), faction = (UnitFactionGroup("questnpc")) }
@@ -446,7 +439,7 @@ local function ReadRoll(rollID)
 		return
 	end
 	local link = GetLootRollItemLink(rollID)
-	if not link or issecretvalue(link) then
+	if not Readable(link) then
 		return
 	end
 	local itemID = ns.IsRecipeItem(link)
@@ -467,44 +460,40 @@ local function ReadRoll(rollID)
 	end
 end
 
-loot:RegisterEvent("START_LOOT_ROLL")
-loot:RegisterEvent("UNIT_SPELLCAST_SENT")
-loot:RegisterEvent("LOOT_READY")
-loot:RegisterEvent("LOOT_OPENED")
-loot:RegisterEvent("LOOT_CLOSED")
-loot:RegisterEvent("QUEST_DETAIL")
-loot:RegisterEvent("QUEST_COMPLETE")
-loot:SetScript("OnEvent", function(_, event, unit, target)
-	if event == "UNIT_SPELLCAST_SENT" then
-		if unit == "player" and not issecretvalue(target) then
+local function ReadLootWindow()
+	--@debug@
+	local perfStart = debugprofilestop()
+	--@end-debug@
+	ReadLoot()
+	--@debug@
+	ns.Perf("loot window", perfStart)
+	--@end-debug@
+end
+
+local function ReadQuestWindow(event)
+	--@debug@
+	local perfStart = debugprofilestop()
+	--@end-debug@
+	ReadQuest(event)
+	--@debug@
+	ns.Perf("quest window", perfStart)
+	--@end-debug@
+end
+
+ns.toolkit:EventFrame(ns.module, {
+	START_LOOT_ROLL = function(rollID)
+		C_Timer.After(ROLL_SETTLE, function() ReadRoll(rollID) end)
+	end,
+	UNIT_SPELLCAST_SENT = function(unit, target)
+		if unit == "player" and ns.toolkit.Readable(target) then
 			castTarget, castAt = target ~= "" and target or nil, GetTime()
 		end
-	elseif event == "LOOT_CLOSED" then
+	end,
+	LOOT_READY = ReadLootWindow,
+	LOOT_OPENED = ReadLootWindow,
+	LOOT_CLOSED = function()
 		lootRead, castTarget, castAt = nil, nil, nil
-	elseif event == "LOOT_READY" or event == "LOOT_OPENED" then
-		--@debug@
-		local perfStart = debugprofilestop()
-		--@end-debug@
-		ReadLoot()
-		--@debug@
-		ns.Perf("loot window", perfStart)
-		--@end-debug@
-	elseif event == "START_LOOT_ROLL" then
-		local rollID = unit
-		C_Timer.After(ROLL_SETTLE, function() ReadRoll(rollID) end)
-	else
-		--@debug@
-		local perfStart = debugprofilestop()
-		--@end-debug@
-		ReadQuest(event)
-		--@debug@
-		ns.Perf("quest window", perfStart)
-		--@end-debug@
-	end
-end)
-
---@debug@
--- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
-ns.toolkit:WatchEvents(ns.device, frame)
-ns.toolkit:WatchEvents(ns.device, loot)
---@end-debug@
+	end,
+	QUEST_DETAIL = function() ReadQuestWindow("QUEST_DETAIL") end,
+	QUEST_COMPLETE = function() ReadQuestWindow("QUEST_COMPLETE") end,
+})

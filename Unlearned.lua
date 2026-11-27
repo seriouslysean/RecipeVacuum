@@ -10,14 +10,12 @@ local MISCELLANEOUS_CATEGORY_ID = -2
 -- Cached, since unlearned recipes change only on learning, a new source or a choice of specialization.
 local cache = {}
 
-local cacheFrame = CreateFrame("Frame")
-cacheFrame:RegisterEvent("NEW_RECIPE_LEARNED")
-cacheFrame:RegisterEvent("SKILL_LINES_CHANGED")
-cacheFrame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
-cacheFrame:SetScript("OnEvent", function()
+local function ClearCaches()
 	wipe(cache)
 	ns.ClearRecipeLocks()
-end)
+end
+ns.toolkit:EventFrame(ns.module, { NEW_RECIPE_LEARNED = ClearCaches, SKILL_LINES_CHANGED = ClearCaches,
+	TRADE_SKILL_DATA_SOURCE_CHANGED = ClearCaches })
 
 -- New recorded sources invalidate the cached source summaries.
 function ns.ClearUnlearnedCache()
@@ -224,8 +222,3 @@ function ns.BandTitle(professionID, band, onLoad)
 	local first = (band - 1) * ns.RANK_BAND + 1
 	return L["Skill %d to %d"]:format(first, first + ns.RANK_BAND - 1)
 end
-
---@debug@
--- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
-ns.toolkit:WatchEvents(ns.device, cacheFrame)
---@end-debug@

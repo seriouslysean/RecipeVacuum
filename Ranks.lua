@@ -66,11 +66,6 @@ hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot)
 end)
 
 local completing -- the quest and NPC at the open completion window
-local watcher = CreateFrame("Frame")
-for _, event in ipairs({ "PLAYER_LOGIN", "QUEST_COMPLETE", "QUEST_TURNED_IN", "SKILL_LINES_CHANGED",
-	"TRAINER_SHOW", "TRAINER_CLOSED" }) do
-	watcher:RegisterEvent(event)
-end
 
 local function Recent(cause)
 	return cause and GetTime() - cause.at <= CAUSE_SECONDS and cause or nil
@@ -93,22 +88,25 @@ local function CreditRise(skillLine, before)
 	end
 end
 
-watcher:SetScript("OnEvent", function(_, event, questID)
-	if event == "PLAYER_LOGIN" then
+ns.toolkit:EventFrame(ns.module, {
+	PLAYER_LOGIN = function()
 		knownCaps = ns.GetProfessionCaps()
-	elseif event == "TRAINER_SHOW" or event == "TRAINER_CLOSED" then
-		atTrainer = event == "TRAINER_SHOW"
-	elseif event == "QUEST_COMPLETE" then
-		local guid = UnitGUID("questnpc")
-		local unitType, _, _, _, _, npcID = strsplit("-", guid and not issecretvalue(guid) and guid or "")
+	end,
+	TRAINER_SHOW = function() atTrainer = true end,
+	TRAINER_CLOSED = function() atTrainer = false end,
+	QUEST_COMPLETE = function()
+		local unitType, npcID = ns.toolkit.GUID(UnitGUID("questnpc"))
 		local mapID, x, y = ns.GetPlayerLocation()
-		completing = unitType == "Creature" and { quest = GetQuestID(), giver = { tonumber(npcID),
+		completing = unitType == "Creature" and { quest = GetQuestID(), giver = { npcID,
 			UnitName("questnpc"), mapID, x, y, faction = (UnitFactionGroup("questnpc")) } } or nil
-	elseif event == "QUEST_TURNED_IN" then
+	end,
+	QUEST_TURNED_IN = function(questID)
 		-- The giver counts only for the quest whose completion window it was.
 		local giver = completing and completing.quest == questID and completing.giver or nil
 		recentQuest, completing = { quest = questID, giver = giver, at = GetTime() }, nil
-	elseif event == "SKILL_LINES_CHANGED" and knownCaps and ns.db then
+	end,
+	SKILL_LINES_CHANGED = function()
+		if not (knownCaps and ns.db) then return end
 		-- Every rise first, then credit: two at once are ambiguous.
 		local caps, rises, line, from = ns.GetProfessionCaps(), 0, nil, nil
 		for skillLine, cap in pairs(caps) do
@@ -123,8 +121,8 @@ watcher:SetScript("OnEvent", function(_, event, questID)
 			recentBook, recentQuest = nil, nil
 		end
 		knownCaps = caps
-	end
-end)
+	end,
+})
 
 -- The open profession's next rank: its usable recorded sources and their pins, or nil when none has a place.
 local function NextRank()
@@ -227,8 +225,3 @@ end
 EventUtil.ContinueOnAddOnLoaded("Blizzard_Professions", function()
 	hooksecurefunc(ProfessionsFrame.CraftingPage, "Init", ns.UpdateRankMark)
 end)
-
---@debug@
--- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
-ns.toolkit:WatchEvents(ns.device, watcher)
---@end-debug@

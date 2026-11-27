@@ -36,7 +36,6 @@ L["Announce New Finds"] = true
 L["Print a message in chat after visits and windows with new recipes."] = true
 
 -- Commands (Settings.lua)
-L["Open the options"] = true
 L["Copy the recipe sources you found"] = true
 L["Opens a window of every recipe source you found, ready to copy."] = true
 
@@ -55,4 +54,3 @@ L["and %d more"] = true
 L["Click to pin the first of %d places."] = true
 
 -- Chat (Core.lua)
-L["Saved data is from a newer version of Recipe Vacuum; it was left unchanged."] = true

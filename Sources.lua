@@ -322,16 +322,16 @@ ns.MAX_ITEM_ATTEMPTS = 3 -- also the cap on Heard's re-reads of an item that nev
 local LOAD_TIMEOUT = 10
 local awaitedItems, linkAttempts = {}, {}
 
-local itemLoads = CreateFrame("Frame")
-itemLoads:RegisterEvent("ITEM_DATA_LOAD_RESULT")
-itemLoads:SetScript("OnEvent", function(_, _, itemID, success)
-	if awaitedItems[itemID] then
-		awaitedItems[itemID] = nil
-		if success then
-			ns.SourcesChanged()
+ns.toolkit:EventFrame(ns.module, {
+	ITEM_DATA_LOAD_RESULT = function(itemID, success)
+		if awaitedItems[itemID] then
+			awaitedItems[itemID] = nil
+			if success then
+				ns.SourcesChanged()
+			end
 		end
-	end
-end)
+	end,
+})
 
 -- The recipe items per recipe: the seed and this session's scan inverted once, then the links saved in play.
 local seededItems
@@ -838,8 +838,3 @@ function ns.ClearRecipeLocks()
 	wipe(recipeSpecs)
 	wipe(specialized)
 end
-
---@debug@
--- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
-ns.toolkit:WatchEvents(ns.device, itemLoads)
---@end-debug@

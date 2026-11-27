@@ -301,7 +301,7 @@ local function SyncNav()
 			end
 		end
 	end
-	ns.Trace("UI nav override set: %d rows to the details, %d controls back", rowCount, count)
+	ns.toolkit:Trace(ns.module, "UI nav override set: %d rows to the details, %d controls back", rowCount, count)
 end
 
 -- ANCHOR_RIGHT would clamp the tooltip over the panel at the screen's edge; with no room on the right it goes to the left
@@ -434,7 +434,7 @@ local function CreateHeading()
 	end)
 	heading:SetScript("OnClick", function(self)
 		toggled[BandKey(self.band)] = not IsOpen(self.band)
-		ns.Trace("UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
+		ns.toolkit:Trace(ns.module, "UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
 		Request()
 	end)
 	heading:Hide()
@@ -578,7 +578,7 @@ local function Reveal()
 	empty:SetShown(#items == 0)
 	scroll:SetAlpha(1)
 	SyncNav()
-	ns.Trace("UI panel visible after %d rows, %.1f ms", math.min((nextItem or 1) - 1, #items), buildMs)
+	ns.toolkit:Trace(ns.module, "UI panel visible after %d rows, %.1f ms", math.min((nextItem or 1) - 1, #items), buildMs)
 end
 
 -- Where the list starts for the chosen recipe: its row in the middle of the view, though the rows down to it are not built yet.
@@ -588,7 +588,7 @@ function opening.pickOffset()
 	for _, item in ipairs(items) do
 		if item.recipe and item.recipe.recipeID == selected.recipeID then
 			local offset = math.max(0, math.min(item.top - (room - ROW_HEIGHT) / 2, child:GetHeight() - room))
-			ns.Trace("UI list opens at %d for recipe %d", offset, selected.recipeID)
+			ns.toolkit:Trace(ns.module, "UI list opens at %d for recipe %d", offset, selected.recipeID)
 			return offset
 		end
 	end
@@ -605,13 +605,13 @@ end
 local function Finish()
 	Reveal()
 	SyncNav() -- the rows built after the list showed
-	ns.Trace("UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames, worst frame %.1f ms, most items in a frame %d",
+	ns.toolkit:Trace(ns.module, "UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames, worst frame %.1f ms, most items in a frame %d",
 		recipeCount, bandCount, buildMs, buildSteps, scroll.worstStepMs or 0, scroll.mostStepItems or 0)
 	--@debug@
 	local parts = {}
 	for part, ms in pairs(lapMs) do parts[#parts + 1] = ("%s %.1f"):format(part, ms) end
 	table.sort(parts)
-	ns.Trace("UI build parts, ms (worstStep is the longest frame): %s", table.concat(parts, ", "))
+	ns.toolkit:Trace(ns.module, "UI build parts, ms (worstStep is the longest frame): %s", table.concat(parts, ", "))
 	--@end-debug@
 	--@debug@
 	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected and selected.recipeID) end
@@ -862,7 +862,7 @@ local function MakeSourceButton()
 	text:SetWordWrap(false)
 	-- One source's pin, exactly: an entry pins what it names, then the list closes (docs/client-notes.md, "Panel").
 	button:SetScript("OnClick", function(self)
-		ns.Trace("UI source pressed: %s", self.source.label)
+		ns.toolkit:Trace(ns.module, "UI source pressed: %s", self.source.label)
 		ns.ShowOnMap(self.source.target)
 		ClosePlaces()
 	end)
@@ -917,11 +917,13 @@ local function MakePlaceMenu()
 		if escape then ClosePlaces() end
 	end)
 	-- A press anywhere else closes it, as Blizzard's menus do; the button's own press toggles.
-	menu:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-	menu:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
-	menu:SetScript("OnEvent", function(self)
-		if not (self:IsMouseOver() or (mapMore and mapMore:IsMouseOver())) then ClosePlaces() end
-	end)
+	local outsidePress = ns.toolkit:EventFrame(ns.module, {
+		GLOBAL_MOUSE_DOWN = function()
+			if not (menu:IsMouseOver() or (mapMore and mapMore:IsMouseOver())) then ClosePlaces() end
+		end,
+	}, { later = { GLOBAL_MOUSE_DOWN = true } })
+	menu:SetScript("OnShow", function() outsidePress:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+	menu:SetScript("OnHide", function() outsidePress:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
 	return menu
 end
 
@@ -975,7 +977,7 @@ local function MakeMapButton()
 	button:SetText(MAP_PIN)
 	button:SetScript("OnClick", function(self)
 		if self.single then
-			ns.Trace("UI source pressed: %s", self.single.label)
+			ns.toolkit:Trace(ns.module, "UI source pressed: %s", self.single.label)
 			ns.ShowOnMap(self.single.target)
 		end
 	end)
@@ -1191,7 +1193,7 @@ SelectRecipe = function(recipeInfo)
 	selected = recipeInfo
 	if professionInfo then lastPick[professionInfo.professionID] = recipeInfo.recipeID end
 	ClosePlaces()
-	ns.Trace("UI recipe selected: %d", recipeInfo.recipeID)
+	ns.toolkit:Trace(ns.module, "UI recipe selected: %d", recipeInfo.recipeID)
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		if items[index].recipe then slots[index]:SetSelected(items[index].recipe.recipeID == recipeInfo.recipeID) end
 	end
@@ -1235,7 +1237,7 @@ function opening.holdBack(reason)
 	rankBar.Fill:Hide()
 	rankBar.text:SetText("")
 	FillDetail() -- no recipe is chosen yet, so the details close
-	ns.Trace("UI profession %d held back, %s: previous list, count and details cleared", professionInfo.professionID, reason)
+	ns.toolkit:Trace(ns.module, "UI profession %d held back, %s: previous list, count and details cleared", professionInfo.professionID, reason)
 end
 
 local function Update()
@@ -1390,12 +1392,12 @@ function pool.finishScan()
 	local rowTarget = rowsWanted > 0 and rowsWanted + pool.rowMargin or 0
 	local headingTarget = headingsWanted > 0 and headingsWanted + pool.headingMargin or 0
 	rowTarget, headingTarget = math.max(rowTarget, pool.rowTarget), math.max(headingTarget, pool.headingTarget)
-	ns.Trace("POOL target: %d recipes counted in %d professions, widest lists %d rows under %d bands; target rows %d (was %d), headings %d (was %d), made %d and %d",
+	ns.toolkit:Trace(ns.module, "POOL target: %d recipes counted in %d professions, widest lists %d rows under %d bands; target rows %d (was %d), headings %d (was %d), made %d and %d",
 		#scan.ids, scan.lines, rowsWanted, headingsWanted, rowTarget, pool.rowTarget, headingTarget, pool.headingTarget, #rows, #headings)
 	pool.rowTarget, pool.headingTarget = rowTarget, headingTarget
 	if pool.dirty then
 		pool.dirty = false
-		ns.Trace("POOL finds changed during the count, counting again")
+		ns.toolkit:Trace(ns.module, "POOL finds changed during the count, counting again")
 		pool.rescan()
 	end
 end
@@ -1410,7 +1412,7 @@ end
 function pool.step()
 	pool.running = false
 	if InCombatLockdown() then
-		ns.Trace("POOL paused, in combat; resumes when it ends")
+		ns.toolkit:Trace(ns.module, "POOL paused, in combat; resumes when it ends")
 		return -- PLAYER_REGEN_ENABLED starts it again
 	end
 	local started = debugprofilestop()
@@ -1438,13 +1440,13 @@ function pool.step()
 	end
 	if #rows >= pool.rowTarget and #headings >= pool.headingTarget then
 		if pool.made > 0 then
-			ns.Trace("POOL ready: %d rows and %d headings, %d made ahead in %.1f ms", #rows, #headings, pool.made, pool.ms)
+			ns.toolkit:Trace(ns.module, "POOL ready: %d rows and %d headings, %d made ahead in %.1f ms", #rows, #headings, pool.made, pool.ms)
 			pool.made, pool.ms = 0, 0
 		end
 		return -- idle until the target grows
 	end
 	if nextItem and nextItem <= #items then
-		ns.Trace("POOL waits, a build in progress makes frames itself")
+		ns.toolkit:Trace(ns.module, "POOL waits, a build in progress makes frames itself")
 		pool.running = true
 		C_Timer.After(WAIT_SECONDS, pool.step)
 		return
@@ -1462,7 +1464,7 @@ function pool.step()
 	end
 	local ms = debugprofilestop() - started
 	pool.made, pool.ms = pool.made + made, pool.ms + ms
-	ns.Trace("POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms)
+	ns.toolkit:Trace(ns.module, "POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms)
 	pool.kick()
 end
 --@debug@
@@ -1496,7 +1498,7 @@ function pool.start()
 	if not C_AddOns.IsAddOnLoaded(pool.templates) then
 		if not pool.waiting then
 			pool.waiting = true
-			ns.Trace("POOL waits for %s, loaded by the game with the first professions window", pool.templates)
+			ns.toolkit:Trace(ns.module, "POOL waits for %s, loaded by the game with the first professions window", pool.templates)
 			EventUtil.ContinueOnAddOnLoaded(pool.templates, pool.start)
 		end
 		return
@@ -1545,7 +1547,7 @@ local function CreatePanel()
 	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
 	-- A Deck copy's version is "<time> <commit>"; the title shows the time, the log both.
 	version = version and not version:find("@", 1, true) and version:match("^%S+") or L["dev"]
-	panel:SetTitle(ns.title .. " " .. DISABLED_FONT_COLOR:WrapTextInColorCode(version))
+	panel:SetTitle(ns.module.title .. " " .. DISABLED_FONT_COLOR:WrapTextInColorCode(version))
 	-- One place for the icon: the TOC's IconTexture, which the addon list shows too.
 	panel:SetPortraitToAsset(C_AddOns.GetAddOnMetadata(addonName, "IconTexture"))
 
@@ -1698,11 +1700,10 @@ local function CreatePanel()
 		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
 	end)
 	reagentScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -REAGENTS_VIEW_TOP)
-	itemWatch = CreateFrame("Frame")
-	--@debug@
-	ns.toolkit:WatchEvents(ns.device, itemWatch)
-	--@end-debug@
-	itemWatch:SetScript("OnEvent", function() detailSignature = nil; FillDetail() end)
+	-- Asked for only while the details wait on item data.
+	itemWatch = ns.toolkit:EventFrame(ns.module, {
+		GET_ITEM_INFO_RECEIVED = function() detailSignature = nil; FillDetail() end,
+	}, { later = { GET_ITEM_INFO_RECEIVED = true } })
 
 	scroll, child = CreateSlimScroll(listArea, function(frame, barShown)
 		frame:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", barShown and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
@@ -1753,7 +1754,7 @@ local function OnInit(_, info)
 		-- The details stay up until the new list picks its recipe or holds the panel back (opening.holdBack), so they do not close and reopen.
 		selected = nil
 		detailSignature = nil
-		ns.Trace("UI profession changed to %d, details kept until its list arrives", info.professionID)
+		ns.toolkit:Trace(ns.module, "UI profession changed to %d, details kept until its list arrives", info.professionID)
 	end
 	-- Only this character's own professions have recipes to learn.
 	wanted = Professions.InLocalCraftingMode()
@@ -1763,29 +1764,31 @@ end
 
 -- The events that change what the window lists: its own list update (also sent by a filter change), the data
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
-local eventFrame = CreateFrame("Frame")
-for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
-	"BAG_UPDATE_DELAYED", "PLAYER_LOGIN", "PLAYERBANKSLOTS_CHANGED" }) do -- bags change the counts; the same content refreshes rows in place
-	eventFrame:RegisterEvent(event)
-end
-eventFrame:SetScript("OnEvent", function(_, event)
-	if event == "PLAYER_REGEN_DISABLED" then
-		-- Our jumps are refused in combat and block the d-pad there; this event comes just before the lockdown, while they can
-		-- still be cleared (SmartNavigation.lua, the override handling in Navigate). They are set again after combat.
+local function RedrawFor() Request() end
+ns.toolkit:EventFrame(ns.module, {
+	-- Our jumps are refused in combat and block the d-pad there; this event comes just before the lockdown, while they can
+	-- still be cleared (SmartNavigation.lua, the override handling in Navigate). They are set again after combat.
+	PLAYER_REGEN_DISABLED = function()
 		ClearNav()
 		navPending = true
-	elseif event == "PLAYER_REGEN_ENABLED" then
+	end,
+	PLAYER_REGEN_ENABLED = function()
 		if navPending then SyncNav() end
 		pool.resume()
-	elseif event == "PLAYER_LOGIN" then
-		pool.afterLogin()
-	elseif event == "PLAYERBANKSLOTS_CHANGED" then
-		wipe(craftable.held) -- the next draw reads the bank's counts again; a bank change alone asks for no redraw
-	else
-		if event == "BAG_UPDATE_DELAYED" then wipe(craftable.held) end
+	end,
+	PLAYER_LOGIN = function() pool.afterLogin() end,
+	-- The next draw reads the bank's counts again; a bank change alone asks for no redraw.
+	PLAYERBANKSLOTS_CHANGED = function() wipe(craftable.held) end,
+	-- Bags change the counts; the same content refreshes rows in place.
+	BAG_UPDATE_DELAYED = function()
+		wipe(craftable.held)
 		Request()
-	end
-end)
+	end,
+	NEW_RECIPE_LEARNED = RedrawFor,
+	SKILL_LINES_CHANGED = RedrawFor,
+	TRADE_SKILL_LIST_UPDATE = RedrawFor,
+	TRADE_SKILL_DATA_SOURCE_CHANGED = RedrawFor,
+})
 
 hooksecurefunc("UpdateUIPanelPositions", UpdateVisibility)
 
@@ -1808,9 +1811,4 @@ function ns.DevPanelParts()
 	return { panel = panel, listArea = listArea, scroll = scroll, rankBar = rankBar, detail = detail, rows = rows, headings = headings,
 		reagentRows = reagentRows, mapButton = mapButton, mapMore = mapMore }
 end
---@end-debug@
-
---@debug@
--- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
-ns.toolkit:WatchEvents(ns.device, eventFrame)
 --@end-debug@

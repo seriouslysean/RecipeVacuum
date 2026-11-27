@@ -2,6 +2,7 @@
 local addonName, ns = ...
 
 --@debug@
+local Readable = ns.toolkit.Readable
 
 -- Counts and stops are named up here. The page table below is the only description of the rows.
 local PLAIN_ROWS = 3 -- the matrix's short plain page
@@ -79,7 +80,7 @@ local PAGES = {
 local function CategoryName(category)
 	if not (category and category.GetName) then return "unknown" end
 	local ok, name = pcall(category.GetName, category)
-	if ok and type(name) == "string" and name ~= "" and not issecretvalue(name) then return name end
+	if ok and type(name) == "string" and name ~= "" and Readable(name) then return name end
 	return "unknown"
 end
 
@@ -97,7 +98,7 @@ end
 local function RegionText(region)
 	if not (region and region.GetText) then return end
 	local ok, text = pcall(region.GetText, region)
-	if ok and type(text) == "string" and text ~= "" and not issecretvalue(text) then return text end
+	if ok and type(text) == "string" and text ~= "" and Readable(text) then return text end
 end
 
 -- The focused control is often the inner checkbox. The row label sits on a parent.
@@ -182,36 +183,36 @@ end
 -- T2. Out of combat only. Not called on category display: that would change the thing being measured.
 local function RefreshNavigation()
 	local before = Snapshot()
-	ns.Trace("CT navrefresh before %s", before)
+	ns.toolkit:Trace(ns.module, "CT navrefresh before %s", before)
 	if InCombatLockdown() then
-		ns.Trace("CT navrefresh skipped combat")
+		ns.toolkit:Trace(ns.module, "CT navrefresh skipped combat")
 		return "Navigation refresh skipped during combat."
 	end
 	if not (SmartNavigation and type(SmartNavigation.RefreshButtonGroups) == "function") then
-		ns.Trace("CT navrefresh missing")
+		ns.toolkit:Trace(ns.module, "CT navrefresh missing")
 		return "Navigation refresh is not available."
 	end
 	local ok, problem = pcall(SmartNavigation.RefreshButtonGroups, SmartNavigation)
-	if not ok then ns.Trace("CT navrefresh error %s", tostring(problem)) end
-	ns.Trace("CT navrefresh after %s", Snapshot())
+	if not ok then ns.toolkit:Trace(ns.module, "CT navrefresh error %s", tostring(problem)) end
+	ns.toolkit:Trace(ns.module, "CT navrefresh after %s", Snapshot())
 	return "Navigation refresh logged."
 end
 
 local function DumpNavigation()
-	ns.Trace("CT navdump %s", Snapshot())
+	ns.toolkit:Trace(ns.module, "CT navdump %s", Snapshot())
 	return "Navigation state logged."
 end
 
 -- Same command table as Troubleshooting.lua, inserted at load so they are registered with the rest.
 ns.commands = ns.commands or {}
 table.insert(ns.commands, { action = "navdump", description = "Log the gamepad navigation state", troubleshooting = true, quiet = true,
-	run = function() ns.Log(DumpNavigation()) end })
+	run = function() ns.toolkit:Print(DumpNavigation()) end })
 table.insert(ns.commands, { action = "navrefresh", description = "Refresh gamepad navigation and log it", troubleshooting = true, quiet = true,
-	run = function() ns.Log(RefreshNavigation()) end })
+	run = function() ns.toolkit:Print(RefreshNavigation()) end })
 
 local function OnChanged(pageName, label)
 	return function(_, value)
-		ns.Trace("CT change %s %s %s", pageName, label, tostring(value))
+		ns.toolkit:Trace(ns.module, "CT change %s %s %s", pageName, label, tostring(value))
 	end
 end
 
@@ -240,7 +241,7 @@ end
 local function Try(object, method, ...)
 	local func = object and object[method]
 	if type(func) == "function" then return func(object, ...) end
-	if ns.device then ns.Trace("CT missing %s", method) end
+	ns.toolkit:Trace(ns.module, "CT missing %s", method)
 end
 
 local function NamedStops()
@@ -265,7 +266,7 @@ end
 
 local function AddButton(ctx, label, buttonText, tooltip, onClick)
 	local function Press(...)
-		ns.Trace("CT press %s %s", ctx.page.name, label)
+		ns.toolkit:Trace(ns.module, "CT press %s %s", ctx.page.name, label)
 		if onClick then onClick(...) end
 	end
 	-- false: do not add search tags. Search tags are their own page.
@@ -377,7 +378,7 @@ function ROW.open(ctx, spec)
 			if id then
 				Settings.OpenToCategory(id)
 			else
-				ns.Trace("CT press %s %s missing", ctx.page.name, label)
+				ns.toolkit:Trace(ns.module, "CT press %s %s missing", ctx.page.name, label)
 			end
 		end)
 	end
@@ -392,7 +393,7 @@ function ROW.checkboxbutton(ctx, spec)
 		setting:SetValueChangedCallback(OnChanged(ctx.page.name, label))
 		local function Press()
 			local ok, result = pcall(C_ChatInfo.PerformEmote, EMOTE_TOKEN)
-			ns.Trace("CT press %s %s emote %s", ctx.page.name, label, ok and tostring(result) or ("failed " .. tostring(result)))
+			ns.toolkit:Trace(ns.module, "CT press %s %s emote %s", ctx.page.name, label, ok and tostring(result) or ("failed " .. tostring(result)))
 		end
 		local data = Settings.CreateSettingInitializerData(setting, nil, spec.tooltip)
 		data.buttonText = spec.button
@@ -431,7 +432,7 @@ local function Build()
 			if build then
 				build(ctx, spec)
 			else
-				ns.Trace("CT unknown row %s", tostring(spec.kind))
+				ns.toolkit:Trace(ns.module, "CT unknown row %s", tostring(spec.kind))
 			end
 		end
 		AddTrailer(ctx, index)
@@ -440,7 +441,7 @@ local function Build()
 	for _, page in ipairs(PAGES) do
 		for _, spec in ipairs(page.rows) do
 			for _, target in ipairs(spec.targets or {}) do
-				if not pagesByName[target] then ns.Log("Control Test is missing the page " .. target) end
+				if not pagesByName[target] then ns.toolkit:Print("Control Test is missing the page " .. target) end
 			end
 		end
 	end
@@ -450,7 +451,7 @@ end
 -- that call (CallbackRegistry.lua:210, Blizzard_SettingsPanel.lua:836).
 local function OnCategoryChanged(_, category)
 	local name = CategoryName(category)
-	pcall(ns.Trace, "CT show %s from %s", name, previousPage)
+	pcall(ns.toolkit.Trace, ns.toolkit, ns.module, "CT show %s from %s", name, previousPage)
 	previousPage = name
 end
 

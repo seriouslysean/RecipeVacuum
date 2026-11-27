@@ -3,6 +3,7 @@ local _, ns = ...
 -- Recipes come across without a known source: chat links, nearby loot, shown professions (docs/data.md, "Come across").
 -- Only the recipe and its level are kept, never who or which channel.
 local LEVEL = ns.LEVEL
+local Readable = ns.toolkit.Readable
 
 -- A link in any chat is something the player saw, so every channel counts at Self Found (docs/data.md, "Come across"). Loot lines include the player's own loot, which the recorder already saves with its source.
 local CHAT_EVENTS = {
@@ -11,10 +12,6 @@ local CHAT_EVENTS = {
 	"CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER", "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER",
 	"CHAT_MSG_WHISPER", "CHAT_MSG_BN_WHISPER", "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_CHANNEL",
 }
-local isChatEvent = {}
-for _, event in ipairs(CHAT_EVENTS) do
-	isChatEvent[event] = true
-end
 
 -- Windows that show the player many items at once. Recipes first seen while one is open are said when that window closes
 -- (docs/data.md, "Come across"). Events: Blizzard_APIDocumentationGenerated (AuctionHouse, Bank, MailInfo, TradeInfo);
@@ -51,10 +48,9 @@ local function Say(window)
 	local count = counts[window] or 0
 	counts[window] = nil
 	local announce = ns.db.announceNewFinds
-	ns.Trace("SEEN %s closed: %d counted, %s", window, count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Announce New Finds is off")
+	ns.toolkit:Trace(ns.module, "SEEN %s closed: %d counted, %s", window, count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Announce New Finds is off")
 	if count > 0 and announce then
-		local seen = ns.voice.seen
-		ns.Say(seen.noise, (count == 1 and seen.reportOne or seen.report):format(count))
+		ns.toolkit:Say(ns.module, ns.voice.seen, count)
 	end
 end
 
@@ -66,13 +62,13 @@ local function EndClosing(window, token)
 	closing[window] = nil
 	local unanswered = Unanswered(window)
 	if unanswered > 0 then
-		ns.Trace("SEEN %s: %d items still unanswered, not counted", window, unanswered)
+		ns.toolkit:Trace(ns.module, "SEEN %s: %d items still unanswered, not counted", window, unanswered)
 	end
 	for itemID, owner in pairs(deferred) do
 		if owner == window then deferred[itemID] = nil end
 	end
 	if openWindows[window] then
-		ns.Trace("SEEN %s reopened while waiting, silent, its count stays for its next close", window)
+		ns.toolkit:Trace(ns.module, "SEEN %s reopened while waiting, silent, its count stays for its next close", window)
 		return
 	end
 	Say(window)
@@ -82,16 +78,16 @@ local function OpenWindow(window)
 	if not openWindows[window] then
 		openWindows[window] = true
 		if window ~= BAGS then table.insert(openOrder, window) end
-		ns.Trace("SEEN %s opened", window)
+		ns.toolkit:Trace(ns.module, "SEEN %s opened", window)
 	else
-		ns.Trace("SEEN %s opened again while open, ignored", window)
+		ns.toolkit:Trace(ns.module, "SEEN %s opened again while open, ignored", window)
 	end
 end
 
 -- A closing window says its own line, after the items it saw have answered, whatever else is still open.
 local function CloseWindow(window)
 	if not openWindows[window] then
-		ns.Trace("SEEN %s closed, silent: it was not open", window)
+		ns.toolkit:Trace(ns.module, "SEEN %s closed, silent: it was not open", window)
 		return
 	end
 	openWindows[window] = nil
@@ -102,7 +98,7 @@ local function CloseWindow(window)
 		closeToken = closeToken + 1
 		local token = closeToken
 		closing[window] = token
-		ns.Trace("SEEN %s closed, waiting for items that had not loaded", window)
+		ns.toolkit:Trace(ns.module, "SEEN %s closed, waiting for items that had not loaded", window)
 		C_Timer.After(DEFERRED_WAIT, function() EndClosing(window, token) end)
 		return
 	end
@@ -176,12 +172,12 @@ local function Note(bucket, id, level, window)
 	if level == LEVEL.SELF and bucket == "recipes" then
 		window = window or Target()
 		if not window then
-			ns.Trace("SEEN recipe %d not counted, no window open", id)
+			ns.toolkit:Trace(ns.module, "SEEN recipe %d not counted, no window open", id)
 		elseif HasProfession(id) then
 			counts[window] = (counts[window] or 0) + 1
-			ns.Trace("SEEN recipe %d counted for %s", id, window)
+			ns.toolkit:Trace(ns.module, "SEEN recipe %d counted for %s", id, window)
 		else
-			ns.Trace("SEEN recipe %d not counted, not the character's profession", id)
+			ns.toolkit:Trace(ns.module, "SEEN recipe %d not counted, not the character's profession", id)
 		end
 	end
 	if level <= ns.db.sourceLevel and not refreshQueued then
@@ -195,7 +191,7 @@ end
 
 -- A line without a link costs one plain search.
 local function OnChat(message)
-	if issecretvalue(message) or not message:find("|H", 1, true) then
+	if not Readable(message) or not message:find("|H", 1, true) then
 		return
 	end
 	local level = LEVEL.SELF
@@ -275,7 +271,7 @@ local function NoteSeenItem(itemID)
 	else
 		itemAttempts[itemID] = (itemAttempts[itemID] or 0) + 1
 		if itemAttempts[itemID] >= ns.MAX_ITEM_ATTEMPTS then
-			ns.Trace("SEEN item %d unanswered %d times, not asked again this session", itemID, itemAttempts[itemID])
+			ns.toolkit:Trace(ns.module, "SEEN item %d unanswered %d times, not asked again this session", itemID, itemAttempts[itemID])
 		end
 		if window then
 			deferred[itemID] = window -- read again when its data loads, for the window that saw it
@@ -317,7 +313,7 @@ local function ReadBank()
 			end
 		end
 	end
-	ns.Trace("SEEN bank read: %d containers, %d items, %d recipe items", #containers, items, recipes)
+	ns.toolkit:Trace(ns.module, "SEEN bank read: %d containers, %d items, %d recipe items", #containers, items, recipes)
 end
 
 -- Auction house search results: every item a search lists is seen, as the window shows it
@@ -333,102 +329,76 @@ end
 -- this only reads the item ID and never touches the tooltip.
 TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(_, data)
 	local itemID = ns.db and data and data.id
-	if itemID and not issecretvalue(itemID) then
+	if itemID and Readable(itemID) then
 		NoteSeenItem(itemID)
 	end
 end)
 
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("BAG_UPDATE_DELAYED")
-frame:RegisterEvent("PLAYER_ENTERING_WORLD")
-for _, event in ipairs(CHAT_EVENTS) do
-	frame:RegisterEvent(event)
-end
-for event in pairs(WINDOW_OPENED) do
-	frame:RegisterEvent(event)
-end
-for event in pairs(WINDOW_CLOSED) do
-	frame:RegisterEvent(event)
-end
-frame:RegisterEvent("ITEM_DATA_LOAD_RESULT")
-frame:RegisterEvent("BAG_CLOSED")
-frame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
-frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_UPDATED")
-frame:RegisterEvent("AUCTION_HOUSE_BROWSE_RESULTS_ADDED")
-frame:RegisterEvent("TRADE_SKILL_SHOW")
-frame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
-frame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
-local function OnEvent(_, event, message, loaded)
-	if not ns.db then
-		return
-	end
-	if event == "ITEM_DATA_LOAD_RESULT" then
-		local window = deferred[message]
+local handlers = {
+	ITEM_DATA_LOAD_RESULT = function(itemID, loaded)
+		local window = deferred[itemID]
 		if window then
 			if loaded then
-				NoteSeenItem(message)
+				NoteSeenItem(itemID)
 			else
-				deferred[message] = nil -- never answers
+				deferred[itemID] = nil -- never answers
 			end
 			if closing[window] and Unanswered(window) == 0 then
 				EndClosing(window)
 			end
 		end
-		return
-	end
-	if event == "BAG_UPDATE_DELAYED" or event == "PLAYER_ENTERING_WORLD" then
-		if event == "PLAYER_ENTERING_WORLD" then HookBagFrames() end
+	end,
+	BAG_UPDATE_DELAYED = function() ReadBags() end,
+	PLAYER_ENTERING_WORLD = function()
+		HookBagFrames()
 		ReadBags()
-		return
-	end
-	if isChatEvent[event] then
-		OnChat(message)
-		return
-	end
-	if WINDOW_OPENED[event] then
-		OpenWindow(WINDOW_OPENED[event])
+	end,
+	AUCTION_HOUSE_BROWSE_RESULTS_UPDATED = function() ReadBrowseResults(C_AuctionHouse.GetBrowseResults()) end,
+	AUCTION_HOUSE_BROWSE_RESULTS_ADDED = function(results) ReadBrowseResults(results) end, -- the newly added results
+	PLAYERBANKSLOTS_CHANGED = function()
+		if openWindows.bank then ReadBank() end
+	end,
+	BAG_CLOSED = function() QueueBagSync() end,
+	TRADE_SKILL_SHOW = function()
+		shownPending = true
+		ReadShownProfession()
+	end,
+	TRADE_SKILL_DATA_SOURCE_CHANGED = function()
+		shownPending = true
+		ReadShownProfession()
+	end,
+	TRADE_SKILL_LIST_UPDATE = function() ReadShownProfession() end,
+}
+for _, event in ipairs(CHAT_EVENTS) do
+	handlers[event] = OnChat
+end
+for event, window in pairs(WINDOW_OPENED) do
+	handlers[event] = function()
+		OpenWindow(window)
 		-- The bank's contents count as seen, as the bags do.
 		if event == "BANKFRAME_OPENED" then ReadBank() end
-		return
 	end
-	if event == "AUCTION_HOUSE_BROWSE_RESULTS_UPDATED" then
-		ReadBrowseResults(C_AuctionHouse.GetBrowseResults())
-		return
-	end
-	if event == "AUCTION_HOUSE_BROWSE_RESULTS_ADDED" then
-		ReadBrowseResults(message) -- the newly added results
-		return
-	end
-	if event == "PLAYERBANKSLOTS_CHANGED" then
-		if openWindows.bank then ReadBank() end
-		return
-	end
-	if WINDOW_CLOSED[event] then
-		CloseWindow(WINDOW_CLOSED[event])
+end
+for event, window in pairs(WINDOW_CLOSED) do
+	handlers[event] = function()
+		CloseWindow(window)
 		QueueBagSync() -- closing the window may have closed the bags with it
-		return
 	end
-	if event == "BAG_CLOSED" then
-		QueueBagSync()
-		return
+end
+-- Nothing is read before the saved data has loaded.
+for event, handler in pairs(handlers) do
+	handlers[event] = function(...)
+		if ns.db then handler(...) end
 	end
-	if event ~= "TRADE_SKILL_LIST_UPDATE" then
-		shownPending = true
-	end
-	ReadShownProfession()
 end
 --@debug@
 -- Each event's own cost in the timing table, by name, so a slow frame is traced to the event that ran in it.
-local handle = OnEvent
-function OnEvent(self, event, ...)
-	local started = debugprofilestop()
-	handle(self, event, ...)
-	ns.Perf("heard " .. event, started)
+for event, handler in pairs(handlers) do
+	handlers[event] = function(...)
+		local started = debugprofilestop()
+		handler(...)
+		ns.Perf("heard " .. event, started)
+	end
 end
 --@end-debug@
-frame:SetScript("OnEvent", OnEvent)
-
---@debug@
--- Every event these frames receive goes into the working-build log (docs/standards.md, "Working build helpers").
-ns.toolkit:WatchEvents(ns.device, frame)
---@end-debug@
+ns.toolkit:EventFrame(ns.module, handlers)

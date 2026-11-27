@@ -148,16 +148,18 @@ for _, file in ipairs(files) do
 end
 check("the kit is looked up once and kept on the namespace", kitLookups <= 1, ("%d lookups"):format(kitLookups))
 
--- Every frame a module registers events on is watched by the kit's event log in working builds (docs/standards.md, "Working
--- build helpers"): a file that registers events also calls WatchEvents.
-local unwatched = {}
+-- Frames that listen for events come from lib:EventFrame, which sets the one OnEvent and counts events for
+-- the working-build log inside it (docs/standards.md, "Working build helpers"). A module's own
+-- SetScript("OnEvent") on such a frame would drop the count, and WatchEvents is the hook that drop defeats.
+local ownDispatch = {}
 for _, file in ipairs(files) do
 	local text = (Read(addonDir .. "/" .. file) or ""):gsub("%-%-[^\n]*", "")
-	if file:find("%.lua$") and text:find(":RegisterEvent%(") and not text:find("WatchEvents%(") then
-		unwatched[#unwatched + 1] = file
+	if file:find("%.lua$") and (text:find('SetScript%(%s*"OnEvent"') or text:find("WatchEvents%(")) then
+		ownDispatch[#ownDispatch + 1] = file
 	end
 end
-check("every file that registers events watches them for the working-build log", #unwatched == 0, table.concat(unwatched, ", "))
+check("events are listened for through lib:EventFrame, never SetScript(\"OnEvent\") or WatchEvents", #ownDispatch == 0,
+	table.concat(ownDispatch, ", "))
 
 -- The addon's own name comes from the TOC (`local addonName = ...`), never a string, except in a named
 -- constant that is a contract (a message prefix, an export format); its saved variables are read in the one
@@ -275,6 +277,7 @@ function kit:BuildOptions(module, db, sections)
 	return buildOptions(self, module, db, sections)
 end
 function kit:RegisterCommands(module, name, entries)
+	entries = type(name) == "table" and name or entries
 	commandTables[module.addon] = entries
 	return registerCommands(self, module, name, entries)
 end
