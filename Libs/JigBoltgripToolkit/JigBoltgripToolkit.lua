@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 48
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 49
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1057,7 +1057,7 @@ end
 
 -- spec: protocol (a number in both prefixes), kinds (set of row kinds this version reads), wire(entry, context)
 -- -> row, validate(row) -> ok[, reason], merge(rows) -> whether anything changed, sending(), receiving(), and
--- optionally changed() after a request's rows were merged.
+-- optionally changed() after a request's rows were merged and prefix, a shorter name when the addon's is too long.
 function lib:NewShare(module, spec)
 	assert(type(spec.protocol) == "number" and type(spec.kinds) == "table" and type(spec.wire) == "function"
 		and type(spec.validate) == "function" and type(spec.merge) == "function"
@@ -1071,7 +1071,8 @@ function lib:NewShare(module, spec)
 			if share == existing then table.remove(self.shareList, index) break end
 		end
 	end
-	local prefix = module.addon .. spec.protocol
+	assert(spec.prefix == nil or type(spec.prefix) == "string", "NewShare: prefix must be a string")
+	local prefix = (spec.prefix or module.addon) .. spec.protocol
 	assert(#prefix + 1 <= MAX_PREFIX_LENGTH, ("NewShare: the prefix %sD is over %d characters"):format(prefix, MAX_PREFIX_LENGTH))
 	local share = setmetatable({
 		module = module, spec = spec, prefix = prefix, dataPrefix = prefix .. "D", testPrefix = prefix .. "T",
