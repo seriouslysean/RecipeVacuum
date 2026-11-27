@@ -238,7 +238,7 @@ local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("
 check("the embedded kit has no XML", listing == "")
 local toolkitCheckout = addonDir .. "/../JigBoltgripToolkit"
 for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua", "tests/module-check.sh",
-	"tests/deploy-deck.sh", "tests/agents-opening.md", "tests/deprecated.lua" }) do
+	"tests/deploy-deck.sh", "tests/agents-opening.md", "tests/deprecated.lua", "tests/globalstrings.lua" }) do
 	local theirs = Read(toolkitCheckout .. "/" .. file)
 	if theirs then
 		check("the embedded " .. file .. " is the toolkit's", Read(kitDir .. "/" .. file) == theirs)

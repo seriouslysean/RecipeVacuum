@@ -17,6 +17,16 @@ function client.Stub(name)
 	return setmetatable({ stubName = name }, stubMeta)
 end
 
+-- Blizzard's enUS global strings (tests/globalstrings.lua, from tools/global-strings.lua), read once: an upper-case name the
+-- client defines as text reads as that text, so text built from it is the real one.
+function client.GlobalStrings()
+	if not client.strings then
+		local here = debug.getinfo(1, "S").source:match("^@(.*)/[^/]*$") or "."
+		client.strings = dofile(here .. "/globalstrings.lua")
+	end
+	return client.strings
+end
+
 -- Unknown globals become stubs; a name read and never set still reads the same stub each time. Names in
 -- client.unset stay nil: LibStub before it loads, and an addon's saved variables before the client reads them.
 client.unset = { LibStub = true }
@@ -26,6 +36,11 @@ setmetatable(_G, { __index = function(globals, name)
 	local emote, command = name:match("^EMOTE(%d+)_CMD(%d+)$")
 	if emote then
 		local text = ("/emote%s%s"):format(emote, command == "1" and "" or "_" .. command)
+		rawset(globals, name, text)
+		return text
+	end
+	local text = client.GlobalStrings()[name]
+	if text then
 		rawset(globals, name, text)
 		return text
 	end
