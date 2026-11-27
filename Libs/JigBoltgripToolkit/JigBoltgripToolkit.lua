@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 47
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 48
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -945,4 +945,797 @@ SlashCmdList.BOLTGRIP = function(message)
 		end
 	end
 	lib:PrintBlock(lib.title .. ": /boltgrip <module> <command>", rows)
+end
+
+-- Sharing between players who run the same module (docs/sharing.md). The library owns the transport, the
+-- batch checks and the log lines; a module supplies its row shape. State is on the library table and every
+-- behavior is a method on lib.shareMethods, so a newer copy's code runs for a share an older copy made.
+local MAX_WIRE_NUMBER = 2 ^ 32 -- IDs, revisions and times on the wire are unsigned 32 bit
+local SEND_LIMIT = 4000 -- encoded bytes per reply, about 16 AceComm chunks
+local RECEIVE_LIMIT = 6000 -- larger replies are rejected before decoding
+local EXPANDED_LIMIT = 65536 -- decompressed bytes accepted before CBOR decoding
+local MAX_ROWS = 64
+local REQUEST_TIMEOUT = 30
+local REQUEST_RETRIES = 2 -- re-asks after a timeout
+local MAX_COLLECTION_ID_LENGTH = 32
+local COLLECTION_ID_RANGE = 1000000000 -- a collection ID is its creation time and a random number below this
+local REPLY_DELAY = 3 -- seconds a channel's probes are collected before one answer goes out
+local WHISPER_ERROR_WINDOW = 10 -- seconds after a send in which the game's "no such player" line counts
+local CLOCK_SKEW = 300 -- seconds a peer's clock may run ahead
+local MAX_PREFIX_LENGTH = 16 -- the client's limit for an addon message prefix
+-- Message kinds, the first letter of every message. The letters are the wire format.
+local KIND = { HELLO = "H", ANSWER = "A", OFFER = "O", GET = "G", DATA = "D" }
+local DISCOVERY_CHANNELS = { GUILD = true, PARTY = true, RAID = true, INSTANCE_CHAT = true }
+local SHARE_EVENTS = {
+	"GROUP_ROSTER_UPDATE", "GROUP_JOINED", "PLAYER_GUILD_UPDATE", "GUILD_ROSTER_UPDATE",
+	"FRIENDLIST_UPDATE", "BN_FRIEND_LIST_SIZE_CHANGED", "BN_FRIEND_INFO_CHANGED",
+	"BN_CONNECTED", "BN_DISCONNECTED", "CHAT_SERVER_RECONNECTED", "PLAYER_REGEN_ENABLED", "CHAT_MSG_SYSTEM",
+}
+
+lib.shares = lib.shares or {} -- by addon name
+lib.shareList = lib.shareList or {} -- in creation order, for the one event frame
+lib.shareMethods = lib.shareMethods or {}
+local Share = lib.shareMethods
+
+-- What a module's row checks are built from; every module checks rows the same way.
+lib.wire = lib.wire or {}
+local wire = lib.wire
+wire.MAX = MAX_WIRE_NUMBER
+wire.CLOCK_SKEW = CLOCK_SKEW
+
+function wire.ID(value)
+	return type(value) == "number" and value > 0 and value < MAX_WIRE_NUMBER and value == math.floor(value)
+end
+
+function wire.Number(value)
+	return type(value) == "number" and value >= 0 and value < MAX_WIRE_NUMBER
+end
+
+function wire.Coordinate(value)
+	return type(value) == "number" and value >= 0 and value <= 1
+end
+
+function wire.Flag(value)
+	return type(value) == "boolean"
+end
+
+-- A time a peer reports: not further ahead than a skewed clock explains.
+function wire.Time(value)
+	return wire.ID(value) and value <= GetServerTime() + CLOCK_SKEW
+end
+
+-- A name to show: bounded, with no control characters or escape pipes.
+function wire.Name(value, maxLength)
+	return type(value) == "string" and #value <= maxLength and not value:find("[%c|]")
+end
+
+-- A field a row may leave out: absent, or passing the check.
+function wire.Optional(check, value, ...)
+	return value == nil or check(value, ...)
+end
+
+local function Trace(share, text, ...)
+	if lib:IsLogging(share.module) then
+		lib:Trace(share.module, "SHARE " .. text:format(...))
+	end
+end
+
+local function NewCollectionID()
+	return ("%d-%d"):format(GetServerTime(), math.random(COLLECTION_ID_RANGE))
+end
+
+local function Encode(rows)
+	local bytes = C_EncodingUtil.SerializeCBOR(rows)
+	local compressed = bytes and C_EncodingUtil.CompressString(bytes, Enum.CompressionMethod.Deflate)
+	return compressed and C_EncodingUtil.EncodeBase64(compressed)
+end
+
+local function Decode(text)
+	if #text > RECEIVE_LIMIT then return nil end
+	local compressed = C_EncodingUtil.DecodeBase64(text)
+	local bytes = compressed and C_EncodingUtil.DecompressString(compressed, Enum.CompressionMethod.Deflate)
+	if not bytes or #bytes > EXPANDED_LIMIT then return nil end
+	return C_EncodingUtil.DeserializeCBOR(bytes)
+end
+
+local function ParseHeader(message)
+	local kind, id, number, rest = message:match("^(%u) (%d+%-%d+) (%d+)(.*)$")
+	local revision = tonumber(number)
+	if not revision or revision >= MAX_WIRE_NUMBER or #id > MAX_COLLECTION_ID_LENGTH then return nil end
+	return kind, id, revision, rest
+end
+
+local function IsGroupMember(name)
+	if UnitInParty(name) then return true end
+	local index = UnitInRaid(name)
+	return not issecretvalue(index) and index ~= nil
+end
+
+local function IsGuildMemberByName(name)
+	return IsInGuild() and C_GuildInfo.MemberExistsByName(name)
+end
+
+-- spec: protocol (a number in both prefixes), kinds (set of row kinds this version reads), wire(entry, context)
+-- -> row, validate(row) -> ok[, reason], merge(rows) -> whether anything changed, sending(), receiving(), and
+-- optionally changed() after a request's rows were merged.
+function lib:NewShare(module, spec)
+	assert(type(spec.protocol) == "number" and type(spec.kinds) == "table" and type(spec.wire) == "function"
+		and type(spec.validate) == "function" and type(spec.merge) == "function"
+		and type(spec.sending) == "function" and type(spec.receiving) == "function",
+		"NewShare: protocol, kinds, wire, validate, merge, sending and receiving are required (docs/sharing.md)")
+	-- A module loaded again in the same Lua state replaces its share; the old one stops listening.
+	local existing = self.shares[module.addon]
+	if existing then
+		existing:Connect(false)
+		for index, share in ipairs(self.shareList) do
+			if share == existing then table.remove(self.shareList, index) break end
+		end
+	end
+	local prefix = module.addon .. spec.protocol
+	assert(#prefix + 1 <= MAX_PREFIX_LENGTH, ("NewShare: the prefix %sD is over %d characters"):format(prefix, MAX_PREFIX_LENGTH))
+	local share = setmetatable({
+		module = module, spec = spec, prefix = prefix, dataPrefix = prefix .. "D", testPrefix = prefix .. "T",
+		revisions = {}, friends = {}, waiting = {}, replied = {}, cachedReplies = {}, whispered = {}, unreachable = {},
+		replyTimers = {}, bnetPresence = {}, changedFriends = {},
+	}, { __index = self.shareMethods })
+	self.shares[module.addon] = share
+	table.insert(self.shareList, share)
+	self:ShareFrame()
+	return share
+end
+
+-- One frame and one listener serve every module's share.
+function lib:ShareFrame()
+	if not self.shareFrame then
+		self.shareFrame = CreateFrame("Frame")
+		self.shareFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+		self.shareFrame:SetScript("OnEvent", function(_, event, ...)
+			lib:ShareEvent(event, ...)
+		end)
+	end
+	-- The frame's events go into every module's working-build log, once each.
+	self.shareWatched = self.shareWatched or {}
+	for _, share in ipairs(self.shareList) do
+		if not self.shareWatched[share.module.addon] then
+			self.shareWatched[share.module.addon] = true
+			self:WatchEvents(share.module, self.shareFrame)
+		end
+	end
+	return self.shareFrame
+end
+
+-- The connection events are on while any share is connected.
+function lib:UpdateShareEvents()
+	local frame = self:ShareFrame()
+	local wanted = false
+	for _, share in ipairs(self.shareList) do
+		wanted = wanted or share.enabled
+	end
+	for _, event in ipairs(SHARE_EVENTS) do
+		if wanted then frame:RegisterEvent(event) else frame:UnregisterEvent(event) end
+	end
+end
+
+function lib:ShareEvent(event, ...)
+	for _, share in ipairs(self.shareList) do
+		share:OnEvent(event, ...)
+	end
+end
+
+-- Loads the saved exchange (db.exchange: collection ID, revision counter, the revision received from each peer)
+-- and the session's revision log. each(add) calls add(entry, context) for every entry of the module's own
+-- found layer; an entry with no revision gets the next one.
+function Share:Load(db, each)
+	if not db.exchange then
+		db.exchange = { id = NewCollectionID(), revision = 0, received = {} }
+	end
+	local exchange = db.exchange
+	self.exchange = exchange
+	wipe(self.revisions)
+	local unrevised = {}
+	each(function(entry, context)
+		local row = { rev = entry.rev, entry = entry, context = context }
+		table.insert(entry.rev and self.revisions or unrevised, row)
+	end)
+	table.sort(self.revisions, function(a, b) return a.rev < b.rev end)
+	local highest = self.revisions[#self.revisions] and self.revisions[#self.revisions].rev or 0
+	if highest > exchange.revision then
+		-- A counter behind its revisions was reset: renumber under a new ID so peers resync.
+		exchange.id, exchange.revision = NewCollectionID(), highest
+		Trace(self, "counter was behind its revisions: new collection %s at %d", exchange.id, highest)
+	end
+	for _, row in ipairs(unrevised) do
+		exchange.revision = exchange.revision + 1
+		row.entry.rev, row.rev = exchange.revision, exchange.revision
+		table.insert(self.revisions, row)
+	end
+	Trace(self, "loaded collection %s at revision %d, %d entries (%d newly numbered)", exchange.id, exchange.revision,
+		#self.revisions, #unrevised)
+end
+
+-- A new or changed entry of the found layer: it gets the next revision and peers are told.
+function Share:Mark(entry, context)
+	local exchange = self.exchange
+	exchange.revision = exchange.revision + 1
+	entry.rev = exchange.revision
+	table.insert(self.revisions, { rev = entry.rev, entry = entry, context = context })
+	self:ScheduleOffer()
+end
+
+-- Rows after revision `after`, oldest first, up to `limit`; returns the rows and the revision they cover.
+function Share:Since(after, limit)
+	local rows, through = {}, after
+	for _, row in ipairs(self.revisions) do
+		-- Stale: the entry changed again and a newer row covers it.
+		if row.rev > after and row.entry.rev == row.rev then
+			if #rows >= limit then
+				return rows, through
+			end
+			table.insert(rows, self.spec.wire(row.entry, row.context))
+			through = row.rev
+		end
+	end
+	return rows, self.exchange.revision
+end
+
+-- Checks a received batch and hands the valid rows of known kinds to the module. Returns whether anything
+-- changed and how many rows were dropped as invalid; nil for a batch that is not a list of rows (nothing written).
+function Share:Merge(rows, maxRows)
+	local spec = self.spec
+	if type(rows) ~= "table" then
+		Trace(self, "batch rejected: not a list")
+		return nil
+	end
+	if #rows > (maxRows or MAX_ROWS) then
+		Trace(self, "batch rejected: %d rows, over the limit of %d", #rows, maxRows or MAX_ROWS)
+		return nil
+	end
+	local count, skipped, unknown = 0, 0, 0
+	local known = {}
+	for index, row in pairs(rows) do
+		if not wire.ID(index) or index > #rows or type(row) ~= "table" then
+			Trace(self, "batch rejected: row %s is not in a list of tables", tostring(index))
+			return nil
+		end
+		-- One bad row is dropped, not the batch: the same batch would be refused every time it is asked for.
+		if spec.kinds[row.k] then
+			local ok, reason = spec.validate(row)
+			if ok then
+				known[#known + 1] = row
+			else
+				skipped = skipped + 1
+				Trace(self, "row %d rejected: %s %s", index, tostring(row.k), reason or "failed its checks")
+			end
+		else
+			-- A kind a newer version added: skipped, not a reason to refuse the batch.
+			unknown = unknown + 1
+		end
+		count = count + 1
+	end
+	if count ~= #rows then
+		Trace(self, "batch rejected: the list has gaps")
+		return nil
+	end
+	if unknown > 0 then Trace(self, "%d rows of kinds this version does not read were skipped", unknown) end
+	local changed = spec.merge(known) and true or false
+	Trace(self, "merged %d of %d rows, %d rejected: %s", #known, #rows, skipped, changed and "changed" or "nothing new")
+	return changed, skipped
+end
+
+function Share:Wanted()
+	return self.spec.sending() or self.spec.receiving()
+end
+
+function Share:IsTrusted(name)
+	return self.friends[name] or IsGuildMemberByName(name) or IsGroupMember(name)
+end
+
+function Share:Ready()
+	if not self.enabled then return false end
+	if C_ChatInfo.InChatMessagingLockdown() then
+		self.deferred = true
+		return false
+	end
+	return true
+end
+
+-- A whisper to someone the game cannot reach is answered with the system line ERR_CHAT_PLAYER_NOT_FOUND_S;
+-- it is only read, so a failed name is not whispered again until it has been offline.
+function Share:WhisperSent(target)
+	self.whispered[target] = GetTime()
+end
+
+function Share:Send(text, channel, target)
+	if channel == "WHISPER" and self.unreachable[target] then
+		Trace(self, "not sent to %s: the game could not reach them", target)
+		return
+	end
+	Trace(self, "sent %s to %s%s", text, channel, target and (" " .. target) or "")
+	if channel == "WHISPER" then
+		self.comm:SendCommMessage(self.prefix, text, channel, target, "BULK", function(name) self:WhisperSent(name) end, target)
+	else
+		self.comm:SendCommMessage(self.prefix, text, channel, target, "BULK")
+	end
+end
+
+function Share:SendData(text, target)
+	if self.unreachable[target] then
+		Trace(self, "not sent to %s: the game could not reach them", target)
+		return
+	end
+	self.comm:SendCommMessage(self.dataPrefix, text, "WHISPER", target, "BULK", function(name) self:WhisperSent(name) end, target)
+end
+
+function Share:OnSystem(message)
+	if not next(self.whispered) or issecretvalue(message) then return end
+	if not lib.notFoundPattern then
+		lib.notFoundPattern = "^" .. ERR_CHAT_PLAYER_NOT_FOUND_S:gsub("[%^%$%(%)%.%[%]%*%+%-%?]", "%%%0"):gsub("%%s", "(.+)") .. "$"
+	end
+	local now = GetTime()
+	for target, sent in pairs(self.whispered) do
+		if now - sent > WHISPER_ERROR_WINDOW then self.whispered[target] = nil end
+	end
+	local name = message:match(lib.notFoundPattern)
+	local sent = name and self.whispered[name]
+	if sent then
+		self.whispered[name] = nil
+		self.unreachable[name] = true
+		Trace(self, "the game says %s is not playing: not whispered again until offline", name)
+	end
+end
+
+-- A player who does not share offers revision 0, so no one asks for their finds.
+function Share:Offer(kind)
+	local exchange = self.exchange
+	return ("%s %s %d"):format(kind, exchange.id, self.spec.sending() and exchange.revision or 0)
+end
+
+function Share:Broadcast(kind)
+	local message = self:Offer(kind)
+	if self.guild then self:Send(message, "GUILD") end
+	if self.home then self:Send(message, self.home) end
+	if self.instance then self:Send(message, "INSTANCE_CHAT") end
+	for name in pairs(self.friends) do
+		if self.replied[name] and not IsGuildMemberByName(name) and not IsGroupMember(name) then
+			self:Send(message, "WHISPER", name)
+		end
+	end
+end
+
+function Share:ScheduleOffer()
+	wipe(self.cachedReplies)
+	if not self.enabled or self.offerQueued then return end
+	-- A trainer or merchant visit can find dozens of entries; one offer covers them.
+	self.offerQueued = true
+	C_Timer.After(0, function()
+		self.offerQueued = nil
+		if self:Ready() then self:Broadcast(KIND.OFFER) end
+	end)
+end
+
+-- Builds the reply for one request, halving the row count until it fits SEND_LIMIT; cached per starting
+-- revision, so a new entry clears it.
+function Share:Reply(after)
+	local cached = self.cachedReplies[after]
+	if cached then return cached end
+	local limit = MAX_ROWS
+	while true do
+		local rows, through = self:Since(after, limit)
+		local encoded = Encode(rows)
+		if not encoded then return nil end
+		if #encoded <= SEND_LIMIT or limit <= 1 then
+			local message = ("%s %s %d %d %s"):format(KIND.DATA, self.exchange.id, after, through, encoded)
+			self.cachedReplies[after] = message
+			return message
+		end
+		limit = math.floor(limit / 2)
+	end
+end
+
+function Share:FinishRequest()
+	if self.active and self.active.timer then self.active.timer:Cancel() end
+	self.active = nil
+	if self.changedDirty then
+		self.changedDirty = nil
+		if self.spec.changed then self.spec.changed() end
+	end
+	self:NextPeer()
+end
+
+function Share:Ask(peer)
+	Trace(self, "asked %s for entries %d to %d (%d tries left)", peer.sender, peer.after, peer.tip, peer.retries)
+	if peer.timer then peer.timer:Cancel() end
+	self:SendData(("%s %s %d"):format(KIND.GET, peer.id, peer.after), peer.sender)
+	peer.timer = C_Timer.NewTimer(REQUEST_TIMEOUT, function()
+		if self.active ~= peer then return end
+		Trace(self, "no answer from %s", peer.sender)
+		if peer.retries > 0 and self:Ready() and self:IsTrusted(peer.sender) then
+			peer.retries = peer.retries - 1
+			self:Ask(peer)
+		else
+			Trace(self, "gave up on %s", peer.sender)
+			self:FinishRequest()
+		end
+	end)
+end
+
+-- One request at a time; the rest wait.
+function Share:NextPeer()
+	if self.active or not self:Ready() then return end
+	for sender, peer in pairs(self.waiting) do
+		self.waiting[sender] = nil
+		peer.after = self.exchange.received[peer.id] or 0
+		if peer.after < peer.tip and self:IsTrusted(sender) then
+			self.active = peer
+			self:Ask(peer)
+			return
+		end
+		Trace(self, "dropped the wait for %s: nothing to ask or no longer trusted", sender)
+	end
+end
+
+function Share:QueuePeer(sender, id, tip)
+	-- Revision 0 is a peer that does not share (Offer); it says nothing about our cursor for it.
+	if tip == 0 then return end
+	local received = self.exchange.received
+	-- Tip below what we saved: that collection was reset, restart from zero.
+	if received[id] and tip < received[id] then
+		Trace(self, "collection %s from %s restarted (tip %d, we had %d)", id, sender, tip, received[id])
+		received[id] = 0
+	end
+	if (received[id] or 0) >= tip then return end
+	local peer = self.active and self.active.sender == sender and self.active or self.waiting[sender]
+	if peer and peer.id == id then
+		peer.tip = math.max(peer.tip, tip)
+	else
+		self.waiting[sender] = { sender = sender, id = id, tip = tip, retries = REQUEST_RETRIES }
+		Trace(self, "%s is ahead of us (collection %s at %d, we have %d): queued%s", sender, id, tip, received[id] or 0,
+			self.active and ", waiting for the request in progress" or "")
+	end
+	self:NextPeer()
+end
+
+-- One answer per channel after a quiet moment, as another addon version check does (Loader.lua, GROUP_FORMED).
+function Share:ScheduleChannelReply(channel)
+	if self.replyTimers[channel] then
+		self.replyTimers[channel]:Cancel()
+		Trace(self, "another probe on %s: answer delayed again", channel)
+	end
+	self.replyTimers[channel] = C_Timer.NewTimer(REPLY_DELAY, function()
+		self.replyTimers[channel] = nil
+		if self:Ready() then
+			self:Send(self:Offer(KIND.ANSWER), channel)
+		end
+	end)
+end
+
+function Share:OnProbe(message, channel, sender)
+	if not self:Ready() or issecretvalue(sender) or issecretvalue(message) then return end
+	if channel == "WHISPER" then
+		if not self:IsTrusted(sender) then
+			Trace(self, "probe from %s ignored: not a friend, guild member or group member", sender)
+			return
+		end
+	elseif not DISCOVERY_CHANNELS[channel] then
+		Trace(self, "probe from %s ignored: not on a channel we use (%s)", sender, tostring(channel))
+		return
+	end
+	local kind, id, revision, rest = ParseHeader(message)
+	if not kind or rest ~= "" then
+		Trace(self, "probe from %s ignored: unreadable header", sender)
+		return
+	end
+	if id == self.exchange.id then return end
+	Trace(self, "heard %s from %s on %s: collection %s at %d", kind, sender, channel, id, revision)
+	if kind == KIND.HELLO then
+		if channel == "WHISPER" then
+			-- Friends outside guild and group: answer the prober directly.
+			local now = GetTime()
+			if not self.replied[sender] or now - self.replied[sender] >= REPLY_DELAY then
+				self.replied[sender] = now
+				self:Send(self:Offer(KIND.ANSWER), "WHISPER", sender)
+			else
+				Trace(self, "no second answer to %s within %d seconds", sender, REPLY_DELAY)
+			end
+		else
+			self:ScheduleChannelReply(channel)
+		end
+	elseif kind == KIND.ANSWER then
+		self.replied[sender] = GetTime()
+	elseif kind ~= KIND.OFFER then
+		Trace(self, "probe from %s ignored: unknown kind %s", sender, kind)
+		return
+	end
+	if self.spec.receiving() then
+		self:QueuePeer(sender, id, revision)
+	else
+		Trace(self, "not taking entries from %s: receiving is off", sender)
+	end
+end
+
+function Share:OnData(message, channel, sender)
+	if not self:Ready() or issecretvalue(sender) or issecretvalue(message) then return end
+	if channel ~= "WHISPER" then
+		Trace(self, "data from %s ignored: not a whisper (%s)", sender, tostring(channel))
+		return
+	end
+	if not self:IsTrusted(sender) then
+		Trace(self, "data from %s ignored: not a friend, guild member or group member", sender)
+		return
+	end
+	local kind, id, after, rest = ParseHeader(message)
+	local exchange = self.exchange
+	if kind == KIND.GET then
+		if not self.spec.sending() or rest ~= "" or id ~= exchange.id or after >= exchange.revision then
+			Trace(self, "request from %s ignored: sending off, malformed, another collection or nothing after %d", sender, after or -1)
+			return
+		end
+		local reply = self:Reply(after)
+		Trace(self, "%s asked for entries after %d: %s", sender, after, reply and ("sent " .. #reply .. " bytes") or "nothing to send")
+		if reply then self:SendData(reply, sender) end
+	elseif kind == KIND.DATA and self.spec.receiving() then
+		-- Accept only the reply to our own request.
+		local peer = self.active
+		if not peer or peer.sender ~= sender or peer.id ~= id or peer.after ~= after then
+			Trace(self, "data from %s ignored: not the reply to our request", sender)
+			return
+		end
+		local through, encoded = rest:match("^ (%d+) (%S+)$")
+		through = tonumber(through)
+		if not through or through <= after or through >= MAX_WIRE_NUMBER then
+			Trace(self, "data from %s ignored: unreadable header", sender)
+			return
+		end
+		local ok, rows = pcall(Decode, encoded)
+		local changed, skipped
+		if ok and rows then changed, skipped = self:Merge(rows) end
+		Trace(self, "received %d bytes from %s, entries %d to %d: %s", #encoded, sender, after, through,
+			not (ok and rows) and "could not be read" or changed == nil and "rejected, nothing written"
+			or ("%d rows, %d skipped, %s"):format(#rows, skipped, changed and "merged" or "nothing new"))
+		if changed == nil then
+			-- Asked for again it would fail the same way, so the cursor moves past it.
+			exchange.received[id] = through
+			self:FinishRequest()
+			return
+		end
+		-- The sender may have found more since its probe.
+		peer.tip = math.max(peer.tip, through)
+		self.changedDirty = self.changedDirty or changed
+		exchange.received[id] = through
+		if through < peer.tip then
+			peer.after, peer.retries = through, REQUEST_RETRIES
+			self:Ask(peer)
+		else
+			self:FinishRequest()
+		end
+	else
+		Trace(self, "data from %s ignored: kind %s while receiving is %s", sender, tostring(kind), self.spec.receiving() and "on" or "off")
+	end
+end
+
+-- Event driven: broadcast once on joining each channel, whisper only newly online friends who won't get the group or guild probe.
+function Share:RefreshChannels(force)
+	local group = IsInGroup(LE_PARTY_CATEGORY_HOME) and
+		(IsInRaid(LE_PARTY_CATEGORY_HOME) and "RAID" or "PARTY")
+	local instanced = IsInGroup(LE_PARTY_CATEGORY_INSTANCE)
+	local inGuild = IsInGuild()
+	local guildReady = inGuild and GetNumGuildMembers() > 0
+	if inGuild and not guildReady then
+		if not self.rosterRequested then
+			self.rosterRequested = true
+			C_GuildInfo.GuildRoster()
+		end
+	else
+		self.rosterRequested = nil
+	end
+	local probe = self:Offer(KIND.HELLO)
+	if guildReady and (not self.guild or force) then self:Send(probe, "GUILD") end
+	if group and (group ~= self.home or force) then self:Send(probe, group) end
+	if instanced and (not self.instance or force) then self:Send(probe, "INSTANCE_CHAT") end
+	self.home, self.instance, self.guild = group, instanced, guildReady
+end
+
+-- BN_FRIEND_INFO_CHANGED also fires for zone or status changes, so reachable character names are compared before the roster is rebuilt.
+local function BattleNetCharacters(index, online)
+	local names = ""
+	for j = 1, C_BattleNet.GetFriendNumGameAccounts(index) do
+		local game = C_BattleNet.GetFriendGameAccountInfo(index, j)
+		-- A whisper only goes to a character it can reach: online in this game, on this realm, same faction.
+		if game and game.isOnline and game.isInCurrentRegion and game.clientProgram == BNET_CLIENT_WOW
+			and game.wowProjectID == WOW_PROJECT_ID and game.characterName and game.characterName ~= ""
+			and game.realmID == GetRealmID() and game.factionName == UnitFactionGroup("player") then
+			local name = Ambiguate(game.characterName, "none")
+			names = names .. "\n" .. name
+			if online then online[name] = true end
+		end
+	end
+	return names
+end
+
+function Share:RefreshFriends(force)
+	local online = {}
+	for i = 1, C_FriendList.GetNumFriends() do
+		local info = C_FriendList.GetFriendInfoByIndex(i)
+		if info and info.connected then online[Ambiguate(info.name, "none")] = true end
+	end
+	wipe(self.bnetPresence)
+	for i = 1, BNGetNumFriends() do self.bnetPresence[i] = BattleNetCharacters(i, online) end
+	-- A name the game could not reach is tried again once it has been offline.
+	for name in pairs(self.unreachable) do
+		if not online[name] then self.unreachable[name], self.whispered[name] = nil, nil end
+	end
+	local probe = self:Offer(KIND.HELLO)
+	local previous = self.friends
+	self.friends = online
+	for name in pairs(online) do
+		if (force or not previous[name]) and not IsGuildMemberByName(name) and not IsGroupMember(name) then
+			self:Send(probe, "WHISPER", name)
+		end
+	end
+end
+
+function Share:Refresh()
+	self.scheduled = nil
+	if not self:Ready() then return end
+	if self.channelDirty then self:RefreshChannels(self.forceChannels) end
+	if not self.friendDirty then
+		for index in pairs(self.changedFriends) do
+			if self.bnetPresence[index] ~= BattleNetCharacters(index) then
+				self.friendDirty = true
+				break
+			end
+		end
+	end
+	wipe(self.changedFriends)
+	if self.friendDirty then self:RefreshFriends(self.forceFriends) end
+	self.channelDirty, self.friendDirty, self.forceChannels, self.forceFriends = nil, nil, nil, nil
+end
+
+function Share:ScheduleRefresh()
+	if not self.scheduled then
+		self.scheduled = true
+		C_Timer.After(0, function() self:Refresh() end)
+	end
+end
+
+function Share:OnEvent(event, index)
+	if event == "PLAYER_ENTERING_WORLD" and not self.inWorld then
+		self.inWorld = true
+		if self:Wanted() then self:Connect(true) end
+		return
+	end
+	if not self.enabled then return end
+	if event == "CHAT_MSG_SYSTEM" then
+		self:OnSystem(index)
+		return
+	end
+	if event == "CHAT_SERVER_RECONNECTED" or (self.deferred and not C_ChatInfo.InChatMessagingLockdown()) then
+		self.deferred = nil
+		self.channelDirty, self.friendDirty, self.forceChannels, self.forceFriends = true, true, true, true
+	elseif event == "GROUP_JOINED" then
+		self.home, self.instance = nil, nil
+		self.channelDirty = true
+	elseif event == "GROUP_ROSTER_UPDATE" or event == "GUILD_ROSTER_UPDATE" or event == "PLAYER_GUILD_UPDATE" then
+		self.channelDirty = true
+	elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
+		return
+	elseif event == "BN_FRIEND_INFO_CHANGED" and index then
+		self.changedFriends[index] = true
+	else
+		self.friendDirty = true
+	end
+	self:ScheduleRefresh()
+end
+
+-- After a sharing setting changes: the connection follows whether either direction is wanted, a player who
+-- starts sharing advertises at once, and one who stops receiving drops pending requests.
+function Share:Update()
+	self:Connect(self:Wanted())
+	if not self.enabled then return end
+	if not self.spec.receiving() then
+		if self.active and self.active.timer then self.active.timer:Cancel() end
+		self.active = nil
+		wipe(self.waiting)
+	end
+	self:ScheduleOffer()
+end
+
+function Share:Connect(value)
+	if not self.inWorld or (self.enabled or false) == value then return end
+	self.enabled = value
+	Trace(self, "%s on prefixes %s and %s", value and "connected" or "disconnected", self.prefix, self.dataPrefix)
+	lib:UpdateShareEvents()
+	if value then
+		if not self.comm then
+			self.comm = {}
+			LibStub("AceComm-3.0"):Embed(self.comm)
+		end
+		self.comm:RegisterComm(self.prefix, function(_, message, channel, sender) self:OnProbe(message, channel, sender) end)
+		self.comm:RegisterComm(self.dataPrefix, function(_, message, channel, sender) self:OnData(message, channel, sender) end)
+		self.channelDirty, self.friendDirty, self.forceChannels, self.forceFriends = true, true, true, true
+		C_FriendList.ShowFriends()
+		self:ScheduleRefresh()
+	else
+		self.comm:UnregisterComm(self.prefix)
+		self.comm:UnregisterComm(self.dataPrefix)
+		if self.active and self.active.timer then self.active.timer:Cancel() end
+		self.active = nil
+		wipe(self.waiting)
+		for channel, timer in pairs(self.replyTimers) do
+			timer:Cancel()
+			self.replyTimers[channel] = nil
+		end
+		wipe(self.friends)
+		wipe(self.whispered)
+		wipe(self.replied)
+		wipe(self.bnetPresence)
+		wipe(self.changedFriends)
+		wipe(self.cachedReplies)
+		self.home, self.instance, self.guild, self.deferred, self.rosterRequested, self.changedDirty = nil, nil, nil, nil, nil, nil
+	end
+end
+
+-- One-account check: every reply is built by the real code, checked against the limits, decoded, handed to
+-- merge(rows) (the module's, onto a scratch copy of its data) and whispered back over a test prefix.
+-- summary() adds the module's own line. Not covered: choosing who to share with, and the probe exchange.
+local TEST_TIMEOUT = 60
+
+function Share:SelfTest(report, merge, summary)
+	local exchange = self.exchange
+	local messages, after, rowsSent, largest = {}, 0, 0, 0
+	wipe(self.cachedReplies)
+	while after < exchange.revision do
+		local message = self:Reply(after)
+		if not message then return report("FAIL: the reply after revision " .. after .. " could not be encoded") end
+		local kind, id, replyAfter, rest = ParseHeader(message)
+		local through, encoded = (rest or ""):match("^ (%d+) (%S+)$")
+		through = tonumber(through)
+		if kind ~= KIND.DATA or id ~= exchange.id or replyAfter ~= after or not through or through <= after then
+			return report("FAIL: the reply after revision " .. after .. " has a header the receiver would reject")
+		end
+		if #encoded > SEND_LIMIT then
+			report(("WARN: a reply is %d bytes, over the %d send limit (one row too large to split)"):format(#encoded, SEND_LIMIT))
+		end
+		local ok, rows = pcall(Decode, encoded)
+		if not (ok and rows) then return report("FAIL: the reply after revision " .. after .. " does not decode") end
+		local merged, changed, skipped = pcall(merge, rows)
+		if not merged or changed == nil or skipped > 0 then
+			return report("FAIL: the receiver's validation rejects the reply after revision " .. after)
+		end
+		messages[#messages + 1], rowsSent, largest = message, rowsSent + #rows, math.max(largest, #message)
+		after = through
+	end
+	wipe(self.cachedReplies)
+	report(("Encode and decode: %d replies, %d rows, largest %d bytes%s"):format(#messages, rowsSent, largest,
+		summary and ("; " .. summary()) or ""))
+	if #messages == 0 then return report("Nothing to send: nothing recorded yet") end
+	if not self.comm then
+		self.comm = {}
+		LibStub("AceComm-3.0"):Embed(self.comm)
+	end
+	local comm, received, started = self.comm, 0, GetTime()
+	local timeout = C_Timer.NewTimer(TEST_TIMEOUT, function()
+		comm:UnregisterComm(self.testPrefix)
+		report(("FAIL: %d of %d replies came back within %d s (the game may not deliver a whisper to yourself)"):format(
+			received, #messages, TEST_TIMEOUT))
+	end)
+	comm:RegisterComm(self.testPrefix, function(_, message, channel)
+		received = received + 1
+		if channel ~= "WHISPER" or message ~= messages[received] then
+			timeout:Cancel()
+			comm:UnregisterComm(self.testPrefix)
+			return report("FAIL: reply " .. received .. " arrived changed")
+		end
+		if received == #messages then
+			timeout:Cancel()
+			comm:UnregisterComm(self.testPrefix)
+			report(("Through the game and back: %d of %d replies arrived unchanged in %.1f s"):format(
+				received, #messages, GetTime() - started))
+		end
+	end)
+	local me = UnitName("player")
+	for _, message in ipairs(messages) do
+		comm:SendCommMessage(self.testPrefix, message, "WHISPER", me, "BULK")
+	end
+	report(("Whispering %d replies to %s; the result follows"):format(#messages, me))
 end

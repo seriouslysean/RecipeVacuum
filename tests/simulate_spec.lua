@@ -38,7 +38,7 @@ describe("simulation", function()
 
 	setup(function()
 		-- A row the validation refuses is dropped on its own: nothing changes and it is counted as skipped.
-		function Rejected(m, row) local changed, skipped = m.MergeFinds({ row }, 10) return changed == false and skipped == 1 end
+		function Rejected(m, row) local changed, skipped = m.share:Merge({ row }, 10) return changed == false and skipped == 1 end
 
 		EventUtil = { ContinueOnAddOnLoaded = function(name, fn) loaded[#loaded + 1] = { name, fn } end }
 		C_AddOns = { GetAddOnMetadata = function() return "Recipe Vacuum" end }
@@ -118,7 +118,7 @@ describe("simulation", function()
 		function boot(saved)
 		  RecipeVacuumDB = nil; loaded = {}; frames = {}
 		  if saved then dofile(saved) end
-		  local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
+		  local ns = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, SourcesChanged = function() end }
 		  for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, ns) end
 		  ns.SourcesChanged = function() end
 		  for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
@@ -423,10 +423,10 @@ describe("simulation", function()
 	-- 5. Sharing: every new kind round-trips, re-merge is a no-op
 	local rows, b, bFrames, s, sq, badFaction
 	it("merge rows", function()
-		rows = a.FindsSince(0, math.huge)
+		rows = a.share:Since(0, math.huge)
 		b = boot(nil)
 		bFrames = frames
-		assert(b.MergeFinds(rows, #rows) == true, ("merge %d rows"):format(#rows))
+		assert(b.share:Merge(rows, #rows) == true, ("merge %d rows"):format(#rows))
 	end)
 	it("shared drop kinds intact", function()
 		s = b.db.shared.items[1000]
@@ -442,7 +442,7 @@ describe("simulation", function()
 		assert(sq and sq[1].quest == 1199 and sq[1].npc == 4784 and sq[1].finisher == 1444, "shared quest intact")
 	end)
 	it("re-merge changes nothing", function()
-		assert(b.MergeFinds(rows, #rows) == false, "re-merge changes nothing")
+		assert(b.share:Merge(rows, #rows) == false, "re-merge changes nothing")
 	end)
 	-- Fails if the quest giver's own faction is not saved, not shared, or a bad value is accepted.
 	it("NPC faction saved and shared", function()
@@ -500,7 +500,7 @@ describe("simulation", function()
 			assert(world.scope == "world" and world.places == 3, "three zones is a world drop")
 		end)
 		it("a shared drop carries its subzone, its own spot and its count", function()
-			local sent = d.FindsSince(0, math.huge)
+			local sent = d.share:Since(0, math.huge)
 			local wired
 			for _, row in ipairs(sent) do if row.i == 2000 and row.n == 900 and row.a == 41 then wired = row end end
 			assert(wired and wired.cn == 2 and wired.x == 0.5 and wired.m == 1429, "a shared drop carries its subzone, its own spot and its count")
@@ -518,7 +518,7 @@ describe("simulation", function()
 	-- nothing more arrives from that player.
 	it("a bad row is dropped and the rest of its batch still merges", function()
 		local m = boot(nil)
-		local changed, skipped = m.MergeFinds({ { k = "vendor", i = 1000, n = 1, a = 5 }, { k = "vendor", i = 1000, n = 2 } }, 2)
+		local changed, skipped = m.share:Merge({ { k = "vendor", i = 1000, n = 1, a = 5 }, { k = "vendor", i = 1000, n = 2 } }, 2)
 		local vendors = {}
 		for _, o in ipairs(m.db.shared.items[1000] or {}) do vendors[o.npc] = true end
 		assert(changed == true and skipped == 1
@@ -528,7 +528,7 @@ describe("simulation", function()
 	-- stop every later find from that player arriving.
 	it("a row of an unknown kind is skipped and the rest merge", function()
 		local m = boot(nil)
-		local merged = m.MergeFinds({ { k = "rank", r = 3464, n = 1, s = 500 },
+		local merged = m.share:Merge({ { k = "rank", r = 3464, n = 1, s = 500 },
 			{ k = "vendor", i = 1000, n = 4, m = 1429, x = 0.5, y = 0.5, s = 500 } }, 2)
 		assert(merged == true and m.db.shared.items[1000] ~= nil
 			and m.db.shared.recipes[3464] == nil, "a row of an unknown kind is skipped and the rest merge")
@@ -539,8 +539,8 @@ describe("simulation", function()
 		local m
 		it("a drop's spot merges as one pair", function()
 			m = boot(nil)
-			m.MergeFinds({ { k = "drop", i = 1000, n = 77, m = 1429, x = 0.9, y = 0.1, s = 500 } }, 1)
-			m.MergeFinds({ { k = "drop", i = 1000, n = 77, m = 1429, x = 0.1, y = 0.9, s = 500 } }, 1)
+			m.share:Merge({ { k = "drop", i = 1000, n = 77, m = 1429, x = 0.9, y = 0.1, s = 500 } }, 1)
+			m.share:Merge({ { k = "drop", i = 1000, n = 77, m = 1429, x = 0.1, y = 0.9, s = 500 } }, 1)
 			local merged = m.db.shared.items[1000][1]
 			assert((merged.x == 0.9 and merged.y == 0.1) or (merged.x == 0.1 and merged.y == 0.9), "a drop's spot merges as one pair")
 		end)
@@ -562,18 +562,18 @@ describe("simulation", function()
 		it("a merge fills gaps and keeps what was known", function()
 			m = boot(nil)
 			newerNoCost = row(200, { sk = 75 })
-			m.MergeFinds({ row(100, { c = 500 }) }, 1)
-			m.MergeFinds({ newerNoCost }, 1)
-			m.MergeFinds({ row(50, { sp = 1234, c = 1 }) }, 1)
+			m.share:Merge({ row(100, { c = 500 }) }, 1)
+			m.share:Merge({ newerNoCost }, 1)
+			m.share:Merge({ row(50, { sp = 1234, c = 1 }) }, 1)
 			kept = m.db.shared.recipes[7001][1]
 			assert(kept.cost == 500 and kept.skill == 75 and kept.spellID == 1234 and kept.seen == 200,
 				"a merge fills gaps and keeps what was known")
 		end)
 		it("the same facts again change nothing", function()
-			assert(m.MergeFinds({ newerNoCost }, 1) == false, "the same facts again change nothing")
+			assert(m.share:Merge({ newerNoCost }, 1) == false, "the same facts again change nothing")
 		end)
 		it("a newer sighting corrects an older value", function()
-			m.MergeFinds({ row(300, { c = 800 }) }, 1)
+			m.share:Merge({ row(300, { c = 800 }) }, 1)
 			assert(kept.cost == 800 and kept.seen == 300, "a newer sighting corrects an older value")
 		end)
 	end)
@@ -587,7 +587,7 @@ describe("simulation", function()
 		local reports = { report(100, { c = 100 }), report(300, { sk = 75 }), report(200, { c = 200 }) }
 		local function final(order)
 			local side = boot(nil)
-			for _, index in ipairs(order) do side.MergeFinds({ reports[index] }, 1) end
+			for _, index in ipairs(order) do side.share:Merge({ reports[index] }, 1) end
 			local kept = side.db.shared.recipes[7002][1]
 			return kept.cost, kept.skill, kept.seen
 		end
@@ -681,7 +681,7 @@ describe("simulation", function()
 		RecipeVacuumDB = nil
 		loaded = {}; frames = {}
 		local nsd = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end,
-			ScheduleFindOffer = function() end, SourcesChanged = function() end, seed = { build = 71037, taught = { [7777] = 888, [7778] = 888 } } }
+			SourcesChanged = function() end, seed = { build = 71037, taught = { [7777] = 888, [7778] = 888 } } }
 		RecipeVacuumDB = seedSave
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, nsd) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
@@ -710,7 +710,7 @@ describe("simulation", function()
 	it("shared roll keeps its zone", function()
 		assert(b.db.shared.items[3000] and b.db.shared.items[3000][1].zone == 1429, "shared roll keeps its zone")
 	end)
-	it("reject more rows than the limit", function() assert(b.MergeFinds(rows, #rows - 1) == nil, "reject more rows than the limit") end)
+	it("reject more rows than the limit", function() assert(b.share:Merge(rows, #rows - 1) == nil, "reject more rows than the limit") end)
 
 	-- 6b. Come across: a chat-linked or nearby-looted recipe is kept with how near it arrived and nothing else.
 	-- Fails if a link is missed, a non-recipe is kept, who or where is saved, a farther sighting weakens a nearer one, or a recipe shows below its level.
@@ -1293,7 +1293,7 @@ describe("simulation", function()
 	it("reload keeps schema and revision", function()
 		local savedDB = a.db
 		RecipeVacuumDB = savedDB; loaded = {}
-		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, ScheduleFindOffer = function() end, SourcesChanged = function() end }
+		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, SourcesChanged = function() end }
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
 		assert(c.db.schema == 12 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")

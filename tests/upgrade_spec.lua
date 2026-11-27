@@ -25,6 +25,7 @@ describe("upgrade of an old save", function()
 		GetBuildInfo = function() return "1.60.1", "71037" end
 		GetServerTime = function() return 1795470000 end
 		C_Map = { GetMapInfo = function(id) return { name = "Map" .. id } end }
+		CreateFrame = function() return { RegisterEvent = function() end, SetScript = function() end, HookScript = function() end } end
 		wipe = function(t) for k in pairs(t) do t[k] = nil end return t end
 		ChatTypeInfo = { MONSTER_SAY = { r = 1, g = 1, b = 0.62 } }
 		-- The real toolkit library, through the real LibStub, prints the addon's chat lines.

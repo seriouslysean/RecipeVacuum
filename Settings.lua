@@ -25,13 +25,13 @@ function ns.InitSettings()
 				values = toolkit:SourceChoices({ self = L["Tracks only recipes you see for yourself."], friends = true,
 					public = L["Also tracks recipes people link in chat."] }),
 				onChange = function()
-					ns.SharingSettingsChanged()
+					ns.share:Update()
 					ns.SourcesChanged()
 				end },
 			{ kind = "checkbox", key = "shareFinds", label = L["Share My Finds"], default = true,
 				tooltip = L["Send what you find to party, guild and friends who use Recipe Vacuum."],
 				note = L["Sends your trainers, vendors, quests and drops to friends who use Recipe Vacuum. Nothing else is sent."],
-				onChange = ns.SharingSettingsChanged },
+				onChange = function() ns.share:Update() end },
 		} },
 		{ heading = L["Personal Finds"], place = "features", rows = {
 			{ kind = "checkbox", key = "selfFound", label = L["Track Personal Finds"], default = true,

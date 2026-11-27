@@ -1,52 +1,26 @@
 local _, ns = ...
 local L = ns.L
+local wire = ns.toolkit.wire
 
--- Self-found finds are one collection with an ID and a revision counter; renumbering revisions issues a new ID so peers resync.
-
-local revisions = {} -- session only: { { rev, observation, ref = "recipe" | "item", id } } in rev order
-
--- A collection ID is its creation time and a random number below this.
-local COLLECTION_ID_RANGE = 1000000000
-
-local function NewCollectionID()
-	return ("%d-%d"):format(GetServerTime(), math.random(COLLECTION_ID_RANGE))
-end
+-- Self-found finds are one collection with an ID and a revision counter; the toolkit's share keeps both and the
+-- transport (docs/data.md, "Sharing"). This file is Recipe Vacuum's row shape: what a row says, what makes it valid, how it merges.
 
 function ns.MarkFind(observation, ref, id)
-	local exchange = ns.db.exchange
-	exchange.revision = exchange.revision + 1
-	observation.rev = exchange.revision
-	table.insert(revisions, { rev = observation.rev, observation = observation, ref = ref, id = id })
-	ns.ScheduleFindOffer()
+	ns.share:Mark(observation, { ref = ref, id = id })
 end
 
 -- Derived from the saved layer, not saved.
 function ns.InitFinds()
 	local db = ns.db
-	if not db.exchange then
-		db.exchange = { id = NewCollectionID(), revision = 0, received = {} }
-	end
-	wipe(revisions)
-	local unrevised = {}
-	for ref, bucket in pairs({ recipe = db.found.recipes, item = db.found.items }) do
-		for id, observations in pairs(bucket) do
-			for _, observation in ipairs(observations) do
-				local row = { rev = observation.rev, observation = observation, ref = ref, id = id }
-				table.insert(observation.rev and revisions or unrevised, row)
+	ns.share:Load(db, function(add)
+		for ref, bucket in pairs({ recipe = db.found.recipes, item = db.found.items }) do
+			for id, observations in pairs(bucket) do
+				for _, observation in ipairs(observations) do
+					add(observation, { ref = ref, id = id })
+				end
 			end
 		end
-	end
-	table.sort(revisions, function(a, b) return a.rev < b.rev end)
-	local highest = revisions[#revisions] and revisions[#revisions].rev or 0
-	if highest > db.exchange.revision then
-		-- A counter behind its revisions was reset: renumber.
-		db.exchange.id, db.exchange.revision = NewCollectionID(), highest
-	end
-	for _, row in ipairs(unrevised) do
-		db.exchange.revision = db.exchange.revision + 1
-		row.observation.rev, row.rev = db.exchange.revision, db.exchange.revision
-		table.insert(revisions, row)
-	end
+	end)
 end
 
 -- Wire rows carry IDs; names are sent only for NPCs and objects. Keys: docs/data.md, "Sharing".
@@ -57,8 +31,7 @@ local function WireName(name)
 	return name and #name <= MAX_NAME_LENGTH and name or nil
 end
 
-local function WireRow(row)
-	local observation = row.observation
+local function WireRow(observation, context)
 	local db = ns.db
 	local named = observation.object and db.objects[observation.object] or db.npcs[observation.npc] or {}
 	local mapID, position = ns.NewestPosition(named.positions)
@@ -69,7 +42,7 @@ local function WireRow(row)
 		mapID, position = observation.map, observation.x and { x = observation.x, y = observation.y } or nil
 	end
 	return {
-		k = observation.kind, r = row.ref == "recipe" and row.id or nil, i = row.ref == "item" and row.id or nil,
+		k = observation.kind, r = context.ref == "recipe" and context.id or nil, i = context.ref == "item" and context.id or nil,
 		n = observation.npc, nm = not observation.object and WireName(named.name) or nil,
 		nf = not observation.object and named.faction or nil,
 		o = observation.object, on = observation.object and WireName(named.name) or nil,
@@ -82,42 +55,11 @@ local function WireRow(row)
 	}
 end
 
--- Rows after revision `after`, oldest first, up to `limit`; returns the rows and the revision they cover.
-function ns.FindsSince(after, limit)
-	local rows, through = {}, after
-	for _, row in ipairs(revisions) do
-		-- Stale: the observation changed again and a newer row covers it.
-		if row.rev > after and row.observation.rev == row.rev then
-			if #rows >= limit then
-				return rows, through
-			end
-			table.insert(rows, WireRow(row))
-			through = row.rev
-		end
-	end
-	return rows, ns.db.exchange.revision
-end
-
 -- Validate every received row before saving; received data is parsed, never run as code (docs/data.md, "Sharing").
-local function PositiveID(value)
-	return type(value) == "number" and value > 0 and value < ns.MAX_WIRE_NUMBER and value == math.floor(value)
-end
-
-local function Coordinate(value)
-	return value == nil or (type(value) == "number" and value >= 0 and value <= 1)
-end
+local PositiveID, OptionalID = wire.ID, function(value) return wire.Optional(wire.ID, value) end
 
 local FACTIONS = { Alliance = true, Horde = true }
 local NPC_FACTIONS = { Alliance = true, Horde = true, Neutral = true }
-local CLOCK_SKEW = 300 -- seconds a peer's clock may run ahead
-
-local function ValidName(value)
-	return value == nil or (type(value) == "string" and #value <= MAX_NAME_LENGTH and not value:find("[%c|]"))
-end
-
-local function OptionalID(value)
-	return value == nil or PositiveID(value)
-end
 
 -- Identifying field by kind; nil when malformed.
 local function SourceField(row)
@@ -139,32 +81,31 @@ local function SourceField(row)
 	end
 end
 
+-- The toolkit calls this for each row of a kind this version reads; false carries the reason the log shows.
 local function ValidRow(row)
-	if type(row) ~= "table" or not SourceField(row) then return false end
+	if not SourceField(row) then return false, "has no valid source" end
 	-- Local data answers both; an ID that is neither would wait in pendingItems for good.
-	if row.i and not ns.IsRecipeItem(row.i) then return false end
-	if row.r and not C_TradeSkillUI.GetTradeSkillLineForRecipe(row.r) then return false end
+	if row.i and not ns.IsRecipeItem(row.i) then return false, "item is not a recipe item" end
+	if row.r and not C_TradeSkillUI.GetTradeSkillLineForRecipe(row.r) then return false, "recipe is unknown" end
 	-- Each kind carries only its own identity: a quest ID on quests, a drop's origin on drops.
-	if row.k ~= "quest" and row.q then return false end
-	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z or row.a or row.di or row.cn) then return false end
-	if not (OptionalID(row.a) and OptionalID(row.di) and OptionalID(row.cn)) then return false end
-	if (row.x == nil) ~= (row.y == nil) then return false end
-	if not (ValidName(row.nm) and ValidName(row.on)) then return false end
-	if not (OptionalID(row.n) and OptionalID(row.fn) and OptionalID(row.gi)) then return false end
-	if row.m ~= nil and not (PositiveID(row.m) and C_Map.GetMapInfo(row.m)) then return false end
-	if row.fi ~= nil and not C_Map.GetMapInfo(row.fi) then return false end
-	if row.z ~= nil and not C_Map.GetMapInfo(row.z) then return false end
-	if not (Coordinate(row.x) and Coordinate(row.y)) then return false end
-	if row.f ~= nil and not FACTIONS[row.f] then return false end
-	if row.nf ~= nil and not NPC_FACTIONS[row.nf] then return false end
-	if row.s ~= nil and not (PositiveID(row.s) and row.s <= GetServerTime() + CLOCK_SKEW) then return false end
+	if row.k ~= "quest" and row.q then return false, "carries a quest ID" end
+	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z or row.a or row.di or row.cn) then return false, "carries a drop's fields" end
+	if not (OptionalID(row.a) and OptionalID(row.di) and OptionalID(row.cn)) then return false, "bad area, instance or count" end
+	if (row.x == nil) ~= (row.y == nil) then return false, "position has one coordinate" end
+	if not (wire.Optional(wire.Name, row.nm, MAX_NAME_LENGTH) and wire.Optional(wire.Name, row.on, MAX_NAME_LENGTH)) then return false, "bad name" end
+	if not (OptionalID(row.n) and OptionalID(row.fn) and OptionalID(row.gi)) then return false, "bad NPC, finisher or giver item" end
+	if row.m ~= nil and not (PositiveID(row.m) and C_Map.GetMapInfo(row.m)) then return false, "unknown map" end
+	if row.fi ~= nil and not C_Map.GetMapInfo(row.fi) then return false, "unknown fishing zone" end
+	if row.z ~= nil and not C_Map.GetMapInfo(row.z) then return false, "unknown roll zone" end
+	if not (wire.Optional(wire.Coordinate, row.x) and wire.Optional(wire.Coordinate, row.y)) then return false, "coordinate out of range" end
+	if row.f ~= nil and not FACTIONS[row.f] then return false, "bad faction" end
+	if row.nf ~= nil and not NPC_FACTIONS[row.nf] then return false, "bad NPC faction" end
+	if row.s ~= nil and not wire.Time(row.s) then return false, "seen time is not a past time" end
 	for _, field in ipairs({ "b", "sk", "c", "p", "sp" }) do
-		local value = row[field]
-		if value ~= nil and not (type(value) == "number" and value >= 0 and value < ns.MAX_WIRE_NUMBER) then return false end
+		if not wire.Optional(wire.Number, row[field]) then return false, "bad " .. field end
 	end
-	if row.sp ~= nil and not PositiveID(row.sp) then return false end
-	if row.l ~= nil and type(row.l) ~= "boolean" then return false end
-	if row.ch ~= nil and type(row.ch) ~= "boolean" then return false end
+	if row.sp ~= nil and not PositiveID(row.sp) then return false, "bad spell" end
+	if not (wire.Optional(wire.Flag, row.l) and wire.Optional(wire.Flag, row.ch)) then return false, "bad flag" end
 	return true
 end
 
@@ -178,29 +119,13 @@ local MERGED_FIELDS = {
 	giverItem = "gi", map = "m", x = "x", y = "y", area = "a", instance = "di", count = "cn",
 }
 
--- Row kinds this version reads. A row of a kind a newer version added is skipped, not a reason to refuse
--- the batch: refusing it would stop every later find from that player reaching an older version.
+-- Row kinds this version reads; the toolkit skips the rest (docs/sharing.md, "Versions").
 local KNOWN_KINDS = { trainer = true, vendor = true, quest = true, drop = true }
 
--- Into the shared layer, newest per source. Returns whether anything changed and how many rows were
--- dropped as invalid; nil for a batch that is not a list of rows (nothing written).
-function ns.MergeFinds(rows, maxRows)
-	if type(rows) ~= "table" or #rows > maxRows then return nil end
-	local count, skipped = 0, 0
-	local known = {}
-	for index, row in pairs(rows) do
-		if not PositiveID(index) or index > #rows or type(row) ~= "table" then return nil end
-		-- One bad row is dropped, not the batch: the same batch would be refused every time it is asked for.
-		if KNOWN_KINDS[row.k] and ValidRow(row) then
-			known[#known + 1] = row
-		elseif KNOWN_KINDS[row.k] then
-			skipped = skipped + 1
-		end
-		count = count + 1
-	end
-	if count ~= #rows then return nil end
+-- The checked rows into the shared layer, newest per source. Returns whether anything changed.
+function ns.MergeFinds(rows)
 	local db, changed = ns.db, false
-	for _, row in ipairs(known) do
+	for _, row in ipairs(rows) do
 		local wireField = SourceField(row)
 		local field, value = IDENTITY[wireField], row[wireField]
 		if row.n then
@@ -265,7 +190,7 @@ function ns.MergeFinds(rows, maxRows)
 			db.pendingItems[row.i] = db.pendingItems[row.i] or {}
 		end
 	end
-	return changed, skipped
+	return changed
 end
 
 -- Export an array, not a table with sparse numeric keys: C_EncodingUtil.SerializeJSON rejects those.
@@ -273,7 +198,7 @@ ns.EXPORT_FORMAT_VERSION = 3
 local EXPORT_FORMAT = "RecipeVacuum" -- the export's format name, which readers match on
 
 function ns.ExportFinds()
-	local rows = ns.FindsSince(0, math.huge)
+	local rows = ns.share:Since(0, math.huge)
 	local json = C_EncodingUtil.SerializeJSON({
 		format = EXPORT_FORMAT, version = ns.EXPORT_FORMAT_VERSION, exportBuild = ns.BUILD, locale = GetLocale(),
 		observations = rows,
@@ -281,3 +206,17 @@ function ns.ExportFinds()
 	ns.toolkit:ShowText(
 		ns.title .. ": " .. L["Recipe Sources"], json)
 end
+
+-- The saved collection and revisions are Recipe Vacuum's; the toolkit's share runs the exchange. Protocol 2 is
+-- the wire this addon has always spoken (prefix RecipeVacuum2): raise it only when a row's meaning changes.
+ns.share = ns.toolkit:NewShare(ns.device, {
+	protocol = 2,
+	kinds = KNOWN_KINDS,
+	wire = WireRow,
+	validate = ValidRow,
+	-- Looked up when called, so the working build's timing wrapper counts it.
+	merge = function(rows) return ns.MergeFinds(rows) end,
+	sending = function() return ns.db.shareFinds end,
+	receiving = function() return ns.db.sourceLevel >= ns.LEVEL.FRIENDS end,
+	changed = function() ns.SourcesChanged() end,
+})

@@ -39,15 +39,14 @@ The short form of the shared standards, as they apply here.
 | `Sources.lua` | Source types, lookups across data layers, tooltips, marks, linking recipe items |
 | `Record.lua` | Records trainers, vendors, loot and quest rewards |
 | `Heard.lua` | Recipes come across without a source: chat links, nearby loot, shown professions |
-| `Finds.lua` | Revisions, wire rows, validation, merge, export |
-| `Sharing.lua` | Automatic sharing with guild, group and friends (AceComm) |
+| `Finds.lua` | The row shape for the toolkit's share: wire rows, validation, merge, export |
 | `Unlearned.lua` | Which recipes the character hasn't learned, by category (`ns.GetUnlearnedRecipes`), the panel's flat list in skill-up order (`ns.GetListedRecipes`) and rank bands (`ns.BandOf`); no UI |
 | `Ranks.lua` | Profession ranks: sources from trainers, book use and quest turn-ins, and the mark right of the window's link button, our own Button that follows the crafting page by hooks |
 | `RecipePanel.lua` | Map pins for sources (`ns.MapTargets`, `ns.ShowOnMap`) and the details' source rows (`ns.SourceRows`) |
 | `Panel.lua` | The unlearned recipes panel beside the Professions window: follows its search and filters, groups by rank band under the game's rank spell names, shows a discovery bar and the selected recipe's details with a Map Pin button, hides when nothing found is left, builds rows a few a frame, rebuilds only when its content changes |
 | `Settings.lua` | Options page and player commands |
 | `Troubleshooting.lua` | Development commands and their log; checkout builds only |
-| `Libs/JigBoltgripToolkit` | Shared toolkit page, commands, help and copy window |
+| `Libs/JigBoltgripToolkit` | Shared toolkit page, commands, help, copy window and the sharing transport |
 
 ## Docs
 

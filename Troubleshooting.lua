@@ -962,12 +962,34 @@ function ns.OnPanelDrawn(professionID, recipeID)
 		if record then lastLayoutKey = key else Append("LAYOUT not recorded: " .. tostring(reason)) end
 	end)
 end
--- Sharing self-test for one account (Sharing.lua).
+-- Sharing self-test for one account: the toolkit's share builds, checks and whispers every reply (its docs/sharing.md,
+-- "Working build"); the merge goes into a scratch copy of the data and the line counts what arrived.
+local function CountFinds(layer)
+	local count = 0
+	for _, bucket in pairs({ layer.recipes, layer.items }) do
+		for _, observations in pairs(bucket) do
+			count = count + #observations
+		end
+	end
+	return count
+end
+
 table.insert(troubleshooting, { "sharetest", "Test sharing without a second player", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
-	ns.ShareSelfTest(function(line)
-		table.insert(ns.db.devShareTest, line)
+	local real = ns.db
+	local scratch = { npcs = {}, objects = {}, shared = ns.NewLayer(), itemRecipe = {}, pendingItems = {} }
+	ns.share:SelfTest(function(line)
+		table.insert(real.devShareTest, line)
 		ns.Log(line)
+	end, function(rows)
+		ns.db = scratch
+		local ok, changed, skipped = pcall(ns.share.Merge, ns.share, rows)
+		ns.db = real
+		if not ok then error(changed) end
+		return changed, skipped
+	end, function()
+		local own, arrived = CountFinds(real.found), CountFinds(scratch.shared)
+		return ("%d of this character's %d finds arrive%s"):format(arrived, own, arrived == own and "" or " (MISMATCH)")
 	end)
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.

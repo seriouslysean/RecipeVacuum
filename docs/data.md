@@ -54,7 +54,7 @@ Whether a specialization is met depends on the character, so those recipes are r
 
 ## Sharing
 
-Hidden addon messages only, through AceComm and ChatThrottleLib.
+Hidden addon messages only. The transport (probes, requests, batches, limits, who is listened to, logging) is the toolkit's share, described in its [docs/sharing.md](https://github.com/seriouslysean/JigBoltgripToolkit/blob/main/docs/sharing.md); this addon supplies the row shape in `Finds.lua`. The prefixes are `RecipeVacuum2` and `RecipeVacuum2D`: protocol 2, unchanged by the move onto the toolkit, so copies from before and after hear each other. The saved collection (`exchange.id`, `revision`, `received`) is the same layout as before.
 
 1. A probe (collection ID, revision) goes out on joining a guild or group, on reconnecting, and when a friend comes online.
 2. A peer that is behind whispers a request for everything after its revision.

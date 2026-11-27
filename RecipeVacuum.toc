@@ -22,7 +22,6 @@ Core.lua
 Voice.lua
 Sources.lua
 Finds.lua
-Sharing.lua
 Settings.lua
 Record.lua
 Heard.lua

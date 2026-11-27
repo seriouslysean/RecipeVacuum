@@ -10,9 +10,6 @@ local SCHEMA = 12
 ns.title = C_AddOns.GetAddOnMetadata(addonName, "Title")
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
 
--- Wire limit: IDs, revisions and times must be below this (unsigned 32 bit).
-ns.MAX_WIRE_NUMBER = 2^32
-
 -- How near knowledge arrived, and how far the player listens; each level includes the ones before (docs/data.md, "Levels").
 -- The levels, their names and range openings are the toolkit's source choices (its docs/standards.md, "Options").
 ns.LEVEL = toolkit.SOURCE_LEVEL

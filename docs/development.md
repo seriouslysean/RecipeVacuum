@@ -39,9 +39,9 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | LibStub | 2 | [Ace3](https://github.com/WoWUIDev/Ace3) |
 | CallbackHandler-1.0 | MINOR 8 | Ace3 |
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
-| AceComm-3.0 | MINOR 14 | Ace3 |
+| AceComm-3.0 | MINOR 14 | Ace3 (the toolkit's share sends through it) |
 | AceLocale-3.0 | MINOR 6 | Ace3 commit 075bafb (master; newer than the last release tag, r981, so it is the copy that runs) |
-| JigBoltgripToolkit-1.0 | MINOR 43 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
+| JigBoltgripToolkit-1.0 | MINOR 48 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
 
@@ -64,7 +64,7 @@ A file must still compile with the marked blocks removed.
 
 ## Development commands
 
-In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. Watch and log are the toolkit's, shared by every Boltgrip addon (owner, 2026-11-25: "Go, kit commands only"): The log is on from the start in a working build (owner, 2026-11-25: "don't I want an always on debug mode while testing?"): it records where loot, quest rewards, vendor stock and trainer lists come from, and every sharing step (lines starting `SHARE`: probes sent and heard, finds asked for, batches sent and received with row counts, merged or rejected), with one chat line when recipes are involved. `/boltgrip watch off` pauses it and is remembered; `/boltgrip watch on` resumes. `/boltgrip log` shows each addon's current run in a window to copy from; `/boltgrip log all` shows the last 20,000 lines of each; `/boltgrip log clear` empties them. The log is written with the saved variables on `/reload` or logout.
+In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. Watch and log are the toolkit's, shared by every Boltgrip addon (owner, 2026-11-25: "Go, kit commands only"): The log is on from the start in a working build (owner, 2026-11-25: "don't I want an always on debug mode while testing?"): it records where loot, quest rewards, vendor stock and trainer lists come from, and every sharing step, written by the toolkit (lines starting `SHARE`: probes sent and heard, finds asked for, batches sent and received with row counts, merged or rejected), with one chat line when recipes are involved. `/boltgrip watch off` pauses it and is remembered; `/boltgrip watch on` resumes. `/boltgrip log` shows each addon's current run in a window to copy from; `/boltgrip log all` shows the last 20,000 lines of each; `/boltgrip log clear` empties them. The log is written with the saved variables on `/reload` or logout.
 
 ## Seeding
 
