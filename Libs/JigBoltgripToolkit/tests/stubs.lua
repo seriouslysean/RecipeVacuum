@@ -84,7 +84,7 @@ C_Map = { GetBestMapForUnit = function() return nil end, GetMapInfo = function()
 EventUtil = { ContinueOnAddOnLoaded = function(name, callback)
 	client.loaded = client.loaded or {}
 	table.insert(client.loaded, { name = name, callback = callback })
-end }
+end, ContinueOnPlayerLogin = function(callback) callback() end }
 hooksecurefunc = function() end
 
 -- Frames record their event handlers, so a test can fire the client's events (client.Fire). Any other
