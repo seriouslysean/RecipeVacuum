@@ -56,7 +56,7 @@ describe("upgrade of an old save", function()
 	end)
 
 	it("schema is current, old tables gone", function()
-		assert(db.schema == 13 and db.sources == nil and db.found.trainerNames == nil, "schema is current, old tables gone")
+		assert(db.schema == 14 and db.sources == nil and db.found.trainerNames == nil, "schema is current, old tables gone")
 	end)
 
 	it("every recipe item recorded by ID is kept", function()

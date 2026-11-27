@@ -137,7 +137,7 @@ local function ReadClient(professionID, job)
 	local candidates, established = {}, {}
 	local playerFaction = UnitFactionGroup("player")
 	local indexComplete, factionsComplete = true, true
-	local knownCount, knownNew = 0, 0
+	local knownCount, knownNew, unsourced, line = 0, 0, 0, nil
 	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
 		Yield(job)
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
@@ -154,6 +154,9 @@ local function ReadClient(professionID, job)
 			if recipeInfo.learned then
 				knownCount = knownCount + 1
 				if ns.NoteKnown(recipeID) then knownNew = knownNew + 1 end
+				-- A known recipe with no trainer source makes the profession's done trainers ask once more (Record.lua, "learned read").
+				line = line or ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))
+				if ns.NoteUnsourced and ns.NoteUnsourced(line, recipeID) then unsourced = unsourced + 1 end
 			end
 			recipeInfo = Professions.GetFirstRecipe(recipeInfo)
 			if recipeInfo and recipeInfo.learned then
@@ -170,7 +173,8 @@ local function ReadClient(professionID, job)
 			end
 		end
 	end
-	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: %d known recipes marked met at Self Found, %d new", professionID, knownCount, knownNew)
+	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: %d known recipes marked met at Self Found, %d new; %d newly known without a trainer source (skill line %s)",
+		professionID, knownCount, knownNew, unsourced, tostring(line))
 	return { candidates = candidates, established = established, complete = indexComplete and factionsComplete, skillChanges = skillChanges }
 end
 

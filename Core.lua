@@ -8,7 +8,7 @@ local toolkit = ns.toolkit
 ns.module = toolkit:NewModule(addonName, "DRUID")
 
 -- Saved data layout and migrations: docs/data.md.
-local SCHEMA = 13
+local SCHEMA = 14
 
 ns.BUILD = tonumber((select(2, GetBuildInfo())))
 
@@ -37,6 +37,12 @@ local defaults = {
 	pendingItems = {},     -- [recipe itemID] = {} until its data loads and names the recipe it teaches
 	-- The spell each trainer service teaches, read from its tooltip once, on any character (Record.lua): [trainer npcID][service name] = spellID
 	trainerSpells = {},
+	-- Trainers whose learned services were read to the end, for the account (Record.lua): [npcID] = { line = skill line,
+	-- revs = { [character GUID] = that character's unsourced count when it was read } }
+	learnedReads = {},
+	-- Each character's known recipes with no trainer source, by skill line (Record.lua, ns.NoteUnsourced):
+	-- [character GUID][skill line] = { rev = count, ids = { [recipeID] = true } }
+	unsourcedKnown = {},
 -- recipeFacts: per-build facts from recipe tooltips (Sources.lua), rebuilt on a new game build.
 }
 
@@ -195,6 +201,11 @@ end
 -- Schema 13 adds the trainer spell cache (docs/data.md, "Trainer spells"); the defaults make it, the step keeps the order.
 migrations[13] = function(db)
 	db.trainerSpells = db.trainerSpells or {}
+end
+
+-- Schema 14 adds the saved learned-read records (docs/data.md, "Learned reads"); the defaults make them, the step keeps the order.
+migrations[14] = function(db)
+	db.learnedReads, db.unsourcedKnown = db.learnedReads or {}, db.unsourcedKnown or {}
 end
 
 EventUtil.ContinueOnAddOnLoaded(addonName, function()

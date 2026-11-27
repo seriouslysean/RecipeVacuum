@@ -130,13 +130,13 @@ describe("simulation", function()
 
 	-- 1. Schema 3 -> 4 on the owner's real save
 	local a, db, before, beforeRecipes, beforeItems, beforeRevision
-	it("schema is 13", function()
+	it("schema is 14", function()
 		dofile(savedFile); before = RecipeVacuumDB
 		beforeRecipes, beforeItems = count(before.found)
 		beforeRevision = before.exchange.revision
 		a = boot(savedFile)
 		db = a.db
-		assert(db.schema == 13, "schema is 13")
+		assert(db.schema == 14, "schema is 14")
 	end)
 	it("trainerNames dropped", function()
 		assert(db.found.trainerNames == nil and db.shared.trainerNames == nil, "trainerNames dropped")
@@ -320,6 +320,76 @@ describe("simulation", function()
 			stepType, stepSpell = "unavailable", 2576
 			assert(a.NoteTrainerRank(5392) and db.ranks[186] and db.ranks[186][150] and db.ranks[186][150].npcs[5392] ~= nil
 				and db.ranks[2946] == nil, "a rank under a child skill line is kept under its profession, at the character's cap")
+		end)
+	end)
+
+	-- 3d. Trainers (Record.lua): one available recipe service; a hidden "used" row appears only while the filter shows learned services.
+	describe("trainers", function()
+		local visitFrame, toggles, timers, services, usedOn = nil, 0, {}, nil, false
+		local function show(event, ...) visitFrame.script(visitFrame, event, ...) end
+		local function settle() while #timers > 0 do table.remove(timers, 1)() end end
+		local function visit(npcID, rescan)
+			target.npc = "Creature-0-1-0-1-" .. npcID .. "-ZZZZ"
+			show("TRAINER_SHOW"); settle()
+			if rescan then show("TRAINER_UPDATE"); settle() end -- a purchase or filter change rescans in the same visit
+			show("TRAINER_CLOSED")
+		end
+		setup(function()
+			for _, f in ipairs(frames) do if f.events.TRAINER_SHOW and f.events.MERCHANT_SHOW then visitFrame = f end end -- Record.lua's, not Ranks.lua's
+			RunNextFrame = function(fn) fn() end
+			C_Timer.NewTimer = function(_, fn) timers[#timers + 1] = fn return { Cancel = function() end } end
+			services = { { name = "Recipe A", type = "available", category = "Recipes", spell = 9001 } }
+			GetNumTrainerServices = function()
+				local n = 0
+				for _, sv in ipairs(services) do if not sv.hidden or usedOn then n = n + 1 end end
+				return n
+			end
+			GetTrainerServiceInfo = function(i) local sv = services[i] if sv then return sv.name, sv.type, nil, nil, nil, sv.category end end
+			GetTrainerServiceStepIndex = function() return nil end
+			GetTrainerServiceSkillReq = function() return "Engineering", 30 end
+			GetTrainerServiceCost = function() return 100 end
+			GetTrainerServiceTypeFilter = function(kind) return kind ~= "used" or usedOn end
+			SetTrainerServiceTypeFilter = function(kind, on) if kind == "used" then usedOn = on; if on then toggles = toggles + 1 end end end
+			GetTrainerSelectionIndex = function() return 1 end
+			IsTradeskillTrainer = function() return true end
+			InCombatLockdown = function() return false end
+			C_TooltipInfo = C_TooltipInfo or {}
+			Enum.TooltipDataType.Spell = Enum.TooltipDataType.Spell or 1
+			C_TooltipInfo.GetTrainerService = function(i) return { type = Enum.TooltipDataType.Spell, id = services[i] and services[i].spell } end
+			target.player = "Player-1-00000001"
+		end)
+		-- Fails if a complete read that finds no learned rows is not kept as done, so every visit toggles the filter (the Deck: 3 passes, 2 visits).
+		it("a read that finds no learned rows is done: a later visit reads nothing", function()
+			toggles = 0
+			visit(1241); visit(1241)
+			assert(toggles == 1, ("a read that finds no learned rows is done: a later visit reads nothing (%d)"):format(toggles))
+		end)
+		-- Fails if a read left unfinished (a learned row with no name yet) runs again in the same visit, or never on a later one.
+		it("an unfinished read runs once a visit, and again on a later visit", function()
+			toggles = 0
+			services[2] = { type = "used", hidden = true } -- no name yet
+			visit(1242, true)
+			local firstVisit = toggles
+			visit(1242)
+			services[2] = nil
+			assert(firstVisit == 1 and toggles == 2, ("an unfinished read runs once a visit, and again on a later visit (%d, %d)"):format(firstVisit, toggles))
+		end)
+		-- Fails if a done trainer is not read again once the character knows a recipe of its profession with no trainer source.
+		it("a done trainer is read again for a newly known recipe without a trainer source", function()
+			toggles = 0
+			local line = C_TradeSkillUI.GetTradeSkillLineForRecipe(9001) -- the trainer's profession, as its scan read it
+			local noted, again = a.NoteUnsourced(line, 777001), a.NoteUnsourced(line, 777001)
+			visit(1241); visit(1241)
+			assert(noted and not again and toggles == 1, ("a done trainer is read again for a newly known recipe without a trainer source (%d)"):format(toggles))
+		end)
+		-- Fails if a trainer showing no services at its window's open starts a learned read before any scan.
+		it("a trainer showing no services reads no learned services", function()
+			toggles = 0
+			local kept = services
+			services = {}
+			visit(1243)
+			services = kept
+			assert(toggles == 0, "a trainer showing no services reads no learned services")
 		end)
 	end)
 
@@ -1466,6 +1536,6 @@ describe("simulation", function()
 		local c = { Perf = function() end, PerfMs = function() end, InitSettings = function() end, StartWorkingLog = function() end, SourcesChanged = function() end }
 		for _, file in ipairs({ "Data/Included.lua", "Core.lua", "Voice.lua", "Sources.lua", "Finds.lua", "Record.lua" }) do load(file, c) end
 		for _, entry in ipairs(loaded) do if entry[1] == "RecipeVacuum" then entry[2]() end end
-		assert(c.db.schema == 13 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
+		assert(c.db.schema == 14 and c.db.exchange.revision == savedDB.exchange.revision, "reload keeps schema and revision")
 	end)
 end)

@@ -894,6 +894,10 @@ table.insert(troubleshooting, { "sharetest", label = "Sharing", button = "Test",
 	end)
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
+-- Forces one read of the open trainer's learned services, to see on the Deck whether "used" rows appear at all (docs/client-notes.md, "Trainers").
+table.insert(troubleshooting, { "learned", label = "Learned Services", button = "Read", "Read the open trainer's learned services once", function()
+	ns.ReadLearnedNow()
+end })
 table.insert(troubleshooting, { "scan", label = "Recipe Items", button = "Find", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 
 ns.commands = ns.commands or {}

@@ -220,4 +220,9 @@ The mark sits right of the window's link button, as our own Button under `UIPare
 | 11 | The options of the rows once added to Blizzard's recipe list (`showUnlearned`, `showUnavailable`, `sourceFilter`) and the first-run tip flag (`levelTipSeen`) are removed |
 | 12 | The panel step (`panelStep`) is removed; the panel groups by rank band instead |
 | 13 | `trainerSpells` is added, the spell cache below; nothing is converted |
+| 14 | `learnedReads` and `unsourcedKnown` are added (Learned reads, below); nothing is converted |
+
+## Learned reads
+
+`RecipeVacuumDB.learnedReads[npcID] = { line = skill line, revs = { [character GUID] = n } }` marks a trainer whose learned ("used") services were read to the end, for the whole account (owner, 2026-11-27: "I won't see something different than you or another at a trainer"). `RecipeVacuumDB.unsourcedKnown[character GUID][skill line] = { rev = n, ids = { [recipeID] = true } }` holds each character's known recipes that had no trainer source when the profession window read them (`ns.NoteUnsourced`); `rev` counts them. A done trainer is read again on a character only when that character's `rev` for the trainer's skill line is above the one kept for it in `revs`. Both are local and never shared. Both grow with trainers visited and recipes known; nothing clears them.
 

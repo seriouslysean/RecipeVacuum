@@ -230,6 +230,7 @@ local function ReadTrainerService(job, index)
 				if not (cost and cost > 0) then details.cost = nil end
 			end
 			local isNew, updated = Save("recipes", spellID, "trainer", npc, details)
+			job.line = job.line or ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(spellID))
 			job.recipes = job.recipes + 1
 			job.changed = job.changed or updated
 			if isNew then job.count = job.count + 1 end
@@ -309,7 +310,7 @@ local function TrainerStep(job)
 				ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips, worst step %.1f ms), closed in %.1f ms and finished in %.1f ms; %d recipes, %d new; skipped: %s; filters off: %s; restarts %d",
 					job.services, job.steps, job.ms, job.tooltipMs or 0, job.worstMs, job.closingMs, ms, job.recipes, job.count, SkippedText(job.skipped), HiddenTypes(), job.restarts)
 				-- The learned read waits for the frame after this one.
-				QueueLearned(job.npc, job.recipes > 0)
+				QueueLearned(job.npc, job.recipes > 0, job.line)
 			end)
 		end)
 	end)
@@ -322,7 +323,41 @@ local LEARNED_PASS_MS = 4 -- the batch is sized to this, under the 5 ms bar
 local FRAME_BAR_MS = 5 -- the kit's frame bar; a one-service pass over it is the named atomic exception
 local LEARNED_START_BATCH = 1
 local LEARNED_MAX_PASSES = 300 -- a hard cap on the passes of one read; no trainer lists this many services
-local learned = {} -- [npcID] = { attempts, done }: this session's reads of that trainer's learned services
+local learned = {} -- [npcID] = { attempts, done, visit }: this session's reads of that trainer's learned services
+-- A trainer read to the end is done for the account (ns.db.learnedReads, docs/data.md, "Learned reads"): what a trainer hides as learned
+-- differs by character only in which rows are hidden, so a character asks again only when it knows a recipe of that profession with no
+-- trainer source recorded since the read (ns.NoteUnsourced, from the profession window's read of known recipes).
+local function CharacterKey() return UnitGUID("player") or "?" end
+
+local function UnsourcedRev(line)
+	local mine = ns.db.unsourcedKnown[CharacterKey()]
+	local byLine = mine and line and mine[line]
+	return byLine and byLine.rev or 0
+end
+
+local function HasTrainerSource(recipeID)
+	for _, observation in ipairs(ns.db.found.recipes[recipeID] or {}) do
+		if observation.kind == "trainer" then return true end
+	end
+	return false
+end
+
+-- A known recipe of skill line `line` with no trainer source; true when it is new for this character, which makes done trainers of
+-- that profession ask once more.
+function ns.NoteUnsourced(line, recipeID)
+	if not line or HasTrainerSource(recipeID) then return false end
+	local key = CharacterKey()
+	local mine = ns.db.unsourcedKnown[key] or {}
+	ns.db.unsourcedKnown[key] = mine
+	local byLine = mine[line] or { rev = 0, ids = {} }
+	mine[line] = byLine
+	if byLine.ids[recipeID] then return false end
+	byLine.ids[recipeID], byLine.rev = true, byLine.rev + 1
+	return true
+end
+-- Each trainer window shown is one visit; a read runs at most once a visit, so a pass that finds nothing waits for a later visit instead of
+-- toggling the filter again when the scan finishes (docs/client-notes.md, "Trainers").
+local visitSerial = 0
 local learnedQueued -- the npcID whose read is queued or running; one at a time
 local learnedJob -- the read in progress
 
@@ -366,6 +401,12 @@ local function EndLearned(job, reason)
 	local state = job.state
 	if reason == "done" then
 		state.done = not job.gap or state.attempts >= ns.MAX_ITEM_ATTEMPTS
+		if not job.gap then
+			local read = ns.db.learnedReads[job.npc.npcID] or { revs = {} }
+			read.line = job.line or read.line
+			read.revs[CharacterKey()] = UnsourcedRev(read.line)
+			ns.db.learnedReads[job.npc.npcID] = read
+		end
 	elseif reason == "the player shows learned services" then
 		state.done = true -- the window lists them, so the scan reads them
 	end
@@ -464,7 +505,6 @@ local function LearnedPass(job)
 				end
 			end
 		end
-		if usedRows == 0 then job.gap = true end -- the client's rows may not be there yet
 	end)
 	local offStarted = debugprofilestop()
 	local restored, restoreFailure = pcall(SetTrainerServiceTypeFilter, "used", false)
@@ -520,12 +560,17 @@ end
 
 -- Once per trainer and session after the scan's finish frame, only when the player hides "used", at a profession trainer, out of combat,
 -- and still at that trainer. hadRecipes: the scan saved a recipe here (some NPCs teach recipes without the trainer flag).
-function LearnedStep(npc, hadRecipes)
+function LearnedStep(npc, hadRecipes, line)
 	if trainerJob or not AtTrainer(npc) then -- a rescan is running and queues this again at its end
 		learnedQueued = nil
 		return
 	end
 	local state = LearnedState(npc.npcID)
+	if state.visit == visitSerial then
+		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read again this visit (attempt %d ran); a later visit asks", npc.npcID, state.attempts)
+		learnedQueued = nil
+		return
+	end
 	if state.done then
 		learnedQueued = nil
 		return
@@ -546,13 +591,14 @@ function LearnedStep(npc, hadRecipes)
 		return -- the window shows them, so the scan read them
 	end
 	state.attempts = state.attempts + 1
+	state.visit = visitSerial
 	if state.attempts > ns.MAX_ITEM_ATTEMPTS then
 		state.done = true
 		learnedQueued = nil
 		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d read %d times, not asked again this session", npc.npcID, state.attempts - 1)
 		return
 	end
-	local job = { npc = npc, state = state, professionTrainer = IsTradeskillTrainer(), done = {}, skipped = {}, batch = LEARNED_START_BATCH,
+	local job = { npc = npc, line = line, state = state, professionTrainer = IsTradeskillTrainer(), done = {}, skipped = {}, batch = LEARNED_START_BATCH,
 		passes = 0, seen = 0, tooltips = 0, cached = 0, saved = 0, count = 0, changed = false, gap = false, ms = 0, worstMs = 0, tooltipMs = 0,
 		exceptions = 0, restarts = 0, during = 0, after = 0, updatesAtEnd = 0 }
 	learnedJob = job
@@ -563,11 +609,23 @@ function LearnedStep(npc, hadRecipes)
 	LearnedPass(job)
 end
 
-function QueueLearned(npc, hadRecipes)
-	local state = learned[npc.npcID]
-	if learnedQueued or (state and state.done) then return end
+function QueueLearned(npc, hadRecipes, line)
+	if learnedQueued then return end
+	local read = ns.db.learnedReads[npc.npcID]
+	if not read and learned[npc.npcID] and learned[npc.npcID].done then return end -- this session's reads ran out on gaps
+	if read then
+		local rev, seen = UnsourcedRev(read.line or line), read.revs[CharacterKey()] or 0
+		if rev <= seen then
+			ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read: done, and this character knows no recipe of skill line %s without a trainer source since (%d, read at %d)",
+				npc.npcID, tostring(read.line or line), rev, seen)
+			return
+		end
+		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d read again: this character knows %d more recipes of skill line %s without a trainer source",
+			npc.npcID, rev - seen, tostring(read.line or line))
+	end
+	if read then learned[npc.npcID] = nil end -- a re-ask is a fresh read, whatever this session read before
 	learnedQueued = npc.npcID
-	RunNextFrame(function() LearnedStep(npc, hadRecipes) end)
+	RunNextFrame(function() LearnedStep(npc, hadRecipes, line) end)
 end
 
 -- Starts the scan; true when the services are there, false when the window has none yet (the caller asks again on the next update).
@@ -588,9 +646,7 @@ local function RecordTrainer()
 	end
 	local services = GetNumTrainerServices()
 	if services == 0 then
-		-- A trainer whose every service is learned shows none under the player's filters; its learned services are still read.
-		QueueLearned(npc, false)
-		return false
+		return false -- the window has none yet; the next update asks again, and the learned read waits for a finished scan
 	end
 	local job = { npc = npc, professionTrainer = professionTrainer, index = 1, first = 1, services = services,
 		-- A recipe has a category; a profession rank has none.
@@ -707,6 +763,7 @@ local function OnVisitEvent(event, itemID)
 	end
 	if event == "TRAINER_SHOW" or event == "MERCHANT_SHOW" then
 		FinishVisit()
+		if event == "TRAINER_SHOW" then visitSerial = visitSerial + 1 end
 		record = event == "TRAINER_SHOW" and RecordTrainer or RecordVendor
 		if not ns.db.selfFound or Scan() then
 			return
@@ -727,6 +784,25 @@ local function OnVisitEvent(event, itemID)
 		timer = C_Timer.NewTimer(SCAN_DELAY, Scan)
 	end
 end
+
+--@debug@
+-- Working-build test: one learned read at the open trainer, whatever this session's reads did, to see whether "used" rows appear at all.
+function ns.ReadLearnedNow()
+	local npc = CurrentNPC()
+	if record ~= RecordTrainer or not npc then
+		ns.toolkit:Print("Open a trainer first.")
+		return
+	end
+	if learnedJob or trainerJob then
+		ns.toolkit:Print("A trainer read is running; press again when it ends.")
+		return
+	end
+	learned[npc.npcID] = nil
+	learnedQueued = npc.npcID
+	ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d forced from the working build", npc.npcID)
+	LearnedStep(npc, true, (ns.db.learnedReads[npc.npcID] or {}).line)
+end
+--@end-debug@
 
 local visitHandlers = {}
 for _, event in ipairs({ "TRAINER_SHOW", "TRAINER_SERVICE_INFO_NAME_UPDATE", "TRAINER_UPDATE", "TRAINER_CLOSED", "MERCHANT_SHOW",
