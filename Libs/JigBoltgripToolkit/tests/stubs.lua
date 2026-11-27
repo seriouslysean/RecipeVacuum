@@ -116,7 +116,17 @@ hooksecurefunc = function() end
 client.frames = {}
 -- Forgets every frame made so far, for a spec that loads the addon again per case.
 function client.ClearFrames() client.frames = {} end
-local frameMeta = { __index = function(frame, name) return client.Stub("frame." .. name) end }
+-- A model scene's actors have no scripts in Forever 1.60.1: actor:SetScript is nil there (measured on the Steam Deck,
+-- 2026-11-27); Blizzard sets actor scripts in XML. Every other actor method is a stub.
+local NO_ACTOR_METHODS = { SetScript = true, HookScript = true, GetScript = true }
+local actorMeta = { __index = function(_, name)
+	if NO_ACTOR_METHODS[name] then return nil end
+	return client.Stub("actor." .. name)
+end }
+local frameMeta = { __index = function(_, name)
+	if name == "CreateActor" then return function() return setmetatable({}, actorMeta) end end
+	return client.Stub("frame." .. name)
+end }
 function CreateFrame()
 	local frame = setmetatable({ events = {}, scripts = {} }, frameMeta)
 	function frame:RegisterEvent(event) self.events[event] = true end

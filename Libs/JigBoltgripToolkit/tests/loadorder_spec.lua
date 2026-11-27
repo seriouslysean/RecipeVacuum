@@ -120,28 +120,14 @@ describe("load order", function()
 			SlashCmdList.BOLTGRIP("alpha go three")
 			assert(ran == "Alpha:three", order.name .. ": /boltgrip reaches the first addon")
 		end)
-		it(order.name .. ": one Open row per addon", function()
-			assert(Count(buttons, "button", "Alpha title") == 1 and Count(buttons, "button", "Beta title") == 1,
-				order.name .. ": one Open row per addon")
+		it(order.name .. ": no Open row per addon", function()
+			assert(Count(buttons, "button", "Alpha title") == 0 and Count(buttons, "button", "Beta title") == 0,
+				order.name .. ": no Open row per addon")
 		end)
 		it(order.name .. ": never two toolkit headers", function()
 			assert(Count(buttons, "header", "AddOns") <= 1, order.name .. ": never two toolkit headers")
 		end)
 	end
-
-	-- Fails if a module that registers after the Working Build rows lands below them or out of title order.
-	it("a late module's Open row goes among the modules, by title", function()
-		NewClient()
-		Load(CURRENT)
-		StartAddon("Beta", "beta")
-		table.insert(buttons, { header = "Working Build" })
-		StartAddon("Alpha", "alpha")
-		local function At(field, value)
-			for i, row in ipairs(buttons) do if row[field] == value then return i end end
-		end
-		assert(At("button", "Alpha title") < At("button", "Beta title") and At("button", "Beta title") < At("header", "Working Build"),
-			"a late module's Open row goes among the modules, by title")
-	end)
 
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()

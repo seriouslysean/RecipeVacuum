@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 69
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 70
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -286,40 +286,13 @@ function lib:RegisterModule(addonName, class)
 	module.title, module.notes, module.category, module.layout = title, notes, category, layout
 	module.class = class or module.class
 	table.insert(self.modules, module)
-	-- Rows go in by title once every module has loaded, so the page reads like the AddOns list.
-	EventUtil.ContinueOnPlayerLogin(function() lib:AddModuleRows() end)
 	return module
 end
 
--- One Open row per module, by title. A module that registers after the Working Build rows still lands among the
--- modules, so rows go in at their sorted place in our own layout's list. The button is always there; OpenOptions
--- decides at the press whether the gamepad interface is on.
-local function SortKey(module) return (module.title or module.addon):lower() end
-
-function lib:AddModuleRows()
-	local _, layout = self:GetCategory()
-	self.rowsAdded, self.moduleRows = self.rowsAdded or {}, self.moduleRows or {}
-	for _, module in ipairs(self.modules) do
-		if not self.rowsAdded[module] then
-			self.rowsAdded[module] = true
-			local row = CreateSettingsButtonInitializer(module.title, CONTEXT_ACTION_LABEL_OPEN, function()
-				lib:OpenOptions(module)
-			end, module.notes, false)
-			local rows, at = self.moduleRows, #self.moduleRows + 1
-			for i, other in ipairs(rows) do
-				if SortKey(module) < SortKey(other.module) then at = i break end
-			end
-			-- Module rows sit together at the top of the page, in order.
-			local initializers, first = layout:GetInitializers(), 1
-			for i, initializer in ipairs(initializers) do
-				if rows[1] and initializer == rows[1].row then first = i break end
-			end
-			local position = first + at - 1
-			table.insert(initializers, position, row)
-			table.insert(rows, at, { module = module, row = row })
-		end
-	end
-end
+-- No Open row per module: the AddOns list already shows each module's page under the toolkit, and under the gamepad
+-- interface a button could only say where the page is (docs/options.md, "Toolkit page"). Kept empty because
+-- MINOR 66 to 69 copies call it from their working-build rows.
+function lib:AddModuleRows() end
 
 -- Selecting our category from addon code is blocked under the gamepad interface (docs/standards.md, "Gamepad UI");
 -- there the player is told where the page is instead.
@@ -971,7 +944,6 @@ end
 -- (docs/options.md, "Toolkit page"). A module's own development commands go on its own page.
 local function AddKitWorkingRows()
 	local _, layout = lib:GetCategory()
-	lib:AddModuleRows()
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
 		L["Read the working log. Working builds only."]))
 	for _, row in ipairs({
