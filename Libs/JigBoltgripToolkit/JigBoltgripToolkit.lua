@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 76
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 77
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -329,26 +329,62 @@ local function ApplyWorkingCVars()
 end
 
 -- Shows Lua errors and reports actions the client blocked, so a fault while developing is seen.
+-- Gamepad tables on paths blocked on the Deck. taintLog names only globals read, so a blocked action also lists each
+-- field here an addon wrote (issecurevariable), naming the writer; bounded, working builds only (client-notes.md).
+local TAINT_ROOTS = { "GamepadSharedUtility", "GamepadMainActionBarFrame", "SmartNavigation", "GamepadMode", "CVarCallbackRegistry" }
+local TAINT_DEPTH, TAINT_MAX = 4, 40
+
+local function TaintedFields(path, t, depth, seen, out)
+	if type(t) ~= "table" or seen[t] or depth > TAINT_DEPTH or #out >= TAINT_MAX then return end
+	seen[t] = true
+	for key, value in pairs(t) do
+		if #out >= TAINT_MAX then return end
+		if type(key) == "string" then
+			local secure, addon = issecurevariable(t, key)
+			if not secure then out[#out + 1] = ("%s.%s tainted by %s"):format(path, key, tostring(addon)) end
+		end
+		if type(value) == "table" then TaintedFields(path .. "." .. tostring(key), value, depth + 1, seen, out) end
+	end
+end
+
+function lib:ScanTaint()
+	local out, seen = {}, {}
+	for _, root in ipairs(TAINT_ROOTS) do
+		local t = _G[root]
+		if type(t) == "table" then TaintedFields(root, t, 1, seen, out) end
+	end
+	return out
+end
+
+-- Methods, so a newer copy's handler replaces an older copy's on the one listener.
+function lib:OnBlocked(event, addon, action)
+	local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
+	self:Debug(line)
+	-- Shared context: every log keeps it, with the call stack, to read after a reload.
+	self:LogAll(line)
+	self:LogAll(debugstack(3, 12, 0))
+	local fields = self:ScanTaint()
+	self:LogAll(("tainted gamepad fields: %d%s"):format(#fields, #fields >= TAINT_MAX and " (first " .. TAINT_MAX .. ")" or ""))
+	for _, field in ipairs(fields) do self:LogAll("  " .. field) end
+end
+
 function lib:EnableWorkingBuild()
 	ApplyWorkingCVars()
-	if self.blockedListener then
-		return
+	local first = not self.blockedListener
+	if first then
+		self.blockedListener = CreateFrame("Frame")
+		self.blockedListener:RegisterEvent("ADDON_ACTION_BLOCKED")
+		self.blockedListener:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+		self.blockedListener:RegisterEvent("CVAR_UPDATE")
 	end
-	self.blockedListener = CreateFrame("Frame")
-	self.blockedListener:RegisterEvent("ADDON_ACTION_BLOCKED")
-	self.blockedListener:RegisterEvent("ADDON_ACTION_FORBIDDEN")
-	self.blockedListener:RegisterEvent("CVAR_UPDATE")
 	self.blockedListener:SetScript("OnEvent", function(_, event, addon, action)
 		if event == "CVAR_UPDATE" then
 			if WORKING_CVARS[addon] then ApplyWorkingCVars() end -- another addon reverted one
 			return
 		end
-		local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
-		lib:Debug(line)
-		-- Shared context: every log keeps it, with the call stack, to read after a reload.
-		lib:LogAll(line)
-		lib:LogAll(debugstack(2, 12, 0))
+		lib:OnBlocked(event, addon, action)
 	end)
+	if not first then return end
 	-- "Interface action failed because of an AddOn": gamepad navigation shows it for a call from tainted
 	-- code without firing either event above (Blizzard_GamepadSmartNavigation, EnsureIsSecure), so the
 	-- message itself is logged where Blizzard prints it (ChatFrameUtil.lua), with the stack that led there.

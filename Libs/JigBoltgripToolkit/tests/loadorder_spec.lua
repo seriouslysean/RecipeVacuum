@@ -145,6 +145,19 @@ describe("load order", function()
 		assert(line:find("|cff808080[Debug] probe|r", 1, true) ~= nil, "a debug line is grey and tagged [Debug]")
 	end)
 
+	-- Fails if a blocked action's scan misses a gamepad field an addon wrote, so the writer stays unnamed.
+	it("a blocked action names gamepad fields an addon tainted", function()
+		NewClient()
+		Load(CURRENT)
+		local manager = { RemoveSet = function() end, coreSet = {} }
+		GamepadSharedUtility = { InputBindingManager = manager }
+		issecurevariable = function(t, key) if t == manager and key == "RemoveSet" then return false, "Tackletron" end return true end
+		local fields = LibStub("JigBoltgripToolkit-1.0"):ScanTaint()
+		GamepadSharedUtility, issecurevariable = nil, nil
+		assert(#fields == 1 and fields[1] == "GamepadSharedUtility.InputBindingManager.RemoveSet tainted by Tackletron",
+			"a blocked action names gamepad fields an addon tainted")
+	end)
+
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()
 		NewClient()
