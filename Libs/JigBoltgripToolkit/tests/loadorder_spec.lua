@@ -155,7 +155,7 @@ describe("load order", function()
 		issecurevariable = function(t, key) if t == manager and key == "RemoveSet" then return false, "Tackletron" end return true end
 		local fields = LibStub("JigBoltgripToolkit-1.0"):ScanTaint()
 		GamepadSharedUtility, issecurevariable = nil, nil
-		assert(#fields == 1 and fields[1] == "GamepadSharedUtility.InputBindingManager.RemoveSet tainted by Tackletron",
+		assert(#fields == 1 and fields[1] == "tainted field path=GamepadSharedUtility.InputBindingManager.RemoveSet addon=Tackletron",
 			"a blocked action names gamepad fields an addon tainted")
 	end)
 
@@ -397,8 +397,8 @@ describe("load order", function()
 		local one, two = { addon = "One" }, { addon = "Two" }
 		toolkit:TimeMs(one, "build", 4); toolkit:TimeMs(one, "build", 2); toolkit:TimeMs(two, "scan", 1)
 		local lines = toolkit:TimingLines(one)
-		assert(#lines == 1 and lines[1]:find("runs     2", 1, true) ~= nil
-			and lines[1]:find("slowest    4.00", 1, true) ~= nil and #toolkit:TimingLines(two) == 1,
+		assert(#lines == 1 and lines[1]:find("runs=2", 1, true) ~= nil
+			and lines[1]:find("max_ms=4.00", 1, true) ~= nil and #toolkit:TimingLines(two) == 1,
 			"timings are kept per module")
 	end)
 
@@ -470,17 +470,17 @@ describe("load order", function()
 	it("an error goes once, to the module whose own file is in its stack", function()
 		toolkit:OnLuaError("boom one", "Interface/AddOns/Other/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua:10: in x\n"
 			.. "Interface/AddOns/Fresh/Core.lua:42: in y")
-		assert(Holds(freshSaved, "Lua error: boom one") and not Holds(otherSaved, "boom one") and not Holds(saved, "boom one"),
+		assert(Holds(freshSaved, "lua error message=\"boom one\" owner=Fresh") and not Holds(otherSaved, "boom one") and not Holds(saved, "boom one"),
 			"an error goes once, to the module whose own file is in its stack")
 	end)
 	it("an error through kit code only goes to the module whose copy ran it, tagged as the kit's", function()
 		toolkit:OnLuaError("boom two", "Interface/AddOns/Other/Libs/JigBoltgripToolkit/JigBoltgripToolkit.lua:10: in x")
-		assert(Holds(otherSaved, "boom two [kit, via Other's copy]") and not Holds(freshSaved, "boom two"),
+		assert(Holds(otherSaved, "message=\"boom two\" owner=kit copy=Other") and not Holds(freshSaved, "boom two"),
 			"an error through kit code only goes to the module whose copy ran it, tagged as the kit's")
 	end)
 	it("a block with no addon file in its stack goes to the module the game blamed", function()
-		toolkit:LogBlamed("ADDON_ACTION_FORBIDDEN: Fresh, Thing()", "[C]: in function", "Fresh")
-		assert(Holds(freshSaved, "Thing() [game blames Fresh]") and not Holds(otherSaved, "Thing()"),
+		toolkit:LogBlamed("blocked event=ADDON_ACTION_FORBIDDEN addon=Fresh call=Thing()", "[C]: in function", "Fresh")
+		assert(Holds(freshSaved, "call=Thing() owner=Fresh source=game") and not Holds(otherSaved, "Thing()"),
 			"a block with no addon file in its stack goes to the module the game blamed")
 	end)
 
@@ -585,7 +585,7 @@ describe("load order", function()
 		frame.script(frame, "PLAYER_LOGIN", 5)
 		C_Timer = realTimer
 		flush()
-		assert(got == 5 and freshSaved.devLog[#freshSaved.devLog]:find("EVENT PLAYER_LOGIN", 1, true),
+		assert(got == 5 and freshSaved.devLog[#freshSaved.devLog]:find("event name=PLAYER_LOGIN count=1", 1, true),
 			"an event frame counts its events in its own dispatcher")
 	end)
 

@@ -160,7 +160,7 @@ local function ReadServiceSpell(npcID, name, index)
 	else
 		trainerMisses[key] = (trainerMisses[key] or 0) + 1
 		if trainerMisses[key] >= ns.MAX_ITEM_ATTEMPTS then
-			ns.toolkit:Trace(ns.module, "TRAINER service %s of npc %d gave no spell %d times, not asked again this session", name, npcID, trainerMisses[key])
+			ns.toolkit:Trace(ns.module, "trainer service skipped name=%s npc=%d misses=%d reason=no_spell", ns.toolkit.LogValue(name), npcID, trainerMisses[key])
 		end
 	end
 	return spellID, ms, true
@@ -173,7 +173,7 @@ end
 -- A scan that ends before its finish frame still saved the recipes it read, so the visit's count and the panel's sources follow.
 local function AbortTrainerJob(job, reason)
 	if trainerJob ~= job then return end
-	ns.toolkit:Trace(ns.module, "TRAINER scan stopped at service %d of %d: %s; %d new recipes kept", job.index, job.services, reason, job.count)
+	ns.toolkit:Trace(ns.module, "trainer scan stopped service=%d of=%d reason=%s kept_new=%d", job.index, job.services, ns.toolkit.LogValue(reason), job.count)
 	EndTrainerJob(job)
 	FinishScan(job.count, job.npc, job.changed)
 end
@@ -186,10 +186,10 @@ end
 local function SkippedText(skipped)
 	local parts = {}
 	for reason, n in pairs(skipped) do
-		parts[#parts + 1] = reason .. " " .. n
+		parts[#parts + 1] = "skipped_" .. reason:gsub("%s+", "_") .. "=" .. n
 	end
 	table.sort(parts)
-	return #parts > 0 and table.concat(parts, ", ") or "none"
+	return #parts > 0 and table.concat(parts, " ") or "skipped=0"
 end
 
 -- Which of the player's filters hide a type of service, for the trace; they are only read.
@@ -200,7 +200,7 @@ local function HiddenTypes()
 			hidden[#hidden + 1] = serviceType
 		end
 	end
-	return #hidden > 0 and table.concat(hidden, ", ") or "none"
+	return #hidden > 0 and table.concat(hidden, ",") or "none"
 end
 
 local function ReadTrainerService(job, index)
@@ -252,7 +252,7 @@ local function TrainerStep(job)
 			AbortTrainerJob(job, ("the list kept changing through %d restarts"):format(TRAINER_MAX_RESTARTS))
 			return
 		end
-		ns.toolkit:Trace(ns.module, "TRAINER list changed at service %d of %d, read again from the top (restart %d)", job.index, job.services, job.restarts)
+		ns.toolkit:Trace(ns.module, "trainer list changed service=%d of=%d restart=%d", job.index, job.services, job.restarts)
 		job.services, job.stepIndex = GetNumTrainerServices(), GetTrainerServiceStepIndex()
 		job.index, job.first, job.recipes, job.tooltipMs = 1, 1, 0, 0
 		wipe(job.skipped)
@@ -307,7 +307,7 @@ local function TrainerStep(job)
 				ns.PerfMs("trainer scan finish", ms)
 				ns.PerfMs("trainer scan tooltips", job.tooltipMs)
 				--@end-debug@
-				ns.toolkit:Trace(ns.module, "TRAINER scan of %d services read in %d steps, %.1f ms (%.1f ms of tooltips, worst step %.1f ms), closed in %.1f ms and finished in %.1f ms; %d recipes, %d new; skipped: %s; filters off: %s; restarts %d",
+				ns.toolkit:Trace(ns.module, "trainer scan services=%d steps=%d ms=%.1f tooltip_ms=%.1f worst_step_ms=%.1f close_ms=%.1f finish_ms=%.1f recipes=%d new=%d %s filters_off=%s restarts=%d",
 					job.services, job.steps, job.ms, job.tooltipMs or 0, job.worstMs, job.closingMs, ms, job.recipes, job.count, SkippedText(job.skipped), HiddenTypes(), job.restarts)
 				-- The learned read waits for the frame after this one.
 				QueueLearned(job.npc, job.recipes > 0, job.line)
@@ -368,16 +368,17 @@ local function EndOwnWindow(reason)
 	if not ownWindow then return end
 	if ownTimer then ownTimer:Cancel() end
 	ownTimer, ownWindow = nil, nil
-	ns.toolkit:Trace(ns.module, "TRAINER_UPDATE for the learned read of npc %d: %d in all (%s); filter used is %s",
-		ownNpc, ownUpdates or 0, reason, tostring(GetTrainerServiceTypeFilter("used")))
+	ns.toolkit:Trace(ns.module, "trainer updates npc=%d count=%d reason=%s used_filter=%s",
+		ownNpc, ownUpdates or 0, ns.toolkit.LogValue(reason), tostring(GetTrainerServiceTypeFilter("used")))
 end
 
 -- Blizzard's trainer list selection and gamepad focus, read only, for the Deck to compare before and after our filter calls.
-local function SelectionText()
+local function SelectionText(prefix)
 	local window = ClassTrainerFrame
 	local button = window and window.isFocused and SmartNavigation and SmartNavigation:GetCurrentButton()
-	return ("selection %s, window service %s, list focused %s, cursor on service %s"):format(tostring(GetTrainerSelectionIndex()),
-		tostring(window and window.selectedService), tostring(window and window.isFocused), tostring(button and button.displayIndex))
+	prefix = prefix or ""
+	return ("%sselection=%s %swindow_service=%s %sfocused=%s %scursor_service=%s"):format(prefix, tostring(GetTrainerSelectionIndex()), prefix,
+		tostring(window and window.selectedService), prefix, tostring(window and window.isFocused), prefix, tostring(button and button.displayIndex))
 end
 
 local function AtTrainer(npc)
@@ -418,13 +419,13 @@ local function EndLearned(job, reason)
 		local timer
 		timer = C_Timer.NewTimer(LEARNED_SETTLE, function()
 			if ownTimer == timer then EndOwnWindow("settled") end
-			ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d: after the window settled, %s", job.npc.npcID, SelectionText())
+			ns.toolkit:Trace(ns.module, "trainer settled npc=%d %s", job.npc.npcID, SelectionText())
 		end)
 		ownTimer = timer
 	end
-	ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d finished (%s): %d passes, %d services seen, %d spells read from tooltips (%.1f ms), %d from the saved cache, %d saved, %d new; skipped: %s; %.1f ms in all, worst pass %.1f ms, passes over %d ms %d (atomic exception); list changed %d times; TRAINER_UPDATE %d inside the filter calls, %d between passes; attempt %d, %s",
-		job.npc.npcID, reason, job.passes, job.seen, job.tooltips, job.tooltipMs, job.cached, job.saved, job.count, SkippedText(job.skipped), job.ms,
-		job.worstMs, FRAME_BAR_MS, job.exceptions, job.restarts, job.during, job.after, state.attempts, state.done and "done" or "asked again later")
+	ns.toolkit:Trace(ns.module, "trainer read npc=%d result=%s passes=%d used=%d tooltips=%d tooltip_ms=%.1f cached=%d saved=%d new=%d %s ms=%.1f worst_pass_ms=%.1f over_%dms=%d list_changes=%d updates_inside=%d updates_between=%d attempt=%d done=%s",
+		job.npc.npcID, ns.toolkit.LogValue(reason), job.passes, job.seen, job.tooltips, job.tooltipMs, job.cached, job.saved, job.count, SkippedText(job.skipped), job.ms,
+		job.worstMs, FRAME_BAR_MS, job.exceptions, job.restarts, job.during, job.after, state.attempts, tostring(state.done and true or false))
 end
 
 -- Why the read must end before this pass, or nil.
@@ -436,7 +437,7 @@ local function LearnedStopReason(job)
 	if job.shown and shown ~= job.shown then
 		-- The player changed a filter or bought something; the next pass walks the new list from its names, so only the count of changes is kept.
 		job.restarts = job.restarts + 1
-		ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d: the list changed from %d to %d services (change %d)", job.npc.npcID, job.shown, shown, job.restarts)
+		ns.toolkit:Trace(ns.module, "trainer read list changed npc=%d from=%d to=%d change=%d", job.npc.npcID, job.shown, shown, job.restarts)
 		if job.restarts > TRAINER_MAX_RESTARTS then return ("the list kept changing through %d changes"):format(TRAINER_MAX_RESTARTS) end
 	end
 	if job.passes >= LEARNED_MAX_PASSES then return "the pass cap" end
@@ -447,12 +448,12 @@ local function LearnedPass(job)
 	if learnedJob ~= job then return end
 	local reason = LearnedStopReason(job)
 	if reason then
-		ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d stopped: %s", job.npc.npcID, reason)
+		ns.toolkit:Trace(ns.module, "trainer read stopped npc=%d reason=%s", job.npc.npcID, ns.toolkit.LogValue(reason))
 		return EndLearned(job, reason)
 	end
 	local npc = job.npc
 	local logging = ns.toolkit:IsLogging(ns.module)
-	local selectionBefore = logging and SelectionText()
+	local selectionBefore = logging and SelectionText("before_")
 	job.passes = job.passes + 1
 	job.after = job.after + (ownUpdates - job.updatesAtEnd)
 	local updatesBefore = ownUpdates
@@ -544,10 +545,10 @@ local function LearnedPass(job)
 	end
 	local exception = passMs > FRAME_BAR_MS and tooltips <= 1
 	if exception then job.exceptions = job.exceptions + 1 end
-	ns.toolkit:Trace(ns.module, "TRAINER learned pass %d of npc %d: %d used rows, %d to read, %d spells from tooltips and %d from the cache, %d left; filter on %.2f ms, tooltips %.2f ms, filter off %.2f ms, whole filter window %.2f ms, pass %.2f ms (batch %d, next %d)%s; TRAINER_UPDATE %d inside the calls, %d since the last pass; filter used back %s%s; before: %s; after: %s",
+	ns.toolkit:Trace(ns.module, "trainer pass n=%d npc=%d used=%d to_read=%d tooltips=%d cached=%d left=%d filter_on_ms=%.2f tooltip_ms=%.2f filter_off_ms=%.2f window_ms=%.2f ms=%.2f batch=%d next_batch=%d atomic=%s updates_inside=%d updates_between=%d filter_back=%s %s %s",
 		job.passes, npc.npcID, usedRows, pending, tooltips, cached, left, onMs, tipMs, offMs, atomicMs, passMs, batch, job.batch,
-		exception and " (ATOMIC EXCEPTION: one service and the toggles over the bar)" or "", during, job.after,
-		tostring(filterBack), filterBack and " (MISMATCH, expected off)" or "", selectionBefore or "not logged", logging and SelectionText() or "not logged")
+		tostring(exception and true or false), during, job.after,
+		tostring(filterBack), selectionBefore or "before_selection=unlogged", logging and SelectionText("after_") or "after_selection=unlogged")
 	if not ok or not restored or filterBack then
 		return EndLearned(job, "an error")
 	end
@@ -567,7 +568,7 @@ function LearnedStep(npc, hadRecipes, line)
 	end
 	local state = LearnedState(npc.npcID)
 	if state.visit == visitSerial then
-		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read again this visit (attempt %d ran); a later visit asks", npc.npcID, state.attempts)
+		ns.toolkit:Trace(ns.module, "trainer read skipped npc=%d reason=read_this_visit attempt=%d", npc.npcID, state.attempts)
 		learnedQueued = nil
 		return
 	end
@@ -576,12 +577,12 @@ function LearnedStep(npc, hadRecipes, line)
 		return
 	end
 	if not (IsTradeskillTrainer() or hadRecipes) then
-		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read: not a profession trainer", npc.npcID)
+		ns.toolkit:Trace(ns.module, "trainer read skipped npc=%d reason=not_profession_trainer", npc.npcID)
 		learnedQueued = nil
 		return
 	end
 	if InCombatLockdown() then
-		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read: in combat, asked again on the next visit", npc.npcID)
+		ns.toolkit:Trace(ns.module, "trainer read skipped npc=%d reason=combat", npc.npcID)
 		learnedQueued = nil
 		return
 	end
@@ -595,7 +596,7 @@ function LearnedStep(npc, hadRecipes, line)
 	if state.attempts > ns.MAX_ITEM_ATTEMPTS then
 		state.done = true
 		learnedQueued = nil
-		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d read %d times, not asked again this session", npc.npcID, state.attempts - 1)
+		ns.toolkit:Trace(ns.module, "trainer read skipped npc=%d reason=attempts attempts=%d", npc.npcID, state.attempts - 1)
 		return
 	end
 	local job = { npc = npc, line = line, state = state, professionTrainer = IsTradeskillTrainer(), done = {}, skipped = {}, batch = LEARNED_START_BATCH,
@@ -604,8 +605,8 @@ function LearnedStep(npc, hadRecipes, line)
 	learnedJob = job
 	if ownTimer then ownTimer:Cancel() end
 	ownTimer, ownWindow, ownUpdates, ownNpc = nil, true, 0, npc.npcID
-	ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d starts: %d services shown, attempt %d, first batch %d; %s", npc.npcID, GetNumTrainerServices(),
-		state.attempts, job.batch, ns.toolkit:IsLogging(ns.module) and SelectionText() or "selection not logged")
+	ns.toolkit:Trace(ns.module, "trainer read start npc=%d services=%d attempt=%d batch=%d %s", npc.npcID, GetNumTrainerServices(),
+		state.attempts, job.batch, ns.toolkit:IsLogging(ns.module) and SelectionText() or "selection=unlogged")
 	LearnedPass(job)
 end
 
@@ -616,11 +617,11 @@ function QueueLearned(npc, hadRecipes, line)
 	if read then
 		local rev, seen = UnsourcedRev(read.line or line), read.revs[CharacterKey()] or 0
 		if rev <= seen then
-			ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d not read: done, and this character knows no recipe of skill line %s without a trainer source since (%d, read at %d)",
+			ns.toolkit:Trace(ns.module, "trainer read skipped npc=%d reason=done line=%s unsourced_rev=%d read_at=%d",
 				npc.npcID, tostring(read.line or line), rev, seen)
 			return
 		end
-		ns.toolkit:Trace(ns.module, "TRAINER learned services of npc %d read again: this character knows %d more recipes of skill line %s without a trainer source",
+		ns.toolkit:Trace(ns.module, "trainer read again npc=%d new_unsourced=%d line=%s",
 			npc.npcID, rev - seen, tostring(read.line or line))
 	end
 	if read then learned[npc.npcID] = nil end -- a re-ask is a fresh read, whatever this session read before
@@ -637,11 +638,11 @@ local function RecordTrainer()
 	local npc = CurrentNPC()
 	if not npc then
 		-- The client can hide the NPC's GUID at the show; the next update asks again.
-		ns.toolkit:Trace(ns.module, "TRAINER no creature to record yet, asked again on the next update")
+		ns.toolkit:Trace(ns.module, "trainer waits reason=no_creature")
 		return false
 	end
 	if trainerJob or learnedJob then
-		ns.toolkit:Trace(ns.module, "TRAINER %s already running, not started again", trainerJob and "scan" or "learned read")
+		ns.toolkit:Trace(ns.module, "trainer busy job=%s", trainerJob and "scan" or "read")
 		return true
 	end
 	local services = GetNumTrainerServices()
@@ -655,7 +656,7 @@ local function RecordTrainer()
 	local hidden = HiddenTypes()
 	if hidden ~= "none" then
 		-- Services of a hidden type are not in the list, so they are not seen and their count is not known without changing the filter.
-		ns.toolkit:Trace(ns.module, "TRAINER filters off: %s; their services are not read this visit", hidden)
+		ns.toolkit:Trace(ns.module, "trainer filters off=%s", hidden)
 	end
 	TrainerStep(job)
 	return true
@@ -714,7 +715,7 @@ local function FinishVisit()
 		AbortTrainerJob(trainerJob, "the visit ended")
 	end
 	if learnedJob then
-		ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d stopped: the visit ended", learnedJob.npc.npcID)
+		ns.toolkit:Trace(ns.module, "trainer read stopped npc=%d reason=visit_ended", learnedJob.npc.npcID)
 		EndLearned(learnedJob, "the visit ended")
 	end
 	EndOwnWindow("the visit ended")
@@ -799,7 +800,7 @@ function ns.ReadLearnedNow()
 	end
 	learned[npc.npcID] = nil
 	learnedQueued = npc.npcID
-	ns.toolkit:Trace(ns.module, "TRAINER learned read of npc %d forced from the working build", npc.npcID)
+	ns.toolkit:Trace(ns.module, "trainer read forced npc=%d", npc.npcID)
 	LearnedStep(npc, true, (ns.db.learnedReads[npc.npcID] or {}).line)
 end
 --@end-debug@

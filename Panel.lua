@@ -319,7 +319,7 @@ local function SyncNav()
 	--@debug@
 	ns.Perf("panel nav sync whole", navStarted)
 	--@end-debug@
-	ns.toolkit:Trace(ns.module, "UI nav override set: %d rows to the details, %d controls back", rowCount, count)
+	ns.toolkit:Trace(ns.module, "nav set rows=%d controls_back=%d", rowCount, count)
 end
 
 -- ANCHOR_RIGHT would clamp the tooltip over the panel at the screen's edge; with no room on the right it goes to the left
@@ -448,7 +448,7 @@ local function CreateHeading()
 	end)
 	heading:SetScript("OnClick", function(self)
 		toggled[BandKey(self.band)] = not IsOpen(self.band)
-		ns.toolkit:Trace(ns.module, "UI band %d %s", self.band, toggled[BandKey(self.band)] and "opened" or "closed")
+		ns.toolkit:Trace(ns.module, "band toggled band=%d open=%s", self.band, tostring(toggled[BandKey(self.band)] and true or false))
 		Request()
 	end)
 	heading:Hide()
@@ -468,14 +468,8 @@ end
 
 -- Why a row has the arrow it has, as trace formats: the log formats a line only while logging, so a row passes numbers and a key,
 -- never a built string (docs/client-notes.md, "Panel").
-local SKILL_REASON = {
-	above = "UI row %d skill-up none: above skill %s > %s",
-	locked = "UI row %d skill-up none: locked or disabled",
-	cap = "UI row %d skill-up none: cap %s/%s",
-	client = "UI row %d skill-up none: client canSkillUp false at %s/%s",
-	difficulty = "UI row %d skill-up none: %s at skill %s",
-	arrow = "UI row %d skill-up arrow %s",
-}
+-- The skillups summary's key for each reason a row shows or lacks an arrow (one line per build, docs/standards.md, "Working build").
+local SKILL_REASON = { above = "above", locked = "locked", cap = "cap", client = "no_skillup", difficulty = "trivial", arrow = "can" }
 
 -- The arrow for a row, and the key and numbers of why: the first branch that decides. The dim name already says the recipe is above
 -- the skill or locked.
@@ -555,7 +549,7 @@ local function ShowRow(row, recipeInfo)
 	end
 	-- Blizzard's skill-up arrow (Blizzard_ProfessionsRecipeList.lua, SetRecipeInfo) from the client's own answer for this recipe at this
 	-- skill, which for unlearned recipes follows the thresholds and the rank cap (docs/client-notes.md, "Panel"). The row never shows a number.
-	local arrow, why, first, second = SkillUpArrow(recipeInfo, row.color == DISABLED_FONT_COLOR)
+	local arrow, why = SkillUpArrow(recipeInfo, row.color == DISABLED_FONT_COLOR)
 	if row.shownArrow ~= (arrow or false) then
 		row.shownArrow = arrow or false
 		row.SkillUps:SetShown(arrow ~= nil)
@@ -567,9 +561,9 @@ local function ShowRow(row, recipeInfo)
 			row.SkillUps.Text:Hide()
 		end
 	end
-	if row.shownWhy ~= why or row.shownFirst ~= first or row.shownSecond ~= second then
-		row.shownWhy, row.shownFirst, row.shownSecond = why, first, second
-		ns.toolkit:Trace(ns.module, SKILL_REASON[why], recipeInfo.recipeID, first, second)
+	if scroll.skillTally then
+		local key = SKILL_REASON[why] or tostring(why)
+		scroll.skillTally[key] = (scroll.skillTally[key] or 0) + 1
 	end
 	Lap("skill")
 	local markCount = ns.GetMarks(recipeInfo, row.markNames)
@@ -637,7 +631,7 @@ local function Reveal()
 	empty:SetShown(#items == 0)
 	scroll:SetAlpha(1)
 	SyncNav()
-	ns.toolkit:Trace(ns.module, "UI panel visible after %d rows, %.1f ms", math.min((nextItem or 1) - 1, #items), buildMs)
+	ns.toolkit:Trace(ns.module, "list visible rows=%d ms=%.1f", math.min((nextItem or 1) - 1, #items), buildMs)
 end
 
 -- Where the list starts for the chosen recipe: its row in the middle of the view, though the rows down to it are not built yet.
@@ -647,7 +641,7 @@ function opening.pickOffset()
 	for _, item in ipairs(items) do
 		if item.recipe and item.recipe.recipeID == selected.recipeID then
 			local offset = math.max(0, math.min(item.top - (room - ROW_HEIGHT) / 2, child:GetHeight() - room))
-			ns.toolkit:Trace(ns.module, "UI list opens at %d for recipe %d", offset, selected.recipeID)
+			ns.toolkit:Trace(ns.module, "list scroll offset=%d recipe=%d", offset, selected.recipeID)
 			return offset
 		end
 	end
@@ -669,16 +663,23 @@ local function Finish()
 		Request() -- an update that came during the build; its refresh gets a frame of its own
 	end
 	SyncNav() -- the rows built after the list showed
-	ns.toolkit:Trace(ns.module, "UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames, worst frame %.1f ms, most items in a frame %d",
-		recipeCount, bandCount, buildMs, buildSteps, scroll.worstStepMs or 0, scroll.mostStepItems or 0)
+	ns.toolkit:Trace(ns.module, "list shown id=%s rows=%d groups=%d ms=%.1f frames=%d worst_frame_ms=%.1f max_items_frame=%d",
+		tostring(builtProfession), recipeCount, bandCount, buildMs, buildSteps, scroll.worstStepMs or 0, scroll.mostStepItems or 0)
+	if scroll.skillTally then
+		local tally, parts = scroll.skillTally, {}
+		for _, key in ipairs({ "can", "above", "cap", "trivial", "no_skillup", "locked" }) do
+			if tally[key] then parts[#parts + 1] = key .. "=" .. tally[key] end
+		end
+		ns.toolkit:Trace(ns.module, "skillups id=%s %s skill=%s max=%s", tostring(builtProfession), table.concat(parts, " "),
+			tostring(professionInfo and professionInfo.skillLevel), tostring(professionInfo and professionInfo.maxSkillLevel))
+	end
 	--@debug@
 	local parts = {}
-	for part, ms in pairs(lapMs) do parts[#parts + 1] = ("%s %.1f"):format(part, ms) end
+	for part, ms in pairs(lapMs) do parts[#parts + 1] = ("%s_ms=%.1f"):format((part:gsub("(%u)", function(c) return "_" .. c:lower() end)), ms) end
 	table.sort(parts)
-	ns.toolkit:Trace(ns.module, "UI build parts, ms (worstStep is the longest frame): %s", table.concat(parts, ", "))
+	ns.toolkit:Trace(ns.module, "build parts %s", table.concat(parts, " "))
 	--@end-debug@
 	--@debug@
-	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected and selected.recipeID, items) end
 	--@end-debug@
 	--@debug@
 	ns.PerfMs("panel build", buildMs)
@@ -744,7 +745,7 @@ local function BuildStep(buildGeneration, frameStart)
 			ns.Perf("panel nav sync", navStart)
 			--@end-debug@
 		else
-			ns.toolkit:Trace(ns.module, "UI nav sync after row %d left to the build's end: the step used its %d ms", nextItem - 1, BUILD_BUDGET_MS)
+			ns.toolkit:Trace(ns.module, "nav sync deferred row=%d budget_ms=%d", nextItem - 1, BUILD_BUDGET_MS)
 		end
 	end
 	local stepMs = debugprofilestop() - started
@@ -947,7 +948,7 @@ local function MakeSourceButton()
 	text:SetWordWrap(false)
 	-- One source's pin, exactly: an entry pins what it names, then the list closes (docs/client-notes.md, "Panel").
 	button:SetScript("OnClick", function(self)
-		ns.toolkit:Trace(ns.module, "UI source pressed: %s", self.source.label)
+		ns.toolkit:Trace(ns.module, "source pressed label=%s", ns.toolkit.LogValue(self.source.label))
 		ns.ShowOnMap(self.source.target)
 		ClosePlaces()
 	end)
@@ -1062,7 +1063,7 @@ local function MakeMapButton()
 	button:SetText(MAP_PIN)
 	button:SetScript("OnClick", function(self)
 		if self.single then
-			ns.toolkit:Trace(ns.module, "UI source pressed: %s", self.single.label)
+			ns.toolkit:Trace(ns.module, "source pressed label=%s", ns.toolkit.LogValue(self.single.label))
 			ns.ShowOnMap(self.single.target)
 		end
 	end)
@@ -1283,7 +1284,6 @@ FillDetail = function()
 	UpdatePlaceMenu() -- the list floats: it never takes height from the details
 	--@debug@
 	ns.PerfMs("details map", debugprofilestop() - part)
-	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected.recipeID) end
 	--@end-debug@
 end
 
@@ -1294,7 +1294,7 @@ SelectRecipe = function(recipeInfo)
 	selected = recipeInfo
 	if professionInfo then lastPick[professionInfo.professionID] = recipeInfo.recipeID end
 	ClosePlaces()
-	ns.toolkit:Trace(ns.module, "UI recipe selected: %d", recipeInfo.recipeID)
+	ns.toolkit:Trace(ns.module, "recipe selected id=%d", recipeInfo.recipeID)
 	for index = 1, math.min((nextItem or 1) - 1, #items) do
 		if items[index].recipe then slots[index]:SetSelected(items[index].recipe.recipeID == recipeInfo.recipeID) end
 	end
@@ -1339,7 +1339,7 @@ function opening.holdBack(reason)
 	rankBar.Fill:Hide()
 	rankBar.text:SetText("")
 	FillDetail() -- no recipe is chosen yet, so the details close
-	ns.toolkit:Trace(ns.module, "UI profession %d held back, %s: previous list, count and details cleared", professionInfo.professionID, reason)
+	ns.toolkit:Trace(ns.module, "profession open id=%d list=waiting reason=%s", professionInfo.professionID, ns.toolkit.LogValue(reason))
 end
 
 local function Update()
@@ -1362,7 +1362,7 @@ local function Update()
 		-- summaries), so a craft never blanks it (docs/client-notes.md, "Panel"). The read's end comes back here, and the same
 		-- content then refreshes in place.
 		if builtProfession == professionInfo.professionID and shownSignature and scroll.revealed then
-			ns.toolkit:Trace(ns.module, "UI keeps the shown list while profession %d's recipes are read again", professionInfo.professionID)
+			ns.toolkit:Trace(ns.module, "list kept id=%d reason=reread", professionInfo.professionID)
 			return
 		end
 		scroll:SetAlpha(0)
@@ -1418,7 +1418,7 @@ local function Update()
 	if signature == shownSignature and nextItem and nextItem <= #items then
 		items = newItems
 		scroll.refreshWanted = true
-		ns.toolkit:Trace(ns.module, "UI update during the build, same content: refresh waits for the build's end at item %d of %d", nextItem, #items)
+		ns.toolkit:Trace(ns.module, "refresh deferred item=%d of=%d reason=build_running", nextItem, #items)
 		return
 	end
 	FillDetail()
@@ -1452,7 +1452,8 @@ local function Update()
 		scroll:SetAlpha(0)
 		scroll.revealed = false
 	end
-	ns.toolkit:Trace(ns.module, "UI rebuild of %d rows, %s", rowCount, keepShown and "the shown list stays up" or "hidden until placed")
+	scroll.skillTally = {}
+	ns.toolkit:Trace(ns.module, "list build id=%d rows=%d shown=%s", professionInfo.professionID, rowCount, keepShown and "kept" or "hidden_until_placed")
 	if builtProfession ~= professionInfo.professionID then
 		builtProfession = professionInfo.professionID
 		opening.held = nil
@@ -1535,11 +1536,11 @@ pool.waitReason = nil -- why the pool is waiting, traced once a wait
 -- Why the pool should wait now, or nil when the window is quiet.
 function pool.settling()
 	local now = GetTime()
-	if pool.windowEventAt and now - pool.windowEventAt < pool.settleSeconds then return "the professions window is loading" end
-	if ns.shownStepAt and now - ns.shownStepAt < pool.settleSeconds then return "a shown profession is being read" end
+	if pool.windowEventAt and now - pool.windowEventAt < pool.settleSeconds then return "window_loading" end
+	if ns.shownStepAt and now - ns.shownStepAt < pool.settleSeconds then return "shown_profession_reading" end
 	if ProfessionsFrame and ProfessionsFrame:IsShown()
 		and (C_TradeSkillUI.IsTradeSkillLinked() or C_TradeSkillUI.IsTradeSkillGuild()) then
-		return "a linked or guild profession is shown"
+		return "linked_or_guild"
 	end
 end
 
@@ -1590,12 +1591,12 @@ function pool.finishScan()
 	local rowTarget = rowsWanted > 0 and rowsWanted + pool.rowMargin or 0
 	local headingTarget = headingsWanted > 0 and headingsWanted + pool.headingMargin or 0
 	rowTarget, headingTarget = math.max(rowTarget, pool.rowTarget), math.max(headingTarget, pool.headingTarget)
-	ns.toolkit:Trace(ns.module, "POOL target: %d recipes counted in %d professions, widest lists %d rows under %d bands; target rows %d (was %d), headings %d (was %d), made %d and %d",
+	ns.toolkit:Trace(ns.module, "pool target recipes=%d professions=%d widest_rows=%d widest_groups=%d rows=%d rows_was=%d headings=%d headings_was=%d made_rows=%d made_headings=%d",
 		#scan.ids, scan.lines, rowsWanted, headingsWanted, rowTarget, pool.rowTarget, headingTarget, pool.headingTarget, #rows, #headings)
 	pool.rowTarget, pool.headingTarget = rowTarget, headingTarget
 	if pool.dirty then
 		pool.dirty = false
-		ns.toolkit:Trace(ns.module, "POOL finds changed during the count, counting again")
+		ns.toolkit:Trace(ns.module, "pool recount reason=finds_changed")
 		pool.rescan()
 	end
 end
@@ -1610,14 +1611,14 @@ end
 function pool.step()
 	pool.running = false
 	if InCombatLockdown() then
-		ns.toolkit:Trace(ns.module, "POOL paused, in combat; resumes when it ends")
+		ns.toolkit:Trace(ns.module, "pool paused reason=combat")
 		return -- PLAYER_REGEN_ENABLED starts it again
 	end
 	local reason = pool.settling()
 	if reason then
 		if pool.waitReason ~= reason then
 			pool.waitReason = reason
-			ns.toolkit:Trace(ns.module, "POOL waits: %s", reason)
+			ns.toolkit:Trace(ns.module, "pool waits reason=%s", ns.toolkit.LogValue(reason))
 		end
 		pool.running = true
 		C_Timer.After(pool.settleSeconds, function() pool.step() end)
@@ -1625,7 +1626,7 @@ function pool.step()
 	end
 	if pool.waitReason then
 		pool.waitReason = nil
-		ns.toolkit:Trace(ns.module, "POOL resumes")
+		ns.toolkit:Trace(ns.module, "pool resumes")
 	end
 	local gc -- Lua memory around the slice, working builds only (docs/client-notes.md, "Frame pool")
 	--@debug@
@@ -1640,9 +1641,9 @@ function pool.step()
 	if detailMade > 0 then
 		local ms = debugprofilestop() - started
 		--@debug@
-		gc = (", Lua memory %.0f to %.0f KB"):format(gcBefore, collectgarbage("count"))
+		gc = (" lua_kb_before=%.0f lua_kb_after=%.0f"):format(gcBefore, collectgarbage("count"))
 		--@end-debug@
-		ns.toolkit:Trace(ns.module, "POOL details' frames made %d in %.1f ms (%d reagent rows)%s", detailMade, ms, #reagentRows, gc or "")
+		ns.toolkit:Trace(ns.module, "pool details made=%d ms=%.1f reagent_rows=%d%s", detailMade, ms, #reagentRows, gc or "")
 		pool.kick()
 		return
 	end
@@ -1670,13 +1671,13 @@ function pool.step()
 	end
 	if #rows >= pool.rowTarget and #headings >= pool.headingTarget then
 		if pool.made > 0 then
-			ns.toolkit:Trace(ns.module, "POOL ready: %d rows and %d headings, %d made ahead in %.1f ms", #rows, #headings, pool.made, pool.ms)
+			ns.toolkit:Trace(ns.module, "pool ready rows=%d headings=%d made=%d ms=%.1f", #rows, #headings, pool.made, pool.ms)
 			pool.made, pool.ms = 0, 0
 		end
 		return -- idle until the target grows
 	end
 	if nextItem and nextItem <= #items then
-		ns.toolkit:Trace(ns.module, "POOL waits, a build in progress makes frames itself")
+		ns.toolkit:Trace(ns.module, "pool waits reason=build_running")
 		pool.running = true
 		C_Timer.After(WAIT_SECONDS, pool.step)
 		return
@@ -1695,9 +1696,9 @@ function pool.step()
 	local ms = debugprofilestop() - started
 	pool.made, pool.ms = pool.made + made, pool.ms + ms
 	--@debug@
-	gc = (", Lua memory %.0f to %.0f KB"):format(gcBefore, collectgarbage("count"))
+	gc = (" lua_kb_before=%.0f lua_kb_after=%.0f"):format(gcBefore, collectgarbage("count"))
 	--@end-debug@
-	ns.toolkit:Trace(ns.module, "POOL rows made %d/%d, headings %d/%d, %d this frame in %.1f ms%s", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms, gc or "")
+	ns.toolkit:Trace(ns.module, "pool slice rows=%d/%d headings=%d/%d made=%d ms=%.1f%s", #rows, pool.rowTarget, #headings, pool.headingTarget, made, ms, gc or "")
 	pool.kick()
 end
 --@debug@
@@ -1737,7 +1738,7 @@ function pool.start()
 	if not C_AddOns.IsAddOnLoaded(pool.templates) then
 		if not pool.waiting then
 			pool.waiting = true
-			ns.toolkit:Trace(ns.module, "POOL waits for %s, loaded by the game with the first professions window", pool.templates)
+			ns.toolkit:Trace(ns.module, "pool waits addon=%s reason=loads_with_first_window", pool.templates)
 			EventUtil.ContinueOnAddOnLoaded(pool.templates, pool.start)
 		end
 		return
@@ -1996,7 +1997,7 @@ local function OnInit(_, info)
 		-- The details stay up until the new list picks its recipe or holds the panel back (opening.holdBack), so they do not close and reopen.
 		selected = nil
 		detailSignature = nil
-		ns.toolkit:Trace(ns.module, "UI profession changed to %d, details kept until its list arrives", info.professionID)
+		ns.toolkit:Trace(ns.module, "profession changed id=%d details=kept", info.professionID)
 	end
 	-- Only this character's own professions have recipes to learn.
 	wanted = Professions.InLocalCraftingMode()

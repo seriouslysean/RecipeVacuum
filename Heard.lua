@@ -48,7 +48,7 @@ local function Say(window)
 	local count = counts[window] or 0
 	counts[window] = nil
 	local announce = ns.db.announceNewFinds
-	ns.toolkit:Trace(ns.module, "SEEN %s closed: %d counted, %s", window, count, count == 0 and "silent, nothing new for the character's professions" or announce and "said" or "silent, Show Chat Alerts is off")
+	ns.toolkit:Trace(ns.module, "window closed name=%s counted=%d said=%s", ns.toolkit.LogValue(window), count, count == 0 and "no_new" or announce and "yes" or "alerts_off")
 	if count > 0 and announce then
 		ns.toolkit:Say(ns.module, ns.voice.seen, count)
 	end
@@ -62,12 +62,12 @@ local function EndClosing(window, token)
 	closing[window] = nil
 	if openWindows[window] then
 		-- Its ids stay, for the load results to credit to the open window.
-		ns.toolkit:Trace(ns.module, "SEEN %s reopened while waiting, silent, its count and %d unanswered items stay for its next close", window, Unanswered(window))
+		ns.toolkit:Trace(ns.module, "window reopened name=%s unanswered=%d", ns.toolkit.LogValue(window), Unanswered(window))
 		return
 	end
 	local unanswered = Unanswered(window)
 	if unanswered > 0 then
-		ns.toolkit:Trace(ns.module, "SEEN %s: %d items still unanswered, not counted", window, unanswered)
+		ns.toolkit:Trace(ns.module, "window waits name=%s unanswered=%d", ns.toolkit.LogValue(window), unanswered)
 	end
 	for itemID, owner in pairs(deferred) do
 		if owner == window then deferred[itemID] = nil end
@@ -79,16 +79,16 @@ local function OpenWindow(window)
 	if not openWindows[window] then
 		openWindows[window] = true
 		if window ~= BAGS then table.insert(openOrder, window) end
-		ns.toolkit:Trace(ns.module, "SEEN %s opened", window)
+		ns.toolkit:Trace(ns.module, "window opened name=%s", ns.toolkit.LogValue(window))
 	else
-		ns.toolkit:Trace(ns.module, "SEEN %s opened again while open, ignored", window)
+		ns.toolkit:Trace(ns.module, "window opened name=%s again=true", ns.toolkit.LogValue(window))
 	end
 end
 
 -- A closing window says its own line, after the items it saw have answered, whatever else is still open.
 local function CloseWindow(window)
 	if not openWindows[window] then
-		ns.toolkit:Trace(ns.module, "SEEN %s closed, silent: it was not open", window)
+		ns.toolkit:Trace(ns.module, "window closed name=%s was_open=false", ns.toolkit.LogValue(window))
 		return
 	end
 	openWindows[window] = nil
@@ -99,7 +99,7 @@ local function CloseWindow(window)
 		closeToken = closeToken + 1
 		local token = closeToken
 		closing[window] = token
-		ns.toolkit:Trace(ns.module, "SEEN %s closed, waiting for items that had not loaded", window)
+		ns.toolkit:Trace(ns.module, "window closed name=%s waits=items_loading", ns.toolkit.LogValue(window))
 		C_Timer.After(DEFERRED_WAIT, function() EndClosing(window, token) end)
 		return
 	end
@@ -173,12 +173,12 @@ local function Note(bucket, id, level, window, caps)
 	if level == LEVEL.SELF and bucket == "recipes" then
 		window = window or Target()
 		if not window then
-			ns.toolkit:Trace(ns.module, "SEEN recipe %d not counted, no window open", id)
+			ns.toolkit:Trace(ns.module, "recipe seen id=%d counted=false reason=no_window", id)
 		elseif HasProfession(id, caps) then
 			counts[window] = (counts[window] or 0) + 1
-			ns.toolkit:Trace(ns.module, "SEEN recipe %d counted for %s", id, window)
+			ns.toolkit:Trace(ns.module, "recipe seen id=%d window=%s", id, ns.toolkit.LogValue(window))
 		else
-			ns.toolkit:Trace(ns.module, "SEEN recipe %d not counted, not the character's profession", id)
+			ns.toolkit:Trace(ns.module, "recipe seen id=%d counted=false reason=other_profession", id)
 		end
 	end
 	if level <= ns.db.sourceLevel and not refreshQueued then
@@ -276,8 +276,8 @@ local function ReadShownStep(run, ids, at, started, learned, missing)
 				shownPending, gaveUp = nil, true
 			end
 		end
-		ns.toolkit:Trace(ns.module, "SEEN shown profession read: %d recipes, %d learned, %d without info%s, %.1f ms since it began",
-			count, learned, missing, gaveUp and " (given up: no more answers over several passes)" or missing > 0 and " (read again on the next list update)" or "",
+		ns.toolkit:Trace(ns.module, "shown profession read recipes=%d learned=%d missing=%d next=%s ms=%.1f",
+			count, learned, missing, gaveUp and "given_up" or missing > 0 and "reread" or "done",
 			debugprofilestop() - started)
 	end
 end
@@ -327,7 +327,7 @@ local function NoteSeenItem(itemID, loadAnswered)
 	else
 		itemAttempts[itemID] = (itemAttempts[itemID] or 0) + 1
 		if itemAttempts[itemID] >= ns.MAX_ITEM_ATTEMPTS then
-			ns.toolkit:Trace(ns.module, "SEEN item %d unanswered %d times, not asked again this session", itemID, itemAttempts[itemID])
+			ns.toolkit:Trace(ns.module, "item skipped id=%d attempts=%d reason=no_answer", itemID, itemAttempts[itemID])
 		end
 		if window then
 			deferred[itemID] = window -- read again when its data loads, for the window that saw it
@@ -369,7 +369,7 @@ local function ReadBank()
 			end
 		end
 	end
-	ns.toolkit:Trace(ns.module, "SEEN bank read: %d containers, %d items, %d recipe items", #containers, items, recipes)
+	ns.toolkit:Trace(ns.module, "bank read containers=%d items=%d recipe_items=%d", #containers, items, recipes)
 end
 
 -- Auction house search results: every item a search lists is seen, as the window shows it
@@ -396,7 +396,7 @@ local handlers = {
 		-- An item the scan gave up on (no window open, nothing deferred) can still answer its last request.
 		local gaveUp = not window and (itemAttempts[itemID] or 0) >= ns.MAX_ITEM_ATTEMPTS and not itemsDone[itemID]
 		if loaded and (window or gaveUp) then
-			if gaveUp then ns.toolkit:Trace(ns.module, "SEEN item %d answered after the cap, read once more", itemID) end
+			if gaveUp then ns.toolkit:Trace(ns.module, "item late id=%d reread=true", itemID) end
 			NoteSeenItem(itemID, true)
 		elseif window then
 			deferred[itemID] = nil -- never answers
@@ -407,7 +407,7 @@ local handlers = {
 	end,
 	NEW_RECIPE_LEARNED = function(recipeID)
 		if type(recipeID) == "number" and ns.NoteKnown(recipeID) then
-			ns.toolkit:Trace(ns.module, "SEEN recipe %d learned, met at Self Found", recipeID)
+			ns.toolkit:Trace(ns.module, "recipe learned id=%d", recipeID)
 		end
 	end,
 	BAG_UPDATE_DELAYED = function() ReadBags() end,

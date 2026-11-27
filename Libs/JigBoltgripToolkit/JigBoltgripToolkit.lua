@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 81
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 82
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -32,6 +32,15 @@ do
 		or setmetatable({}, { __index = function(_, text) return text end })
 end
 lib.modules = lib.modules or {}
+
+-- A value in a log line, logfmt style (docs/standards.md, "Working build"): bare, or quoted when it holds a space, a quote
+-- or an equals sign.
+local function LogValue(value)
+	local text = tostring(value)
+	if text == "" or text:find('[%s"=]') then return '"' .. text:gsub('"', "'") .. '"' end
+	return text
+end
+lib.LogValue = LogValue
 lib.records = lib.records or {} -- module records made by NewModule, by addon name, before settings load
 
 -- Header for modules' key bindings: a module's Bindings.xml uses category="BINDING_HEADER_JIGBOLTGRIPTOOLKIT".
@@ -137,7 +146,7 @@ function lib:ResetOnce()
 			db[key] = nil
 		end
 	end
-	self:Debug(("Once-only lines reset: %d cleared; each says itself again."):format(cleared))
+	self:Debug(("once reset cleared=%d"):format(cleared))
 	return cleared
 end
 
@@ -239,7 +248,7 @@ end
 local function UsableSave(self, module, globalName, current)
 	local saved = _G[globalName]
 	if saved ~= nil and type(saved) ~= "table" then
-		self:Trace(module, "SAVED %s is a %s, not a table; left unchanged, running on an empty copy", globalName, type(saved))
+		self:Trace(module, "saved kept name=%s type=%s running=empty_copy", globalName, type(saved))
 		return {}, false
 	end
 	local result = saved or {}
@@ -272,7 +281,7 @@ function lib:LoadSaved(module, globalName, spec)
 	-- is left alone would pair data of two builds. Either one newer (or not a table) leaves both as they are, and the module
 	-- runs on empty copies.
 	if not (usable and (characterUsable ~= false)) then
-		self:Trace(module, "SAVED %s left unchanged; running on empty copies", globalName)
+		self:Trace(module, "saved kept name=%s reason=newer running=empty_copies", globalName)
 		db, characterDb = {}, characterDb and {}
 		FillDefaults(db, spec.defaults)
 		db.schema = spec.schema
@@ -345,7 +354,7 @@ local function ApplyWorkingCVars()
 	for name, value in pairs(WORKING_CVARS) do
 		if C_CVar.GetCVar(name) ~= value then
 			C_CVar.SetTempCVar(name, value)
-			lib:LogAll(("working build: %s set to %s for this session"):format(name, value))
+			lib:LogAll(("cvar set name=%s value=%s scope=session"):format(name, LogValue(value)))
 		end
 	end
 end
@@ -366,7 +375,7 @@ local function TaintedFields(path, t, depth, seen, out)
 		if #out >= TAINT_MAX then return end
 		if type(key) == "string" then
 			local secure, addon = issecurevariable(t, key)
-			if not secure then out[#out + 1] = ("%s.%s tainted by %s"):format(path, key, tostring(addon)) end
+			if not secure then out[#out + 1] = ("tainted field path=%s.%s addon=%s"):format(path, key, LogValue(addon)) end
 		end
 		if type(value) == "table" then TaintedFields(path .. "." .. tostring(key), value, depth + 1, seen, out) end
 	end
@@ -391,13 +400,13 @@ function lib:BlameFromStack(stack, gameAddon)
 			if rest:find("^Libs[/\\]JigBoltgripToolkit") then
 				kitVia = kitVia or folder
 			else
-				return folder, ""
+				return folder, (" owner=%s"):format(folder)
 			end
 		end
 	end
-	if kitVia then return kitVia, (" [kit, via %s's copy]"):format(kitVia) end
-	if gameAddon and self.logs[gameAddon] then return gameAddon, (" [game blames %s]"):format(gameAddon) end
-	return self.logOrder[1], (" [no module in the stack; game blames %s]"):format(tostring(gameAddon))
+	if kitVia then return kitVia, (" owner=kit copy=%s"):format(kitVia) end
+	if gameAddon and self.logs[gameAddon] then return gameAddon, (" owner=%s source=game"):format(gameAddon) end
+	return self.logOrder[1], (" owner=unknown blamed=%s"):format(LogValue(gameAddon))
 end
 
 -- One error or block, written once, to the log of the module its stack names, with the stack under it.
@@ -413,19 +422,19 @@ end
 
 -- Methods, so a newer copy's handler replaces an older copy's on the one listener.
 function lib:OnBlocked(event, addon, action)
-	local line = ("%s: %s, %s"):format(event, tostring(addon), tostring(action))
+	local line = ("blocked event=%s addon=%s call=%s"):format(event, LogValue(addon), LogValue(action))
 	local fields = self:ScanTaint()
-	local extra = { ("tainted gamepad fields: %d%s"):format(#fields, #fields >= TAINT_MAX and " (first " .. TAINT_MAX .. ")" or "") }
-	for _, field in ipairs(fields) do extra[#extra + 1] = "  " .. field end
+	local extra = { ("tainted fields count=%d capped=%s"):format(#fields, tostring(#fields >= TAINT_MAX)) }
+	for _, field in ipairs(fields) do extra[#extra + 1] = field end
 	self:LogBlamed(line, debugstack(3, 12, 0), addon, extra)
 end
 
 function lib:OnInterfaceBlocked(text, stack)
-	self:LogBlamed("interface action blocked (no event): " .. tostring(text), stack)
+	self:LogBlamed("interface blocked text=" .. LogValue(text), stack)
 end
 
 function lib:OnLuaError(message, stack)
-	self:LogBlamed("Lua error: " .. tostring(message), stack or tostring(message))
+	self:LogBlamed("lua error message=" .. LogValue(message), stack or tostring(message))
 end
 
 function lib:EnableWorkingBuild()
@@ -481,16 +490,16 @@ function lib:EnableWorkingBuild()
 		for name, direction in pairs(SMART_NAV_INPUT_DIRECTION) do directions[direction] = name end
 		local function Taint(t, key)
 			local secure, addon = issecurevariable(t, key)
-			return secure and "clean" or ("tainted by " .. tostring(addon))
+			return secure and "clean" or ("tainted tainted_by=" .. LogValue(addon))
 		end
 		hooksecurefunc(SmartNavigation, "HandleNavigationInput", function(nav, isDown, direction)
 			if isDown then return end
 			local button = nav.currentButton
 			local data = button and button.GetElementData and button:GetElementData()
 			local recipe = type(data) == "table" and data.recipeInfo and data.recipeInfo.recipeID
-			lib:LogAll(("pad %s -> %s%s | cursor %s"):format(directions[direction] or "?",
-				button and button.GetDebugName and button:GetDebugName() or "nothing",
-				recipe and (" recipe " .. recipe) or "", Taint(nav, "currentButton")))
+			lib:LogAll(("pad move dir=%s to=%s%s cursor=%s"):format(directions[direction] or "?",
+				LogValue(button and button.GetDebugName and button:GetDebugName() or "nothing"),
+				recipe and (" recipe=" .. recipe) or "", Taint(nav, "currentButton")))
 		end)
 	end)
 end
@@ -525,17 +534,19 @@ local function ZoneLine()
 	local info = mapID and C_Map.GetMapInfo(mapID)
 	local position = mapID and C_Map.GetPlayerMapPosition(mapID, "player")
 	local areas = position and C_MapExplorationInfo.GetExploredAreaIDsAtPosition(mapID, position)
-	return ("zone %s areas %s | %s | %s"):format(tostring(mapID), areas and table.concat(areas, ",") or "-",
-		info and info.name or "?", GetSubZoneText() or "")
+	return ("map=%s areas=%s zone=%s subzone=%s"):format(tostring(mapID), areas and table.concat(areas, ",") or "-",
+		LogValue(info and info.name or "?"), LogValue(GetSubZoneText() or ""))
 end
 -- Context every log keeps while watching: where the player is, which input is in use (a report reads
 -- each line against it), and each screenshot, which is the player's way to mark a moment worth reading.
 local CONTEXT_EVENTS = {
-	ZONE_CHANGED_NEW_AREA = ZoneLine, ZONE_CHANGED = ZoneLine, ZONE_CHANGED_INDOORS = ZoneLine,
+	ZONE_CHANGED_NEW_AREA = function() return "zone " .. ZoneLine() end,
+	ZONE_CHANGED = function() return "zone " .. ZoneLine() end,
+	ZONE_CHANGED_INDOORS = function() return "zone " .. ZoneLine() end,
 	GAME_PAD_ACTIVE_CHANGED = function(isActive)
-		return "input: " .. (isActive and "gamepad" or "keyboard and mouse")
+		return "input device=" .. (isActive and "gamepad" or "mouse_keyboard")
 	end,
-	SCREENSHOT_SUCCEEDED = function() return "screenshot taken: " .. date("%m%d%y_%H%M%S") end,
+	SCREENSHOT_SUCCEEDED = function() return "screenshot file=WoWScrnShot_" .. date("%m%d%y_%H%M%S") end,
 }
 
 local function UpdateWatchEvents()
@@ -553,9 +564,9 @@ local function UpdateWatchEvents()
 				if handler then
 					local ok, problem = pcall(handler, ...)
 					if not ok then
-						local line = ("Malfunction in %s! %s"):format(event, tostring(problem))
+						local line = ("handler error event=%s message=%s"):format(event, LogValue(problem))
 						lib:Log(log.module, line)
-						lib:Debug(("%s: %s"):format(log.module.title, line))
+						lib:Debug(("%s module=%s"):format(line, LogValue(log.module.title)))
 					end
 				end
 			end
@@ -585,7 +596,7 @@ local function ProfilerLine(addon)
 		local total = app - overall + own
 		return total > 0 and own / total * 100 or 0
 	end
-	return ("CPU game's measure: session average %.3f ms (%.2f%% of frame time) | recent %.2f%% | peak %.2f ms | frames over 1 ms %d, 5 ms %d, 10 ms %d"):format(
+	return ("cpu avg_ms=%.3f share_pct=%.2f recent_pct=%.2f peak_ms=%.2f over_1ms=%d over_5ms=%d over_10ms=%d"):format(
 		C_AddOnProfiler.GetAddOnMetric(addon, metric.SessionAverageTime), Share(metric.SessionAverageTime),
 		Share(metric.RecentAverageTime), C_AddOnProfiler.GetAddOnMetric(addon, metric.PeakTime),
 		C_AddOnProfiler.GetAddOnMetric(addon, metric.CountTimeOver1Ms), C_AddOnProfiler.GetAddOnMetric(addon, metric.CountTimeOver5Ms),
@@ -596,7 +607,7 @@ end
 local function DeviceLine()
 	local width, height = GetPhysicalScreenSize()
 	local pad = C_GamePad and C_GamePad.IsEnabled()
-	return ("device: locale %s | screen %sx%s | UI scale %s | gamepad %s, device %s"):format(tostring(GetLocale()),
+	return ("device locale=%s screen=%sx%s ui_scale=%s gamepad=%s pad_device=%s"):format(tostring(GetLocale()),
 		tostring(width), tostring(height), tostring(UIParent and UIParent:GetEffectiveScale()),
 		pad and "on" or "off", tostring(pad and C_GamePad.GetActiveDeviceID() or "-"))
 end
@@ -619,8 +630,8 @@ end
 local function MemoryLine(addon)
 	local now, start = OwnMemory(addon), lib.memoryAtLogin[addon]
 	if not now then return nil end
-	return ("MEMORY own %.0f KB at logout | %s at login + %d s | growth %s | all Lua %.1f MB"):format(now,
-		start and ("%.0f KB"):format(start) or "?", MEMORY_SETTLE_SECONDS, start and ("%+.0f KB"):format(now - start) or "?",
+	return ("memory own_kb=%.0f login_kb=%s login_after_s=%d growth_kb=%s all_lua_mb=%.1f"):format(now,
+		start and ("%.0f"):format(start) or "?", MEMORY_SETTLE_SECONDS, start and ("%+.0f"):format(now - start) or "?",
 		collectgarbage("count") / 1024)
 end
 
@@ -633,8 +644,8 @@ local function WriteTimings()
 		if #lines > 0 or cpu or memory then
 			local version, build = GetBuildInfo()
 			lib:Log(log.module, "")
-			lib:Log(log.module, ("%s PERF session on %s (%s), %s level %d"):format(date("%Y-%m-%d %H:%M:%S"), version,
-				build, UnitName("player") or UNKNOWN, UnitLevel("player") or 0), true)
+			lib:Log(log.module, ("%s perf session client=%s build=%s character=%s level=%d"):format(date("%Y-%m-%d %H:%M:%S"), version,
+				build, LogValue(UnitName("player") or UNKNOWN), UnitLevel("player") or 0), true)
 			if cpu then lib:Log(log.module, cpu) end
 			if memory then lib:Log(log.module, memory) end
 			for _, line in ipairs(lines) do
@@ -649,7 +660,7 @@ function lib:StartLog(module, saved, handlers)
 	self:EnableWorkingBuild()
 	-- Without its saved table a module keeps no log; a working build must not break over it.
 	if type(saved) ~= "table" then
-		self:Debug(("%s: no saved table for the log yet; nothing is logged this session."):format(tostring(module.title)))
+		self:Debug(("log off module=%s reason=no_saved_table"):format(LogValue(module.title)))
 		return
 	end
 	local log = self.logs[module.addon]
@@ -672,8 +683,8 @@ function lib:StartLog(module, saved, handlers)
 	-- Session header: one line per load, so each log reads on its own.
 	local version, build = GetBuildInfo()
 	self:Log(module, "")
-	self:Log(module, ("%s session: client %s (%s) | addon %s | %s, level %d | %s"):format(date("%Y-%m-%d %H:%M:%S"),
-		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
+	self:Log(module, ("%s session client=%s build=%s addon=%s character=%s level=%d %s"):format(date("%Y-%m-%d %H:%M:%S"),
+		version, build, LogValue(C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?"), LogValue(UnitName("player") or "?"),
 		UnitLevel("player") or 0, ZoneLine()), true)
 	self:Log(module, DeviceLine())
 	if not log.watching then
@@ -712,7 +723,7 @@ function lib:CountEvent(module, event)
 			for name in pairs(state.counts) do names[#names + 1] = name end
 			table.sort(names)
 			for _, name in ipairs(names) do
-				lib:Trace(module, state.counts[name] > 1 and ("EVENT %s x%d"):format(name, state.counts[name]) or "EVENT " .. name)
+				lib:Trace(module, "event name=%s count=%d", name, state.counts[name])
 			end
 			state.counts = {}
 		end)
@@ -728,7 +739,7 @@ function lib:EventFrame(module, handlers, options)
 		local unit = options.unit and options.unit[event]
 		-- A game update that drops an event makes the module slower, not broken (Blizzard_Console.lua guards the same way).
 		if C_EventUtils and C_EventUtils.IsEventValid and not C_EventUtils.IsEventValid(event) then
-			lib:Trace(module, "EVENT %s is not a client event; not registered", event)
+			lib:Trace(module, "event skipped name=%s reason=not_a_client_event", event)
 		elseif unit then
 			frame:RegisterUnitEvent(event, unit)
 		elseif not (options.later and options.later[event]) then
@@ -820,13 +831,13 @@ function lib:SetWatch(module, on, quiet)
 	if not log then return end
 	if on and not log.saved.watch then
 		self:StartRun(module, true)
-		self:Log(module, date("%Y-%m-%d %H:%M:%S") .. " watch on | " .. ZoneLine(), true)
+		self:Log(module, date("%Y-%m-%d %H:%M:%S") .. " watch on " .. ZoneLine(), true)
 	end
 	log.watching = on or nil
 	log.saved.watch = on and true or false
 	UpdateWatchEvents()
 	if not quiet then
-		self:Debug(("%s: %s"):format(module.title, on and "Watch enabled!" or "Watch disabled!"))
+		self:Debug(("watch module=%s on=%s"):format(LogValue(module.title), tostring(on and true or false)))
 	end
 end
 
@@ -841,9 +852,10 @@ function lib:LoggedCommand(module, action, run, details)
 		self:Log(module, "")
 		self:StartRun(module)
 		log.viewStart = #log.saved.devLog + 1
-		self:Log(module, ("%s /%s %s"):format(date("%Y-%m-%d %H:%M:%S"), module.command or module.addon:lower(), action), true)
-		self:Log(module, ("client %s (%s) | addon %s | %s, %s, level %d"):format(version, build,
-			C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player"), tostring(faction),
+		self:Log(module, ("%s command name=%s"):format(date("%Y-%m-%d %H:%M:%S"),
+			LogValue("/" .. (module.command or module.addon:lower()) .. " " .. action)), true)
+		self:Log(module, ("context client=%s build=%s addon=%s character=%s faction=%s level=%d"):format(version, build,
+			LogValue(C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?"), LogValue(UnitName("player")), tostring(faction),
 			UnitLevel("player")))
 		for _, line in ipairs(details and details() or {}) do
 			self:Log(module, line)
@@ -910,8 +922,8 @@ function lib:TimingLines(module)
 	local lines, record = {}, self.timings[module.addon]
 	for _, name in ipairs(record and record.order or {}) do
 		local entry = record[name]
-		lines[#lines + 1] = ("PERF %-24s runs %5d | average %7.2f ms | slowest %7.2f ms | total %8.1f ms"):format(
-			name, entry.count, entry.total / entry.count, entry.max, entry.total)
+		lines[#lines + 1] = ("timing name=%s runs=%d avg_ms=%.2f max_ms=%.2f total_ms=%.1f"):format(
+			LogValue(name), entry.count, entry.total / entry.count, entry.max, entry.total)
 	end
 	return lines
 end
@@ -1407,7 +1419,7 @@ end
 
 local function Trace(share, text, ...)
 	if lib:IsLogging(share.module) then
-		lib:Trace(share.module, "SHARE " .. text:format(...))
+		lib:Trace(share.module, "share " .. text:format(...))
 	end
 end
 
@@ -1534,14 +1546,14 @@ function Share:Load(db, each)
 	if highest > exchange.revision then
 		-- A counter behind its revisions was reset: renumber under a new ID so peers resync.
 		exchange.id, exchange.revision = NewCollectionID(), highest
-		Trace(self, "counter was behind its revisions: new collection %s at %d", exchange.id, highest)
+		Trace(self, "counter reset collection=%s revision=%d reason=behind_revisions", exchange.id, highest)
 	end
 	for _, row in ipairs(unrevised) do
 		exchange.revision = exchange.revision + 1
 		row.entry.rev, row.rev = exchange.revision, exchange.revision
 		table.insert(self.revisions, row)
 	end
-	Trace(self, "loaded collection %s at revision %d, %d entries (%d newly numbered)", exchange.id, exchange.revision,
+	Trace(self, "loaded collection=%s revision=%d entries=%d newly_numbered=%d", exchange.id, exchange.revision,
 		#self.revisions, #unrevised)
 end
 
@@ -1575,18 +1587,18 @@ end
 function Share:Merge(rows, maxRows)
 	local spec = self.spec
 	if type(rows) ~= "table" then
-		Trace(self, "batch rejected: not a list")
+		Trace(self, "batch rejected reason=not_a_list")
 		return nil
 	end
 	if #rows > (maxRows or MAX_ROWS) then
-		Trace(self, "batch rejected: %d rows, over the limit of %d", #rows, maxRows or MAX_ROWS)
+		Trace(self, "batch rejected rows=%d limit=%d", #rows, maxRows or MAX_ROWS)
 		return nil
 	end
 	local count, skipped, unknown = 0, 0, 0
 	local known = {}
 	for index, row in pairs(rows) do
 		if not wire.ID(index) or index > #rows or type(row) ~= "table" then
-			Trace(self, "batch rejected: row %s is not in a list of tables", tostring(index))
+			Trace(self, "batch rejected row=%s reason=not_a_table", tostring(index))
 			return nil
 		end
 		-- One bad row is dropped, not the batch: the same batch would be refused every time it is asked for.
@@ -1596,7 +1608,7 @@ function Share:Merge(rows, maxRows)
 				known[#known + 1] = row
 			else
 				skipped = skipped + 1
-				Trace(self, "row %d rejected: %s %s", index, tostring(row.k), reason or "failed its checks")
+				Trace(self, "row rejected index=%d kind=%s reason=%s", index, tostring(row.k), LogValue(reason or "failed_checks"))
 			end
 		else
 			-- A kind a newer version added: skipped, not a reason to refuse the batch.
@@ -1605,12 +1617,12 @@ function Share:Merge(rows, maxRows)
 		count = count + 1
 	end
 	if count ~= #rows then
-		Trace(self, "batch rejected: the list has gaps")
+		Trace(self, "batch rejected reason=gaps")
 		return nil
 	end
-	if unknown > 0 then Trace(self, "%d rows of kinds this version does not read were skipped", unknown) end
+	if unknown > 0 then Trace(self, "rows skipped count=%d reason=unknown_kind", unknown) end
 	local changed = spec.merge(known) and true or false
-	Trace(self, "merged %d of %d rows, %d rejected: %s", #known, #rows, skipped, changed and "changed" or "nothing new")
+	Trace(self, "merged rows=%d of=%d rejected=%d changed=%s", #known, #rows, skipped, tostring(changed and true or false))
 	return changed, skipped
 end
 
@@ -1639,10 +1651,10 @@ end
 
 function Share:Send(text, channel, target)
 	if channel == "WHISPER" and self.unreachable[target] then
-		Trace(self, "not sent to %s: the game could not reach them", target)
+		Trace(self, "not sent target=%s reason=unreachable", LogValue(target))
 		return
 	end
-	Trace(self, "sent %s to %s%s", text, channel, target and (" " .. target) or "")
+	Trace(self, "sent message=%s channel=%s%s", LogValue(text), channel, target and (" target=" .. LogValue(target)) or "")
 	if channel == "WHISPER" then
 		self.comm:SendCommMessage(self.prefix, text, channel, target, "BULK", function(name) self:WhisperSent(name) end, target)
 	else
@@ -1652,7 +1664,7 @@ end
 
 function Share:SendData(text, target)
 	if self.unreachable[target] then
-		Trace(self, "not sent to %s: the game could not reach them", target)
+		Trace(self, "not sent target=%s reason=unreachable", LogValue(target))
 		return
 	end
 	self.comm:SendCommMessage(self.dataPrefix, text, "WHISPER", target, "BULK", function(name) self:WhisperSent(name) end, target)
@@ -1672,7 +1684,7 @@ function Share:OnSystem(message)
 	if sent then
 		self.whispered[name] = nil
 		self.unreachable[name] = true
-		Trace(self, "the game says %s is not playing: not whispered again until offline", name)
+		Trace(self, "whisper paused name=%s reason=not_playing", LogValue(name))
 	end
 end
 
@@ -1694,7 +1706,7 @@ function Share:Broadcast(kind)
 			sent = sent + 1
 		end
 	end
-	Trace(self, "%s sent to %d channels or friends", message, sent)
+	Trace(self, "offer message=%s targets=%d", LogValue(message), sent)
 end
 
 function Share:ScheduleOffer()
@@ -1744,17 +1756,17 @@ function Share:FinishRequest()
 end
 
 function Share:Ask(peer)
-	Trace(self, "asked %s for entries %d to %d (%d tries left)", peer.sender, peer.after, peer.tip, peer.retries)
+	Trace(self, "asked name=%s from=%d to=%d tries_left=%d", LogValue(peer.sender), peer.after, peer.tip, peer.retries)
 	if peer.timer then peer.timer:Cancel() end
 	self:SendData(("%s %s %d"):format(KIND.GET, peer.id, peer.after), peer.sender)
 	peer.timer = C_Timer.NewTimer(REQUEST_TIMEOUT, function()
 		if self.active ~= peer then return end
-		Trace(self, "no answer from %s", peer.sender)
+		Trace(self, "no answer name=%s", LogValue(peer.sender))
 		if peer.retries > 0 and self:Ready() and self:IsTrusted(peer.sender) then
 			peer.retries = peer.retries - 1
 			self:Ask(peer)
 		else
-			Trace(self, "gave up on %s", peer.sender)
+			Trace(self, "gave up name=%s", LogValue(peer.sender))
 			self:FinishRequest()
 		end
 	end)
@@ -1771,7 +1783,7 @@ function Share:NextPeer()
 			self:Ask(peer)
 			return
 		end
-		Trace(self, "dropped the wait for %s: nothing to ask or no longer trusted", sender)
+		Trace(self, "wait dropped name=%s reason=nothing_to_ask_or_untrusted", LogValue(sender))
 	end
 end
 
@@ -1781,7 +1793,7 @@ function Share:QueuePeer(sender, id, tip)
 	local received = self.exchange.received
 	-- Tip below what we saved: that collection was reset, restart from zero.
 	if received[id] and tip < received[id] then
-		Trace(self, "collection %s from %s restarted (tip %d, we had %d)", id, sender, tip, received[id])
+		Trace(self, "collection restarted id=%s name=%s tip=%d had=%d", id, LogValue(sender), tip, received[id])
 		received[id] = 0
 	end
 	if (received[id] or 0) >= tip then return end
@@ -1800,7 +1812,7 @@ end
 function Share:ScheduleChannelReply(channel)
 	if self.replyTimers[channel] then
 		self.replyTimers[channel]:Cancel()
-		Trace(self, "another probe on %s: answer delayed again", channel)
+		Trace(self, "probe again channel=%s answer=delayed", channel)
 	end
 	self.replyTimers[channel] = C_Timer.NewTimer(REPLY_DELAY, function()
 		self.replyTimers[channel] = nil
@@ -1814,20 +1826,20 @@ function Share:OnProbe(message, channel, sender)
 	if not self:Ready() or issecretvalue(sender) or issecretvalue(message) then return end
 	if channel == "WHISPER" then
 		if not self:IsTrusted(sender) then
-			Trace(self, "probe from %s ignored: not a friend, guild member or group member", sender)
+			Trace(self, "probe ignored name=%s reason=not_friend_guild_or_group", LogValue(sender))
 			return
 		end
 	elseif not DISCOVERY_CHANNELS[channel] then
-		Trace(self, "probe from %s ignored: not on a channel we use (%s)", sender, tostring(channel))
+		Trace(self, "probe ignored name=%s reason=channel channel=%s", LogValue(sender), tostring(channel))
 		return
 	end
 	local kind, id, revision, rest = ParseHeader(message)
 	if not kind or rest ~= "" then
-		Trace(self, "probe from %s ignored: unreadable header", sender)
+		Trace(self, "probe ignored name=%s reason=bad_header", LogValue(sender))
 		return
 	end
 	if id == self.exchange.id then return end
-	Trace(self, "heard %s from %s on %s: collection %s at %d", kind, sender, channel, id, revision)
+	Trace(self, "heard kind=%s name=%s channel=%s collection=%s revision=%d", kind, LogValue(sender), channel, id, revision)
 	if kind == KIND.HELLO then
 		if channel == "WHISPER" then
 			-- Friends outside guild and group: answer the prober directly.
@@ -1836,7 +1848,7 @@ function Share:OnProbe(message, channel, sender)
 				self.replied[sender] = now
 				self:Send(self:Offer(KIND.ANSWER), "WHISPER", sender)
 			else
-				Trace(self, "no second answer to %s within %d seconds", sender, REPLY_DELAY)
+				Trace(self, "no second answer name=%s within_s=%d", LogValue(sender), REPLY_DELAY)
 			end
 		else
 			self:ScheduleChannelReply(channel)
@@ -1844,13 +1856,13 @@ function Share:OnProbe(message, channel, sender)
 	elseif kind == KIND.ANSWER then
 		self.replied[sender] = GetTime()
 	elseif kind ~= KIND.OFFER then
-		Trace(self, "probe from %s ignored: unknown kind %s", sender, kind)
+		Trace(self, "probe ignored name=%s reason=unknown_kind kind=%s", LogValue(sender), LogValue(kind))
 		return
 	end
 	if self.spec.receiving() then
 		self:QueuePeer(sender, id, revision)
 	else
-		Trace(self, "not taking entries from %s: receiving is off", sender)
+		Trace(self, "entries refused name=%s reason=receiving_off", LogValue(sender))
 	end
 end
 
@@ -1863,42 +1875,42 @@ end
 
 function Share:HandleData(message, channel, sender)
 	if channel ~= "WHISPER" then
-		Trace(self, "data from %s ignored: not a whisper (%s)", sender, tostring(channel))
+		Trace(self, "data ignored name=%s reason=not_whisper channel=%s", LogValue(sender), tostring(channel))
 		return
 	end
 	if not self:IsTrusted(sender) then
-		Trace(self, "data from %s ignored: not a friend, guild member or group member", sender)
+		Trace(self, "data ignored name=%s reason=not_friend_guild_or_group", LogValue(sender))
 		return
 	end
 	local kind, id, after, rest = ParseHeader(message)
 	local exchange = self.exchange
 	if kind == KIND.GET then
 		if not self.spec.sending() or rest ~= "" or id ~= exchange.id or after >= exchange.revision then
-			Trace(self, "request from %s ignored: sending off, malformed, another collection or nothing after %d", sender, after or -1)
+			Trace(self, "request ignored name=%s after=%d reason=off_malformed_or_other", LogValue(sender), after or -1)
 			return
 		end
 		local reply = self:Reply(after)
-		Trace(self, "%s asked for entries after %d: %s", sender, after, reply and ("sent " .. #reply .. " bytes") or "nothing to send")
+		Trace(self, "request name=%s after=%d reply_bytes=%d", LogValue(sender), after, reply and #reply or 0)
 		if reply then self:SendData(reply, sender) end
 	elseif kind == KIND.DATA and self.spec.receiving() then
 		-- Accept only the reply to our own request.
 		local peer = self.active
 		if not peer or peer.sender ~= sender or peer.id ~= id or peer.after ~= after then
-			Trace(self, "data from %s ignored: not the reply to our request", sender)
+			Trace(self, "data ignored name=%s reason=not_our_request", LogValue(sender))
 			return
 		end
 		local through, encoded = rest:match("^ (%d+) (%S+)$")
 		through = tonumber(through)
 		if not through or through <= after or through >= MAX_WIRE_NUMBER then
-			Trace(self, "data from %s ignored: unreadable header", sender)
+			Trace(self, "data ignored name=%s reason=bad_header", LogValue(sender))
 			return
 		end
 		local ok, rows = pcall(Decode, encoded)
 		local changed, skipped
 		if ok and rows then changed, skipped = self:Merge(rows) end
-		Trace(self, "received %d bytes from %s, entries %d to %d: %s", #encoded, sender, after, through,
-			not (ok and rows) and "could not be read" or changed == nil and "rejected, nothing written"
-			or ("%d rows, %d skipped, %s"):format(#rows, skipped, changed and "merged" or "nothing new"))
+		Trace(self, "received bytes=%d name=%s from=%d to=%d %s", #encoded, LogValue(sender), after, through,
+			not (ok and rows) and "result=unreadable" or changed == nil and "result=rejected"
+			or ("result=%s rows=%d skipped=%d"):format(changed and "merged" or "nothing_new", #rows, skipped))
 		if changed == nil then
 			-- Asked for again it would fail the same way, so the cursor moves past it.
 			exchange.received[id] = through
@@ -1916,7 +1928,7 @@ function Share:HandleData(message, channel, sender)
 			self:FinishRequest()
 		end
 	else
-		Trace(self, "data from %s ignored: kind %s while receiving is %s", sender, tostring(kind), self.spec.receiving() and "on" or "off")
+		Trace(self, "data ignored name=%s kind=%s receiving=%s", LogValue(sender), tostring(kind), tostring(self.spec.receiving() and true or false))
 	end
 end
 
@@ -2050,7 +2062,7 @@ end
 function Share:Connect(value)
 	if not self.inWorld or (self.enabled or false) == value then return end
 	self.enabled = value
-	Trace(self, "%s on prefixes %s and %s", value and "connected" or "disconnected", self.prefix, self.dataPrefix)
+	Trace(self, "%s prefix=%s data_prefix=%s", value and "connected" or "disconnected", self.prefix, self.dataPrefix)
 	lib:UpdateShareEvents()
 	if value then
 		if not self.comm then

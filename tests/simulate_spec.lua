@@ -1076,7 +1076,7 @@ describe("simulation", function()
 		end
 		local function Builds()
 			local builds = 0
-			for _, line in ipairs(traces) do if line:find("UI panel shown", 1, true) then builds = builds + 1 end end
+			for _, line in ipairs(traces) do if line:find("list shown ", 1, true) then builds = builds + 1 end end
 			return builds
 		end
 		local realCreateFrame
@@ -1201,8 +1201,8 @@ describe("simulation", function()
 			init()
 			Flush()
 			local text = table.concat(traces, "\n")
-			assert(text:find("POOL target", 1, true), "the target is worked out from the finds")
-			assert(text:find("POOL ready", 1, true), "the frames are made before the list needs them")
+			assert(text:find("pool target", 1, true), "the target is worked out from the finds")
+			assert(text:find("pool ready", 1, true), "the frames are made before the list needs them")
 		end)
 		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the owner's window froze for 6 s.
 		it("several Init calls in one frame build the list once", function()
@@ -1230,12 +1230,12 @@ describe("simulation", function()
 		end
 		local function Waited(reason)
 			local text = table.concat(traces, "\n")
-			local _, waits = text:gsub("POOL waits: " .. reason, "")
-			return waits == 1 and not text:find("POOL rows made", 1, true)
+			local _, waits = text:gsub("pool waits reason=" .. reason, "")
+			return waits == 1 and not text:find("pool slice", 1, true)
 		end
 		local function Resumed()
 			local text = table.concat(traces, "\n")
-			return text:find("POOL resumes", 1, true) ~= nil and text:find("POOL ready", 1, true) ~= nil
+			return text:find("pool resumes", 1, true) ~= nil and text:find("pool ready", 1, true) ~= nil
 		end
 		-- Fails if the pool makes frames while a linked or guild profession is shown, or never makes them after.
 		it("the pool waits while a linked profession is shown, then resumes", function()
@@ -1243,7 +1243,7 @@ describe("simulation", function()
 			C_TradeSkillUI.IsTradeSkillLinked = function() return true end
 			MoreFinds()
 			RunFrames(40)
-			local waited = Waited("a linked or guild profession is shown")
+			local waited = Waited("linked_or_guild")
 			C_TradeSkillUI.IsTradeSkillLinked = function() return false end
 			Flush()
 			assert(waited and Resumed(), "the pool waits while a linked profession is shown, then resumes")
@@ -1257,7 +1257,7 @@ describe("simulation", function()
 			end
 			MoreFinds()
 			RunFrames(40)
-			local waited = Waited("the professions window is loading")
+			local waited = Waited("window_loading")
 			clock = clock + 2
 			Flush()
 			assert(waited and Resumed(), "the pool waits a moment after the professions window opens")
@@ -1268,7 +1268,7 @@ describe("simulation", function()
 			pns.shownStepAt = clock
 			MoreFinds()
 			RunFrames(40)
-			local waited = Waited("a shown profession is being read")
+			local waited = Waited("shown_profession_reading")
 			clock = clock + 2
 			Flush()
 			assert(waited and Resumed(), "the pool waits while a shown profession is being read")
