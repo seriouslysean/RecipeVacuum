@@ -74,6 +74,25 @@ describe("upgrade of an old save", function()
 		assert(linksQueued, "old item to recipe links are queued for relinking by ID")
 	end)
 
+	-- Fails if schema 5 keeps an NPC that no saved source names.
+	it("an NPC no source names is dropped", function()
+		local named, strays = {}, 0
+		for _, layer in ipairs({ db.found, db.shared }) do
+			for _, bucket in ipairs({ layer.recipes, layer.items }) do
+				for _, list in pairs(bucket) do for _, o in ipairs(list) do
+					if o.npc then named[o.npc] = true end
+					if o.finisher then named[o.finisher] = true end
+				end end
+			end
+		end
+		for _, byCap in pairs(db.ranks) do for _, sources in pairs(byCap) do
+			for npcID in pairs(sources.npcs) do named[npcID] = true end
+			for _, giver in pairs(sources.quests) do named[giver] = true end
+		end end
+		for id in pairs(db.npcs) do if not named[id] then strays = strays + 1 end end
+		assert(strays == 0, "an NPC no source names is dropped")
+	end)
+
 	-- Every self-found observation names a known NPC and has its own revision, up to the counter.
 	local count, sound = 0, true
 	it("observations, each with an NPC and a revision", function()

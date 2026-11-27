@@ -141,9 +141,10 @@ describe("simulation", function()
 	it("trainerNames dropped", function()
 		assert(db.found.trainerNames == nil and db.shared.trainerNames == nil, "trainerNames dropped")
 	end)
-	-- Fails if the upgrade keeps NPCs no source names, or drops one a source does name.
-	it("only NPCs a source names are kept, and none of those is lost", function()
-		local named, strays, missing = {}, 0, 0
+	-- Fails if a source's NPC is missing after boot. NPCs no source names are not checked here: a save from after schema 5 holds some
+	-- legitimately (a real schema-12 save has 15), and the schema 5 drop is checked on the old save (tests/upgrade_spec.lua).
+	it("every NPC a source names is kept", function()
+		local named, missing = {}, 0
 		for _, layer in ipairs({ db.found, db.shared }) do
 			for _, bucket in ipairs({ layer.recipes, layer.items }) do
 				for _, list in pairs(bucket) do for _, o in ipairs(list) do
@@ -157,10 +158,9 @@ describe("simulation", function()
 			for npcID in pairs(sources.npcs) do named[npcID] = true end
 			for _, giver in pairs(sources.quests) do named[giver] = true end
 		end end
-		for id in pairs(db.npcs) do if not named[id] then strays = strays + 1 end end
 		for id in pairs(named) do if not db.npcs[id] then missing = missing + 1 end end
 		local keptNPCs = 0 for _ in pairs(db.npcs) do keptNPCs = keptNPCs + 1 end
-		assert(strays == 0 and missing == 0 and keptNPCs > 0, "only NPCs a source names are kept, and none of those is lost")
+		assert(missing == 0 and keptNPCs > 0, "every NPC a source names is kept")
 	end)
 	it("found kept", function()
 		local r, i = count(db.found)
