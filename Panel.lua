@@ -42,15 +42,19 @@ local ROW_PAD = 4
 local HEADING_TEXT_LEFT = 8
 local COUNT_GAP = 4
 -- Blizzard_ProfessionsRecipeList.xml:140-145,167-172: a row's SkillUps slot (26 x 15, 9 left of the row) and the
--- label's 4 px gap after it. The skill number takes that slot, right-aligned so the numbers line up.
+-- label's 4 px gap after it. The slot holds the skill-up arrow or stays empty, so names line up as in Blizzard's list.
 -- Blizzard_ProfessionsRecipeList.lua, SetRecipeInfo: the arrow's atlas by the skill-up's difficulty.
 local SKILL_UP_ATLAS = {
 	[Enum.TradeskillRelativeDifficulty.Optimal] = "Professions-Icon-Skill-High",
 	[Enum.TradeskillRelativeDifficulty.Medium] = "Professions-Icon-Skill-Medium",
 	[Enum.TradeskillRelativeDifficulty.Easy] = "Professions-Icon-Skill-Low",
 }
+-- For the trace only: which difficulty the client gave.
+local DIFFICULTY_NAMES = {
+	[Enum.TradeskillRelativeDifficulty.Optimal] = "Optimal", [Enum.TradeskillRelativeDifficulty.Medium] = "Medium",
+	[Enum.TradeskillRelativeDifficulty.Easy] = "Easy", [Enum.TradeskillRelativeDifficulty.Trivial] = "Trivial",
+}
 local SKILL_WIDTH = 26
-local SKILL_HEIGHT = 15
 local SKILL_X = -9
 local LABEL_GAP = 4
 -- A row's label room, less the marks and the count: the row's width (the list's, less its indent and pad) after the label's left edge
@@ -345,14 +349,10 @@ end
 local function CreateRow()
 	local row = CreateFrame("Button", nil, child or pool.holder, ROW_TEMPLATE)
 	row.SkillUps:Hide()
-
-	-- The skill the list is ordered by comes first: it is what the list is about.
-	row.Skill = row:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
-	row.Skill:SetPoint("LEFT", SKILL_X, 0)
-	row.Skill:SetSize(SKILL_WIDTH, SKILL_HEIGHT)
-	row.Skill:SetJustifyH("RIGHT")
+	row.SkillUps:ClearAllPoints()
+	row.SkillUps:SetPoint("LEFT", row, "LEFT", SKILL_X, 0)
 	row.Label:ClearAllPoints()
-	row.Label:SetPoint("LEFT", row.Skill, "RIGHT", LABEL_GAP, 0)
+	row.Label:SetPoint("LEFT", row.SkillUps, "RIGHT", LABEL_GAP, 0)
 	row.Label:SetWordWrap(false)
 
 	-- Marks stack from the right edge, in display order from the left.
@@ -458,6 +458,22 @@ local function NameColor(recipeInfo)
 	return HIGHLIGHT_FONT_COLOR
 end
 
+-- The arrow for a row and why: the first branch that decides. The dim name already says the recipe is above the skill or locked.
+local function SkillUpArrow(recipeInfo, dim)
+	local skill, cap = professionInfo and professionInfo.skillLevel or 0, professionInfo and professionInfo.maxSkillLevel or 0
+	if dim then
+		local required = recipeInfo.requiredSkill or 0
+		return nil, required > skill and ("none: above skill %d > %d"):format(required, skill) or "none: locked or disabled"
+	elseif not recipeInfo.canSkillUp then
+		return nil, cap > 0 and skill >= cap and ("none: cap %d/%d"):format(skill, cap) or ("none: client canSkillUp false at %d/%d"):format(skill, cap)
+	end
+	local arrow = SKILL_UP_ATLAS[recipeInfo.relativeDifficulty]
+	if not arrow then
+		return nil, ("none: %s at skill %d"):format(DIFFICULTY_NAMES[recipeInfo.relativeDifficulty] or tostring(recipeInfo.relativeDifficulty), skill)
+	end
+	return arrow, "arrow " .. DIFFICULTY_NAMES[recipeInfo.relativeDifficulty]
+end
+
 -- How many the bags and bank could make, as Blizzard's rows show it in brackets (Blizzard_ProfessionsRecipeList.lua, SetCraftableCount).
 -- The client counts only learned recipes, so an unlearned one is counted from its basic reagents. A reagent list never changes, so it is
 -- read once per recipe; the count held of each reagent is read once until the bags or bank change (the events below clear it).
@@ -514,27 +530,24 @@ local function ShowRow(row, recipeInfo)
 		row.Count:SetShown(count > 0)
 		if count > 0 then row.Count:SetFormattedText(" [%d] ", count) end
 	end
-	-- Blizzard's skill-up arrow for a recipe the character can learn now and would skill up on (Blizzard_ProfessionsRecipeList.lua,
-	-- SetRecipeInfo: Optimal high, Medium medium, Easy low, Trivial none, and none once the skill is at its rank's cap, where the client
-	-- reports canSkillUp false). Until then the dim required-skill number stands, so the arrow adds to the list and never replaces it with less.
-	local arrow
-	if row.color ~= DISABLED_FONT_COLOR then
-		local skill, cap = professionInfo and professionInfo.skillLevel or 0, professionInfo and professionInfo.maxSkillLevel or 0
-		if not (cap > 0 and skill >= cap) then
-			arrow = SKILL_UP_ATLAS[ns.SkillUpDifficulty(recipeInfo.recipeID, skill)]
-		end
-	end
+	-- Blizzard's skill-up arrow (Blizzard_ProfessionsRecipeList.lua, SetRecipeInfo) from the client's own answer for this recipe at this
+	-- skill, which for unlearned recipes follows the thresholds and the rank cap (docs/client-notes.md, "Panel"). The row never shows a number.
+	local arrow, why = SkillUpArrow(recipeInfo, row.color == DISABLED_FONT_COLOR)
 	if row.shownArrow ~= (arrow or false) then
 		row.shownArrow = arrow or false
 		row.SkillUps:SetShown(arrow ~= nil)
 		if arrow then
+			row.SkillUps:ClearAllPoints()
+			-- Blizzard lifts the Optimal arrow one pixel.
+			row.SkillUps:SetPoint("LEFT", row, "LEFT", SKILL_X, recipeInfo.relativeDifficulty == Enum.TradeskillRelativeDifficulty.Optimal and 1 or 0)
 			row.SkillUps.Icon:SetAtlas(arrow, TextureKitConstants.UseAtlasSize)
 			row.SkillUps.Text:Hide()
 		end
-		ns.toolkit:Trace(ns.module, "UI row %d skill-up %s", recipeInfo.recipeID, arrow or "none, the number shows")
 	end
-	row.Skill:SetText(arrow and "" or ns.SkillOf(recipeInfo))
-	row.Skill:SetTextColor(row.color:GetRGB())
+	if row.shownWhy ~= why then
+		row.shownWhy = why
+		ns.toolkit:Trace(ns.module, "UI row %d skill-up %s", recipeInfo.recipeID, why)
+	end
 	Lap("skill")
 	local markCount = ns.GetMarks(recipeInfo, row.markNames)
 	row.markCount = markCount
@@ -1282,7 +1295,14 @@ local function Update()
 	requested = false
 	-- Runs while the panel is hidden too: a find, a learned recipe or a search can bring it back.
 	if not (panel and wanted and professionInfo) then return end
+	--@debug@
+	local stage = debugprofilestop()
+	--@end-debug@
 	local list, complete, total = ns.GetListedRecipes(professionInfo)
+	--@debug@
+	ns.PerfMs("panel update list", debugprofilestop() - stage)
+	stage = debugprofilestop()
+	--@end-debug@
 	-- Not ready: the client's list update comes back through the events below. Until then the last profession's rows and count
 	-- must not stay on screen to be chosen.
 	if not list then
@@ -1318,6 +1338,10 @@ local function Update()
 	UpdateDiscovery(#list, total)
 	ReconcileSelection(found)
 	local newItems, signature, rowCount, headingCount, height = LayOut(found, search)
+	--@debug@
+	ns.PerfMs("panel update layout", debugprofilestop() - stage)
+	stage = debugprofilestop()
+	--@end-debug@
 	-- A recipe is always chosen while the list has one, as the window opens on one: the last one chosen in this profession,
 	-- else the first in the list. The details then never open or close under the cursor.
 	if not selected then
@@ -1339,6 +1363,9 @@ local function Update()
 		return
 	end
 	FillDetail()
+	--@debug@
+	ns.PerfMs("panel update details", debugprofilestop() - stage)
+	--@end-debug@
 	local built = nextItem or 1
 	items = newItems
 	if signature == shownSignature then
@@ -1418,10 +1445,11 @@ function pool.ids()
 	return ids
 end
 
--- The first rank band of a recipe's skill, as the list groups it; a recipe the seed gives no skill for is counted in the first.
+-- The first rank band of a recipe's required skill, as the list groups it; a recipe the seed gives none for is counted in the first (the
+-- client's trivial level, which places such a recipe, is not readable before login finishes).
 function pool.band(recipeID)
 	local seed = ns.seed
-	local skill = seed and (seed.learnSkill and seed.learnSkill[recipeID] or seed.trivialHigh and seed.trivialHigh[recipeID])
+	local skill = seed and seed.learnSkill and seed.learnSkill[recipeID]
 	return ns.BandOf(skill or 1)
 end
 
@@ -1775,6 +1803,11 @@ local function CreatePanel()
 end
 
 -- A find, or the data level changing, can change what the panel lists (called from ns.SourcesChanged).
+-- The sliced read of the unlearned recipes ended (Unlearned.lua): the held-back panel draws.
+function ns.RequestUpdate()
+	Request()
+end
+
 function ns.RequestPanel()
 	Request()
 	pool.rescan()

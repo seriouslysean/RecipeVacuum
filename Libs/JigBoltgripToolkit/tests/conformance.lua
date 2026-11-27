@@ -93,6 +93,13 @@ for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInit
 	local inDebug = name == "Settings%.CreateDropdown" or name == "Settings%.OpenToCategory"
 	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")", inDebug = inDebug })
 end
+-- The rest of docs/options.md, "Banned controls": each is measured on the Steam Deck or has no module that needs it.
+for _, name in ipairs({ "AddShownPredicate", "Settings%.RegisterInitializer", "Settings%.RegisterCanvasLayoutCategory",
+	"Settings%.RegisterCanvasLayoutSubcategory", "CreateSettingsCheckboxSliderInitializer",
+	"CreateSettingsCheckboxDropdownInitializer", "CreateSettingsExpandableSectionInitializer",
+	"CreateSettingsButtonInitializer", "CreateKeybindingEntryInitializer", "SetParentInitializer" }) do
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "a banned control (docs/options.md, \"Banned controls\")", inDebug = true })
+end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps
 -- them on the namespace, and the locale files take the addon's name from the TOC.
 table.insert(FORBIDDEN, { "[GN][ew][tw]Locale%(%s*\"", "a locale table is named by the addon's name from the TOC, not a string" })
@@ -335,8 +342,10 @@ function RULES.plain(text)
 		if words > SENTENCE_WORDS then return ("has a sentence of %d words"):format(words) end
 	end
 end
--- A choice's description in the shape every module's source choices share, so they read alike across modules.
-local CHOICE_SHAPES = { "^Tracks only .+ you see for yourself%.$", "^Also tracks what your party, guild and friends find%.$",
+-- A choice's description in the shape every module's source choices share, so they read alike across modules. The Self
+-- Found verb may be the one the module's finds really come from ("the chests you open yourself").
+local CHOICE_SHAPES = { "^Tracks only .+ you see for yourself%.$", "^Tracks only .+ you %l+ yourself%.$",
+	"^Also tracks what your party, guild and friends find%.$",
 	"^Also tracks .+%.$" }
 function RULES.choice(text)
 	local body = text:gsub("^%a+ range%. ", "", 1)
@@ -374,7 +383,7 @@ local function Text(what, text, rules)
 	check(("%s %q"):format(what, text), #problems == 0, table.concat(problems, "; "))
 end
 
-local ROW_KINDS = { checkbox = true, choice = true, button = true, keybinding = true }
+local ROW_KINDS = { checkbox = true, choice = true, keybinding = true }
 local pageCount, commandCount = 0, 0
 for _, sections in pairs(pages) do
 	pageCount = pageCount + 1
@@ -382,7 +391,7 @@ for _, sections in pairs(pages) do
 		Text("heading", section.heading, { "titleCase", "gameTerms" })
 		for _, row in ipairs(section.rows) do
 			check(("row kind %q"):format(tostring(row.kind)), ROW_KINDS[row.kind] == true,
-				"only checkbox, choice, button and keybinding rows: Blizzard's standard controls")
+				"only checkbox, choice and keybinding rows: BuildOptions builds nothing else, and the kit adds the buttons (docs/options.md, \"Allowed controls\")")
 			for _, choice in ipairs(row.kind == "choice" and row.values or {}) do
 				if section.place == "sources" then
 					Text("choice " .. tostring(choice.label), choice.description, { "gameTerms", "plain", "choice" })
@@ -406,6 +415,139 @@ for _, entries in pairs(commandTables) do
 			Text("note under command " .. tostring(entry.action), entry.note, { "gameTerms", "plain", "note" })
 		end
 	end
+end
+
+-- docs/options.md, "Checks": one line per rule, naming the rule and each page row that breaks it.
+local function Str(value) return type(value) == "string" and value or nil end
+local function Words(text) return select(2, text:gsub("%S+", "")) end
+local function Flag(list, row, why) list[#list + 1] = ("%q %s"):format(row, why) end
+local OPENINGS = { "Check this", "If enabled", "When checked", "Enable this option" }
+-- Each test gets (row, section, index of the row, list of problems, row name) and adds to the list.
+local OPTION_RULES = {
+	{ "Labels 2: a label has five words or fewer", function(row, _, _, found, name)
+		local label = Str(row.label)
+		if label and Words(label) > 5 then Flag(found, name, "has " .. Words(label) .. " words") end
+	end },
+	{ "Labels 4: a label has no colon and no end punctuation", function(row, _, _, found, name)
+		local label = Str(row.label)
+		if label and (label:find("[:;]") or label:find("[%.!?,]$")) then Flag(found, name, "has a colon or end punctuation") end
+	end },
+	{ "Labels 8: a label differs from its heading", function(row, section, _, found, name)
+		if Str(row.label) and row.label == Str(section.heading) then Flag(found, name, "is its heading's name") end
+	end },
+	{ "Headings 1: a heading has three words or fewer", function(_, section, index, found)
+		local heading = Str(section.heading)
+		if index == 1 and heading and Words(heading) > 3 then Flag(found, heading, "has " .. Words(heading) .. " words") end
+	end },
+	{ "Labels 10: a stop name has four words or fewer, in Title Case", function(row, _, _, found, name)
+		for _, stop in ipairs(row.kind == "choice" and row.values or {}) do
+			local label = Str(stop.label)
+			if label and (Words(label) > 4 or RULES.titleCase(label)) then Flag(found, name, ("stop %q is over 4 words or not Title Case"):format(label)) end
+		end
+	end },
+	{ "Allowed controls: a choice has 2 to 5 stops", function(row, _, _, found, name)
+		if row.kind == "choice" and (#row.values < 2 or #row.values > 5) then Flag(found, name, "has " .. #row.values .. " stops") end
+	end },
+	{ "Tooltips 10: on one choice every stop has a description or none does", function(row, _, _, found, name)
+		local described = 0
+		for _, stop in ipairs(row.kind == "choice" and row.values or {}) do
+			if stop.description then described = described + 1 end
+		end
+		if described > 0 and described < #row.values then Flag(found, name, "describes only some stops") end
+	end },
+	{ "Tooltips 1: a checkbox has a tooltip; a choice has a tooltip or a description on every stop", function(row, _, _, found, name)
+		if row.kind == "checkbox" and not row.tooltip then Flag(found, name, "has no tooltip") end
+		if row.kind == "choice" and not row.tooltip then
+			for _, stop in ipairs(row.values) do
+				if not stop.description then Flag(found, name, "has no tooltip and a stop without a description") return end
+			end
+		end
+	end },
+	{ "Tooltips 3, 4: a tooltip is 120 characters or fewer, starts with a capital and ends with a period", function(row, _, _, found, name)
+		local tooltip = Str(row.tooltip)
+		if tooltip and (#tooltip > 120 or not tooltip:find("^%u") or not tooltip:find("%.$")) then
+			Flag(found, name, "is over 120 characters, or does not start with a capital and end with a period")
+		end
+	end },
+	{ "Tooltips 6: a choice tooltip starts with \"Choose\"", function(row, _, _, found, name)
+		local tooltip = Str(row.tooltip)
+		if row.kind == "choice" and tooltip and not tooltip:find("^Choose%f[%A]") then Flag(found, name, "does not start with \"Choose\"") end
+	end },
+	{ "Tooltips 7: a tooltip does not open with \"Check this\", \"If enabled\", \"When checked\" or \"Enable this option\"", function(row, _, _, found, name)
+		for _, opening in ipairs(OPENINGS) do
+			if Str(row.tooltip) and row.tooltip:find("^" .. opening) then Flag(found, name, "opens with " .. opening) end
+		end
+	end },
+	{ "Tooltips 9: a tooltip and a note never state the default", function(row, _, _, found, name)
+		for _, text in ipairs({ Str(row.tooltip) or "", Str(row.note) or "" }) do
+			if text:lower():find("%f[%a]default") then Flag(found, name, "says \"default\"") end
+		end
+	end },
+	{ "Tooltips: a tooltip does not start with its own label", function(row, _, _, found, name)
+		local label, tooltip = Str(row.label), Str(row.tooltip)
+		if label and tooltip and tooltip:lower():find("^" .. label:lower():gsub("%p", "%%%0") .. "%f[%A]") then
+			Flag(found, name, "starts with its label")
+		end
+	end },
+	{ "Labels 6: no text says tick, ticked or untick", function(row, section, index, found, name)
+		local texts = { row.label, row.tooltip, row.note, index == 1 and section.heading or nil }
+		for _, stop in ipairs(row.kind == "choice" and row.values or {}) do
+			texts[#texts + 1] = stop.label
+			texts[#texts + 1] = stop.description
+		end
+		for _, text in pairs(texts) do
+			if Str(text) and text:lower():find("%f[%a]un?tick") then Flag(found, name, "says \"tick\"; a box is checked") end
+		end
+	end },
+	{ "Notes 3: a note is one sentence", function(row, _, _, found, name)
+		if Str(row.note) and RULES.oneSentence(row.note) then Flag(found, name, "has a note of more than one sentence") end
+	end },
+	{ "Notes 5: a keybinding row has no note or tooltip", function(row, _, _, found, name)
+		if row.kind == "keybinding" and (row.note or row.tooltip) then Flag(found, name, "has a note or tooltip the row never shows") end
+	end },
+	{ "Dependent settings 2: a row with under follows its parent or a sibling in the same section", function(row, section, _, found, name)
+		if not row.under then return end
+		local parent
+		for position, other in ipairs(section.rows) do
+			if other.key == row.under then parent = position end
+			if other == row then
+				if not parent then Flag(found, name, "has its parent in another section or below it") return end
+				for between = parent + 1, position - 1 do
+					if section.rows[between].under ~= row.under then Flag(found, name, "is separated from its parent") return end
+				end
+			end
+		end
+	end },
+	{ "Defaults 1: a checkbox and a choice have a default", function(row, _, _, found, name)
+		if (row.kind == "checkbox" or row.kind == "choice") and row.default == nil then Flag(found, name, "has no default") end
+	end },
+}
+for _, rule in ipairs(OPTION_RULES) do
+	local found = {}
+	for addon, sections in pairs(pages) do
+		for _, section in ipairs(sections) do
+			for index, row in ipairs(section.rows) do
+				local before = #found
+				rule[2](row, section, index, found, tostring(Str(row.label) or row.key or row.binding))
+				for at = before + 1, #found do found[at] = addon .. " " .. found[at] end
+			end
+		end
+	end
+	check(rule[1], #found == 0, table.concat(found, "; "))
+end
+do
+	local found = {}
+	for addon, sections in pairs(pages) do
+		local seen = {}
+		for _, section in ipairs(sections) do
+			for _, row in ipairs(section.rows) do
+				local label = Str(row.label)
+				if label and seen[label] then Flag(found, addon .. " " .. label, "is used twice on a page") end
+				if label then seen[label] = true end
+			end
+		end
+	end
+	check("Labels 8: a label is used once on a page", #found == 0, table.concat(found, "; "))
 end
 
 -- Nothing to check is a failure, not a pass: the page and commands must have been reached.

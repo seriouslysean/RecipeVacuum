@@ -898,7 +898,7 @@ describe("simulation", function()
 
 	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
 	describe("panel", function()
-		local pns, queue, buttons, traces, init, Fake, inLine
+		local pns, queue, buttons, traces, init, Fake, inLine, clientDifficulty, clientCapped
 		local made = {} -- every stand-in frame, in creation order
 		local strings = {} -- every stand-in font string
 		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
@@ -1008,10 +1008,12 @@ describe("simulation", function()
 			-- Four unlearned recipes: a known source, come across near, come across far, never seen.
 			local recipes = { [101] = "Plans: Sourced", [102] = "Plans: Near", [103] = "Plans: Far", [104] = "Plans: Unseen",
 			  [105] = "Plans: No Skill", [106] = "Plans: Later Expansion", [107] = "Plans: High" }
+			clientDifficulty, clientCapped = {}, {} -- what the client answers per recipe, set by the skill-up test
 			inLine = { [106] = 999 } -- every other recipe is in the open skill line
 			C_TradeSkillUI = { IsTradeSkillReady = function() return true end,
 			  GetAllRecipeIDs = function() return { 101, 102, 103, 104, 105, 106, 107 } end,
-			  GetRecipeInfo = function(id) return { recipeID = id, name = recipes[id], categoryID = 1, learned = false, maxTrivialLevel = id, icon = 1 } end,
+			  GetRecipeInfo = function(id) return { recipeID = id, name = recipes[id], categoryID = 1, learned = false, maxTrivialLevel = id, icon = 1,
+				  relativeDifficulty = clientDifficulty[id], canSkillUp = clientDifficulty[id] ~= nil and not clientCapped[id] } end,
 			  IsRecipeInSkillLine = function(id, line) return (inLine[id] or line) == line end,
 			  GetCategoryInfo = function() return { categoryID = 1, name = "Category", uiOrder = 1 } end,
 			  GetOnlyShowMakeableRecipes = function() return false end, GetShowUnlearned = function() return true end,
@@ -1130,38 +1132,38 @@ describe("simulation", function()
 				assert(table.concat(Bands(), ",") == table.concat(case.bands, ","), "skill " .. case.skill .. " has bands " .. table.concat(Bands(), ","))
 			end
 		end)
-		-- Fails if a learnable row shows the wrong skill-up arrow below the yellow point, at it, at the green point (the midpoint, rounded down)
-		-- or at the grey point, if a recipe with no thresholds or one at its rank's cap gets an arrow, or if a row too high for the character
-		-- loses its dim number. Blizzard's list: Optimal high, Medium medium, Easy low, Trivial none, none at the cap (canSkillUp false).
-		it("a row shows Blizzard's skill-up arrow at the character's skill", function()
+		-- Fails if a row shows a skill number, if the arrow is not the client's own answer for the recipe (Optimal high, Medium medium, Easy low,
+		-- Trivial none, none where the client says canSkillUp is false, as at a rank cap), or if a recipe above the character's skill gets one.
+		it("a row shows the client's skill-up arrow and no number", function()
 			local high, medium, low = "Professions-Icon-Skill-High", "Professions-Icon-Skill-Medium", "Professions-Icon-Skill-Low"
-			-- Recipe 101 is learned at 30 and turns yellow at 45, green at floor((45 + 60) / 2) = 52 and grey at 60; 102 has no thresholds.
-			pns.seed.trivialLow, pns.seed.trivialHigh = { [101] = 45 }, { [101] = 60 }
-			local cases = {
-				{ skill = 44, recipe = 101, arrow = high }, { skill = 45, recipe = 101, arrow = medium },
-				{ skill = 51, recipe = 101, arrow = medium }, { skill = 52, recipe = 101, arrow = low },
-				{ skill = 59, recipe = 101, arrow = low }, { skill = 60, recipe = 101 },
-				{ skill = 75, recipe = 101 }, { skill = 80, recipe = 102 }, { skill = 20, recipe = 101 },
-			}
+			local difficulty = Enum.TradeskillRelativeDifficulty
+			-- Recipe 101 is learned at 30 (the trainer's); 102 has no requirement.
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
-			local ok, err = pcall(function()
-				for _, case in ipairs(cases) do
-					pns.ClearUnlearnedCache()
-					init(case.skill)
-					Flush()
-					local row
-					for _, button in ipairs(buttons) do
-						local recipe = rawget(button, "recipe")
-						if button:IsShown() and recipe and recipe.recipeID == case.recipe then row = button end
-					end
-					assert(row, "recipe " .. case.recipe .. " has no row at skill " .. case.skill)
-					local arrow = row.SkillUps:IsShown() and row.SkillUps.Icon.atlas or nil
-					assert(arrow == case.arrow, ("recipe %d at skill %d: arrow %s, wanted %s"):format(case.recipe, case.skill, tostring(arrow), tostring(case.arrow)))
-					assert((row.Skill.text == "") == (case.arrow ~= nil), "the number stands exactly where there is no arrow")
+			local cases = {
+				{ skill = 44, recipe = 101, client = difficulty.Optimal, arrow = high },
+				{ skill = 50, recipe = 101, client = difficulty.Medium, arrow = medium },
+				{ skill = 55, recipe = 101, client = difficulty.Easy, arrow = low },
+				{ skill = 60, recipe = 101, client = difficulty.Trivial },
+				{ skill = 75, recipe = 101, client = difficulty.Optimal, capped = true },
+				{ skill = 20, recipe = 101, client = difficulty.Optimal },
+				{ skill = 80, recipe = 102, client = difficulty.Optimal, arrow = high },
+			}
+			for _, case in ipairs(cases) do
+				clientDifficulty[case.recipe], clientCapped[case.recipe] = case.client, case.capped
+				pns.ClearUnlearnedCache()
+				init(case.skill)
+				Flush()
+				local row
+				for _, button in ipairs(buttons) do
+					local recipe = rawget(button, "recipe")
+					if button:IsShown() and recipe and recipe.recipeID == case.recipe then row = button end
 				end
-			end)
-			pns.seed.trivialLow, pns.seed.trivialHigh = nil, nil
-			assert(ok, err)
+				assert(row, "recipe " .. case.recipe .. " has no row at skill " .. case.skill)
+				local arrow = row.SkillUps:IsShown() and row.SkillUps.Icon.atlas or nil
+				assert(arrow == case.arrow, ("recipe %d at skill %d: arrow %s, wanted %s"):format(case.recipe, case.skill, tostring(arrow), tostring(case.arrow)))
+				assert(rawget(row, "Skill") == nil, "a row has no skill number")
+			end
+			clientDifficulty[101], clientDifficulty[102], clientCapped[101] = nil, nil, nil
 		end)
 		-- Fails if events or Init calls with the same content rebuild the list: the owner's log showed "UI panel shown" every 2 to 30 seconds with
 		-- no input, which re-anchored the rows under the gamepad cursor. A skill rise inside a band and a refreshed cache change no content.
