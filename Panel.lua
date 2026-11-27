@@ -604,6 +604,10 @@ end
 
 local function Finish()
 	Reveal()
+	if scroll.refreshWanted then
+		scroll.refreshWanted = false
+		Request() -- an update that came during the build; its refresh gets a frame of its own
+	end
 	SyncNav() -- the rows built after the list showed
 	ns.toolkit:Trace(ns.module, "UI panel shown with %d rows under %d bands, built in %.1f ms over %d frames, worst frame %.1f ms, most items in a frame %d",
 		recipeCount, bandCount, buildMs, buildSteps, scroll.worstStepMs or 0, scroll.mostStepItems or 0)
@@ -633,7 +637,16 @@ local function BuildStep(buildGeneration)
 	local started = debugprofilestop()
 	-- A frame ends at the budget whether it made frames or filled them (a cold row reads the client's recipe and tooltip data); one item is always done.
 	local made, done = 0, 0
-	while nextItem <= #items and (done == 0 or (made < ROWS_PER_STEP and debugprofilestop() - started < BUILD_BUDGET_MS)) do
+	while nextItem <= #items do
+		if done > 0 then
+			if made >= ROWS_PER_STEP or debugprofilestop() - started >= BUILD_BUDGET_MS then break end
+			-- A new frame costs about 7.5 ms and cannot be split, so it never follows other work in a step.
+			local upcoming = items[nextItem]
+			if not (upcoming.recipe and rows[upcoming.rowIndex] or not upcoming.recipe and headings[upcoming.headingIndex]) then
+				ns.toolkit:Trace(ns.module, "UI build step ends before making a frame, after %d items in %.1f ms; the frame is the next step's first work", done, debugprofilestop() - started)
+				break
+			end
+		end
 		done = done + 1
 		local item = items[nextItem]
 		local frame
@@ -663,6 +676,8 @@ local function BuildStep(buildGeneration)
 		slots[nextItem] = frame
 		nextItem = nextItem + 1
 	end
+	-- Rows built after the reveal join the jumps now, inside the step's time, so down never ends at the last row built so far.
+	if scroll.revealed and nextItem <= #items then SyncNav() end
 	local stepMs = debugprofilestop() - started
 	buildMs = buildMs + stepMs
 	scroll.worstStepMs, scroll.mostStepItems = math.max(scroll.worstStepMs or 0, stepMs), math.max(scroll.mostStepItems or 0, done)
@@ -1292,6 +1307,14 @@ local function Update()
 		end
 		selected = last or first
 	end
+	-- The same content while a build runs: the build's next step is queued, so this frame does no refresh work of its own;
+	-- the details and the rows already built are read again once the build ends (Finish).
+	if signature == shownSignature and nextItem and nextItem <= #items then
+		items = newItems
+		scroll.refreshWanted = true
+		ns.toolkit:Trace(ns.module, "UI update during the build, same content: refresh waits for the build's end at item %d of %d", nextItem, #items)
+		return
+	end
 	FillDetail()
 	local built = nextItem or 1
 	items = newItems
@@ -1308,6 +1331,7 @@ local function Update()
 	ClearNav() -- the rows are reused for other recipes; the build's end sets them again
 	lastFocused = nil
 	nextItem, buildMs, buildSteps = 1, 0, 0
+	scroll.refreshWanted = false -- the new build shows current data
 	scroll.worstStepMs, scroll.mostStepItems = 0, 0
 	wipe(lapMs)
 	child:SetHeight(math.max(height, 1))
@@ -1545,8 +1569,9 @@ local function CreatePanel()
 	-- The name and, dim like a model number, the version; a working build has no version to show. The template's
 	-- title is one string, so the version is a color escape in it rather than a second font string.
 	local version = C_AddOns.GetAddOnMetadata(addonName, "Version")
-	-- A Deck copy's version is "<time> <commit>"; the title shows the time, the log both.
-	version = version and not version:find("@", 1, true) and version:match("^%S+") or L["dev"]
+	-- A Deck copy's version is "<short>[+]@SS <full> <UTC>"; the title shows the first word, the log all of it. Only the
+	-- packager's unfilled token, which starts with "@", is a checkout with no version.
+	version = version and not version:find("^@") and version:match("^%S+") or L["dev"]
 	panel:SetTitle(ns.module.title .. " " .. DISABLED_FONT_COLOR:WrapTextInColorCode(version))
 	-- One place for the icon: the TOC's IconTexture, which the addon list shows too.
 	panel:SetPortraitToAsset(C_AddOns.GetAddOnMetadata(addonName, "IconTexture"))

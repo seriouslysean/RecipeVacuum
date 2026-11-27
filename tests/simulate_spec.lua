@@ -858,6 +858,17 @@ describe("simulation", function()
 				C_Item.RequestLoadItemDataByID, C_Container = request, container
 				assert(asked == h.MAX_ITEM_ATTEMPTS, "asked " .. asked .. " times for an item that never answers")
 			end)
+			-- Fails if a bag item whose data was asked for at login, before the client had it, is never read again once it answers (no window open, so nothing was deferred).
+			it("an item that answers after the scan gave up is still read", function()
+				local container = C_Container
+				C_Container = { GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end, GetContainerItemID = function() return 2200 end }
+				for _ = 1, h.MAX_ITEM_ATTEMPTS + 1 do frames[#frames].script(frames[#frames], "BAG_UPDATE_DELAYED") end
+				C_Container = container
+				assert(h.db.met.recipes[7200] == nil, "nothing is known while the item has not answered")
+				h.scanned[2200] = 7200
+				frames[#frames].script(frames[#frames], "ITEM_DATA_LOAD_RESULT", 2200, true)
+				assert(h.db.met.recipes[7200] ~= nil, "the late answer counts")
+			end)
 			it("closing the bags says the line when only the bags saw the recipe", function()
 				said = {}
 				h.scanned[2106] = 7006
@@ -949,6 +960,8 @@ describe("simulation", function()
 			end
 			C_AddOns = { GetAddOnMetadata = function() return "@project-version@" end, IsAddOnLoaded = function() return true end }
 			RunNextFrame = function(fn) queue[#queue + 1] = fn end
+			-- A timer waits its turn behind the frames, as in the game; run at once, the pool's wait for a build recursed with no frame between.
+			C_Timer.After = function(_, fn) queue[#queue + 1] = fn end
 			Enum.TradeskillRelativeDifficulty = { Optimal = 0, Medium = 1, Easy = 2, Trivial = 3 }
 			Enum.UITextureSliceMode = { Stretched = 0, Tiled = 1 } -- UITextureConstantsDocumentation.lua
 			local color = { GetRGB = function() return 1, 1, 1 end }

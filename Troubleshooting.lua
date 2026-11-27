@@ -902,26 +902,57 @@ end, quiet = true })
 -- from the game instead of the seed (owner, 2026-11-26: "you shouldn't need static data"). Once per recipe, and once per profession a
 -- tally over every recipe, split by learned; logged by selecting rows, since typing on the Deck is not an option.
 local difficultySeen, difficultyTallied = {}, {}
+local TALLY_SLICE_MS = 2 -- a tally slice stays well under the 5 ms frame bar
+local function TallyStep(professionID, ids, index, tally)
+	local started = debugprofilestop()
+	while index <= #ids and debugprofilestop() - started < TALLY_SLICE_MS do
+		local id = ids[index]
+		local info = C_TradeSkillUI.GetRecipeInfo(id)
+		if not info then
+			tally.missing = tally.missing + 1
+		-- Only the open skill line's recipes: the call lists every expansion's, which the panel never shows (docs/data.md, "Show rule").
+		elseif C_TradeSkillUI.IsRecipeInSkillLine(id, professionID) then
+			local t = info.learned and tally.learned or tally.unlearned
+			t.n = t.n + 1
+			-- Optimal is 0, so presence is the test, not truth.
+			if info.relativeDifficulty ~= nil then t.difficulty = t.difficulty + 1 end
+			if (info.maxTrivialLevel or 0) > 0 then t.trivial = t.trivial + 1 end
+			if (info.numSkillUps or 0) > 0 then t.skillUps = t.skillUps + 1 end
+		end
+		index = index + 1
+	end
+	ns.PerfMs("difficulty tally slice", debugprofilestop() - started)
+	if index <= #ids then
+		RunNextFrame(function() TallyStep(professionID, ids, index, tally) end)
+		return
+	end
+	if tally.missing > 0 then
+		-- Some recipe info had not loaded: the numbers would be short, so the next draw tallies again.
+		difficultyTallied[professionID] = nil
+		ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s tally incomplete, %d recipes without info; tried again on the next draw", tostring(professionID), tally.missing)
+		return
+	end
+	for _, kind in ipairs({ "learned", "unlearned" }) do
+		local t = tally[kind]
+		ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s, %s %d: relativeDifficulty %d, maxTrivialLevel>0 %d, numSkillUps>0 %d",
+			tostring(professionID), kind, t.n, t.difficulty, t.trivial, t.skillUps)
+	end
+end
+
 local function LogDifficulty(professionID, recipeID)
+	-- A paused log keeps no lines, so nothing is read and nothing is marked done.
+	if not ns.toolkit:IsLogging(ns.module) then return end
 	local skill = professionID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID or 0)
 	if professionID and not difficultyTallied[professionID] then
 		difficultyTallied[professionID] = true
-		local tally = { learned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 }, unlearned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 } }
-		for _, id in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
-			local info = C_TradeSkillUI.GetRecipeInfo(id)
-			if info then
-				local t = info.learned and tally.learned or tally.unlearned
-				t.n = t.n + 1
-				if info.relativeDifficulty then t.difficulty = t.difficulty + 1 end
-				if (info.maxTrivialLevel or 0) > 0 then t.trivial = t.trivial + 1 end
-				if (info.numSkillUps or 0) > 0 then t.skillUps = t.skillUps + 1 end
-			end
-		end
-		for _, kind in ipairs({ "learned", "unlearned" }) do
-			local t = tally[kind]
-			ns.toolkit:Trace(ns.module, "DIFFICULTY profession %s, %s %d: relativeDifficulty %d, maxTrivialLevel>0 %d, numSkillUps>0 %d",
-				tostring(professionID), kind, t.n, t.difficulty, t.trivial, t.skillUps)
-		end
+		-- Next frame, so the walk never shares one with the details it was called from.
+		RunNextFrame(function()
+			TallyStep(professionID, C_TradeSkillUI.GetAllRecipeIDs(), 1, {
+				missing = 0,
+				learned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 },
+				unlearned = { n = 0, difficulty = 0, trivial = 0, skillUps = 0 },
+			})
+		end)
 	end
 	if not recipeID or difficultySeen[recipeID] then return end
 	difficultySeen[recipeID] = true

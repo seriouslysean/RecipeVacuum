@@ -3,7 +3,7 @@
 # builds the same way. A module's scripts/deploy-deck runs it from the module's root:
 #   exec Libs/JigBoltgripToolkit/tests/deploy-deck.sh "$@"
 # It runs the module's checks first, copies only what the game loads, and stamps the copied TOC's version (below): the
-# corner line shows its first word, the session log all of it (docs/standards.md, "Working build helpers"). The release
+# corner line shows its first word, the session log all of it (docs/standards.md, "Working build"). The release
 # packager fills the version from the tag instead; the repository's TOC keeps its token.
 #   scripts/deploy-deck [ssh-host]
 set -euo pipefail

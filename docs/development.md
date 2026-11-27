@@ -28,7 +28,7 @@ The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/
 
 ## Testing on the Steam Deck
 
-`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the copy's time and commit (`1126.1403 bf8fe64-dirty`, from `date +%m%d.%H%M` and `git describe --tags --always --dirty`). The panel title shows the time, which changes on every copy and reads in a screenshot; the session log line has both, so a capture maps back to its code. No counter is kept (owner, 2026-11-26, after a Grok antagonist pass: a per-clone counter numbers copies, not code, and needs a ledger). The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
+`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the copy's commit and second (`a81c4ef@08 <full hash> <UTC time>`, `+` after the short hash when it carries uncommitted work, kept as a snapshot under `refs/deck/` so the hash resolves to the code that ran; kit `docs/standards.md`, "Working build"). The panel title shows the first word, which changes on every copy and reads in a screenshot; the session log line has all of it. No counter is kept (owner, 2026-11-26, after a Grok antagonist pass: a per-clone counter numbers copies, not code and needs a ledger). The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
 
 ## Embedded libraries
 
@@ -70,7 +70,7 @@ In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch
 
 Control Test is a checkout-only Settings category, `Control Test`, registered with Blizzard's Settings API. It is stripped from releases with the rest of the working-build block. Each numbered subcategory is one row shape, so a result is about that shape. The parent page has no rows. Turn other addons off before a run: on 2026-11-26 another addon tainted the Settings open path and later pages stopped at the first row. Use the Gamepad UI.
 
-One comparison per reload. `/reload`, open Options, open the first page, switch once, stop. The saved working log is the record. Each category display writes `CT show <page> from <previous page>`, including a Blizzard page when one was left. A blocked action is already logged with its stack. Pass means d-pad DOWN reaches every row in order, including Last Row, and A toggles a checkbox, with no blocked-action line.
+One comparison per reload. `/reload`, open Options, open the first page, switch once, stop (the matrix runs S3 and S6 are the exceptions, two switches each). The saved working log is the record. Each category display writes `CT show <page> from <previous page>`, including a Blizzard page when one was left. A blocked action is already logged with its stack. Pass means d-pad DOWN reaches every row in order, including Last Row, and A toggles a checkbox, with no blocked-action line.
 
 Pages 1 and 2 are the matrix. 1 Plain Checkboxes has 3 plain checkboxes. 2 Grouped Checkboxes has 18 plain checkboxes under 3 headers.
 
@@ -78,10 +78,10 @@ Pages 1 and 2 are the matrix. 1 Plain Checkboxes has 3 plain checkboxes. 2 Group
 |---|---|---|
 | S1 | Open 2 Grouped Checkboxes first | The long plain page by itself |
 | S2 | 1 Plain Checkboxes, then 2 | A switch between the two plain pages |
-| S3 | Gamepad, then Interface, then Controls | Blizzard pages only, in one session |
+| S3 | Gamepad, then Interface, then Controls | Blizzard pages only, in one session (two switches) |
 | S4 | 1, then 2. Next reload: 2, then Interface | Whether a plain page leaves a mark on a Blizzard page |
 | S5 | Interface, then 2 | Whether a Blizzard page leaves a mark on a plain page |
-| S6 | 2, then 1, then 2 again, in one session | The second visit. This is the one walk with two switches |
+| S6 | 2, then 1, then 2 again, in one session | The second visit (two switches) |
 
 Then one shape at a time, always against page 1, and always one switch per reload. For page N: one run is 1 then N, the next reload is N then 1. Walk them in this order. Leave Shown Source and Parent Checkbox on during a reachability pair. Both start on. Turning Shown Source off hides its rows. Turning Parent Checkbox off greys its rows, and the game then skips them.
 
@@ -107,7 +107,7 @@ Page 10's Open buttons call `Settings.OpenToCategory`. Page 12 is the dropdown, 
 
 Skipped, because the client has no usable row for them without a custom template. An expandable section: its mixin errors unless the page supplies its own expanded-state and height. A key binding row: a new binding needs a `Bindings.xml` entry, and an existing index would rebind a real action. Several checkboxes in one row: no Settings template holds more than one checkbox. That would be a custom row. The checkbox-and-button rows use Blizzard's checkbox-with-button template through the generic initializer. The secure builder also adds the setting's name as a search tag, so that page is not a clean example of a page with no search tags.
 
-The checkout's conformance check allows Blizzard's Settings builders inside a working-build block, because this file is the measurement and releases strip the block. The allowance is the toolkit's (its `tests/conformance.lua`).
+The checkout's conformance check allows Blizzard's Settings row builders, and of the gamepad-banned calls only `Settings.CreateDropdown` and `Settings.OpenToCategory`, inside a working-build block, because this file is the measurement and releases strip the block. The allowance is the toolkit's (its `tests/conformance.lua`).
 
 ## Seeding
 

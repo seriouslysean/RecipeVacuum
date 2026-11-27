@@ -88,8 +88,9 @@ local FORBIDDEN = {
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
 	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap",
 	"Settings%.OpenToCategory" }) do
-	-- Same allowance as above: Settings builders only, and only inside a working-build block.
-	local inDebug = name:find("^Settings%%.") ~= nil
+	-- Same allowance as above, only for the Settings calls Control Test makes; CreateElementInitializer, the row that broke
+	-- d-pad navigation of a list (docs/standards.md, "Gamepad UI"), is never allowed.
+	local inDebug = name == "Settings%.CreateDropdown" or name == "Settings%.OpenToCategory"
 	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")", inDebug = inDebug })
 end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps

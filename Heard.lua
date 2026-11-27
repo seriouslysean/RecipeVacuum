@@ -60,16 +60,17 @@ local function EndClosing(window, token)
 		return
 	end
 	closing[window] = nil
+	if openWindows[window] then
+		-- Its ids stay, for the load results to credit to the open window.
+		ns.toolkit:Trace(ns.module, "SEEN %s reopened while waiting, silent, its count and %d unanswered items stay for its next close", window, Unanswered(window))
+		return
+	end
 	local unanswered = Unanswered(window)
 	if unanswered > 0 then
 		ns.toolkit:Trace(ns.module, "SEEN %s: %d items still unanswered, not counted", window, unanswered)
 	end
 	for itemID, owner in pairs(deferred) do
 		if owner == window then deferred[itemID] = nil end
-	end
-	if openWindows[window] then
-		ns.toolkit:Trace(ns.module, "SEEN %s reopened while waiting, silent, its count stays for its next close", window)
-		return
 	end
 	Say(window)
 end
@@ -245,7 +246,7 @@ end
 local itemsDone = {} -- [itemID] = true once read this session, a recipe or not
 local itemAttempts = {} -- [itemID] = reads that got no answer; some recipe items never answer (docs/client-notes.md, "Recipe items")
 
-local function NoteSeenItem(itemID)
+local function NoteSeenItem(itemID, loadAnswered)
 	if itemsDone[itemID] then
 		return
 	end
@@ -254,9 +255,9 @@ local function NoteSeenItem(itemID)
 		return
 	end
 	local recipeID = ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]
-	-- A load answer for a deferred item still gets through; a fresh sighting past the cap does not ask the client again.
+	-- A load answer still gets through; a fresh sighting past the cap does not ask the client again, deferred or not.
 	if recipeID == nil then
-		if (itemAttempts[itemID] or 0) >= ns.MAX_ITEM_ATTEMPTS and not deferred[itemID] then
+		if (itemAttempts[itemID] or 0) >= ns.MAX_ITEM_ATTEMPTS and not loadAnswered then
 			return
 		end
 		recipeID = ns.GetTaughtRecipe(itemID)
@@ -337,15 +338,16 @@ end)
 local handlers = {
 	ITEM_DATA_LOAD_RESULT = function(itemID, loaded)
 		local window = deferred[itemID]
-		if window then
-			if loaded then
-				NoteSeenItem(itemID)
-			else
-				deferred[itemID] = nil -- never answers
-			end
-			if closing[window] and Unanswered(window) == 0 then
-				EndClosing(window)
-			end
+		-- An item the scan gave up on (no window open, nothing deferred) can still answer its last request.
+		local gaveUp = not window and (itemAttempts[itemID] or 0) >= ns.MAX_ITEM_ATTEMPTS and not itemsDone[itemID]
+		if loaded and (window or gaveUp) then
+			if gaveUp then ns.toolkit:Trace(ns.module, "SEEN item %d answered after the cap, read once more", itemID) end
+			NoteSeenItem(itemID, true)
+		elseif window then
+			deferred[itemID] = nil -- never answers
+		end
+		if window and closing[window] and Unanswered(window) == 0 then
+			EndClosing(window)
 		end
 	end,
 	BAG_UPDATE_DELAYED = function() ReadBags() end,

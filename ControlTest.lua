@@ -233,6 +233,7 @@ local function AddCheckbox(ctx, key, label, tooltip, default)
 	setting:SetValueChangedCallback(OnChanged(ctx.page.name, label))
 	local initializer = Settings.CreateCheckbox(ctx.category, setting, tooltip)
 	ctx.made[key] = initializer
+	ctx.settings[key] = setting
 	return initializer
 end
 
@@ -306,8 +307,9 @@ function ROW.child(ctx, spec)
 		local key, label = Indexed(spec, index)
 		local initializer = AddCheckbox(ctx, key, label, spec.tooltip, false)
 		local parent = ctx.made[spec.parent]
-		-- The predicate is the addon function this page exists to measure.
-		Try(initializer, "SetParentInitializer", parent, function() return values[spec.parent] and true or false end)
+		local source = ctx.settings[spec.parent]
+		-- The predicate is the addon function this page exists to measure. It reads the setting, which holds the default until the player changes it.
+		Try(initializer, "SetParentInitializer", parent, function() return source:GetValue() and true or false end)
 	end
 end
 
@@ -315,8 +317,8 @@ function ROW.shown(ctx, spec)
 	for index = 1, spec.count or 1 do
 		local key, label = Indexed(spec, index)
 		local initializer = AddCheckbox(ctx, key, label, spec.tooltip, false)
-		local when = spec.when
-		Try(initializer, "AddShownPredicate", function() return values[when] and true or false end)
+		local source = ctx.settings[spec.when]
+		Try(initializer, "AddShownPredicate", function() return source:GetValue() and true or false end)
 	end
 end
 
@@ -426,7 +428,7 @@ local function Build()
 	for index, page in ipairs(PAGES) do
 		local category, layout = Settings.RegisterVerticalLayoutSubcategory(main, page.name)
 		pagesByName[page.name] = category
-		local ctx = { page = page, category = category, layout = layout, made = {} }
+		local ctx = { page = page, category = category, layout = layout, made = {}, settings = {} }
 		for _, spec in ipairs(page.rows) do
 			local build = ROW[spec.kind]
 			if build then
@@ -437,6 +439,9 @@ local function Build()
 		end
 		AddTrailer(ctx, index)
 	end
+	-- Open in the AddOns list so the numbered pages show; Blizzard reads the flag securely (kit lib:GetCategory).
+	main:SetExpanded(true)
+	ns.toolkit:Trace(ns.module, "CT category registered expanded with %d pages", #PAGES)
 	Settings.RegisterAddOnCategory(main)
 	for _, page in ipairs(PAGES) do
 		for _, spec in ipairs(page.rows) do

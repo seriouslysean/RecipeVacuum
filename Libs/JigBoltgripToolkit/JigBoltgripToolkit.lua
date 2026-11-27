@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 57
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 58
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -18,7 +18,7 @@ do
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
-		"Working Build", "Working build only: reload and the development commands, as buttons.",
+		"Working Build", "Reload the interface, switch the working log and read it. Working builds only.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
@@ -911,7 +911,7 @@ end
 local function AddKitWorkingRows()
 	local _, layout = lib:GetCategory()
 	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
-		L["Working build only: reload and the development commands, as buttons."]))
+		L["Reload the interface, switch the working log and read it. Working builds only."]))
 	layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
 	for _, row in ipairs({ { "/boltgrip watch", "watch" }, { "/boltgrip log", "log" }, { "/boltgrip log clear", "log", "clear" } }) do
 		layout:AddInitializer(CreateSettingsButtonInitializer(row[1], L["Run"], function() KitCommand(row[2], row[3]) end, row[1], false))
@@ -1329,9 +1329,13 @@ function lib:UpdateShareEvents()
 end
 
 function lib:ShareEvent(event, ...)
-	-- The frame's events go into every sharing module's working-build log.
+	-- The frame's events go into every sharing module's working-build log. An older copy's frame already counts the modules it
+	-- watched (shareWatched, kept on the library), by a hook that stays; those are not counted again here.
+	local watched = self.shareWatched
 	for _, share in ipairs(self.shareList) do
-		self:CountEvent(share.module, event)
+		if not (watched and watched[share.module.addon]) then
+			self:CountEvent(share.module, event)
+		end
 	end
 	for _, share in ipairs(self.shareList) do
 		share:OnEvent(event, ...)
