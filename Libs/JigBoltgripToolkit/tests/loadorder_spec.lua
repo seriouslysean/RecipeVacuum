@@ -29,6 +29,7 @@ local function NewClient()
 	RAID_CLASS_COLORS = { MAGE = { r = 0, g = 0, b = 1 } }
 	FRIENDS = "Friends" -- Blizzard's global string, enUS
 	IsLoggedIn = function() return false end
+	CreateFrame = function() return { SetScript = function() end, RegisterEvent = function() end } end
 	EventUtil = { ContinueOnPlayerLogin = function(callback) callback() end, ContinueOnAddOnLoaded = function() end }
 	-- Blizzard's Settings page order (GameplaySettingsGroup.lua), enUS titles.
 	CUSTOM_GAMEPLAY_SETTINGS_ORDER = { ["Combat"] = 10, ["Keybindings"] = 14 }
@@ -43,6 +44,10 @@ local function NewClient()
 	end
 	Settings = {
 		RegisterVerticalLayoutCategory = Category,
+		RegisterCanvasLayoutCategory = function(frame, title)
+			table.insert(buttons, { canvas = title })
+			return (Category())
+		end,
 		RegisterVerticalLayoutSubcategory = Category,
 		RegisterAddOnCategory = function() end,
 		OpenToCategory = function() end,
@@ -124,8 +129,8 @@ describe("load order", function()
 			assert(Count(buttons, "button", "Alpha title") == 0 and Count(buttons, "button", "Beta title") == 0,
 				order.name .. ": no Open row per addon")
 		end)
-		it(order.name .. ": one intro line", function()
-			assert(Count(buttons, "header", "One gadget, one job. Each has its own page below.") == 1, order.name .. ": one intro line")
+		it(order.name .. ": one About page", function()
+			assert(Count(buttons, "canvas", "Jig Boltgrip's Toolkit") == 1, order.name .. ": one About page")
 		end)
 	end
 
