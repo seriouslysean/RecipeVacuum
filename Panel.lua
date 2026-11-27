@@ -141,7 +141,7 @@ local mapOpen -- that list is open; a press toggles it, focus never does
 local shownDiscovery
 local rows, headings = {}, {}
 -- Frames made before the window exists have no panel to sit in; they wait here, hidden, and move into the list when one is built.
-local pool = { holder = CreateFrame("Frame", nil, UIParent) }
+local pool = { holder = CreateFrame("Frame", nil, UIParent), itemWait = {} } -- itemWait: reagents whose data is awaited, one wait each
 pool.holder:Hide()
 -- Text widths a row reuses: a name's and a count's never change, and reading one asks the client to measure the text.
 local textWidths = { names = {}, counts = {} }
@@ -679,24 +679,20 @@ end
 -- One frame per item, all in the scroll child: the Gamepad UI moves between frames that exist and scrolls the
 -- frame to reach one out of view, so a screenful of relabelled rows left it stuck at the last one shown.
 -- Frames are kept and reused across professions, and made a few a frame so opening the window never stalls.
-local function BuildStep(buildGeneration)
+local function BuildStep(buildGeneration, frameStart)
 	if buildGeneration ~= generation then return end
 	if not panel:IsShown() then
 		shownSignature = nil -- an unfinished build is made again when the panel shows
 		return
 	end
 	local started = debugprofilestop()
-	-- A frame ends at the budget whether it made frames or filled them (a cold row reads the client's recipe and tooltip data); one item is always done.
+	-- The budget runs from the start of the frame the step shares with the update's other work; one item is always done.
+	local budgetStart = frameStart or started
+	-- A frame ends at the budget whether it made frames or filled them (a cold row reads the client's recipe and tooltip data).
 	local made, done = 0, 0
 	while nextItem <= #items do
 		if done > 0 then
-			if made >= ROWS_PER_STEP or debugprofilestop() - started >= BUILD_BUDGET_MS then break end
-			-- A new frame costs about 7.5 ms and cannot be split, so it never follows other work in a step.
-			local upcoming = items[nextItem]
-			if not (upcoming.recipe and rows[upcoming.rowIndex] or not upcoming.recipe and headings[upcoming.headingIndex]) then
-				ns.toolkit:Trace(ns.module, "UI build step ends before making a frame, after %d items in %.1f ms; the frame is the next step's first work", done, debugprofilestop() - started)
-				break
-			end
+			if made >= ROWS_PER_STEP or debugprofilestop() - budgetStart >= BUILD_BUDGET_MS then break end
 		end
 		done = done + 1
 		local item = items[nextItem]
@@ -730,7 +726,7 @@ local function BuildStep(buildGeneration)
 	-- Rows built after the reveal join the jumps now, inside the step's time, so down never ends at the last row built so far.
 	-- Only while the step has time left: SyncNav walks every built row, and the build's end sets the jumps for all of them anyway.
 	if scroll.revealed and nextItem <= #items then
-		if debugprofilestop() - started < BUILD_BUDGET_MS then
+		if debugprofilestop() - budgetStart < BUILD_BUDGET_MS then
 			--@debug@
 			local navStart = debugprofilestop()
 			--@end-debug@
@@ -892,7 +888,7 @@ local function Pooled(frames, index, make)
 end
 
 local function MakeReagentRow()
-	local button = CreateFrame("ItemButton", nil, reagentChild, "ProfessionsButtonTemplate")
+	local button = CreateFrame("ItemButton", nil, reagentChild or pool.holder, "ProfessionsButtonTemplate")
 	button:SetScript("OnEnter", function(self)
 		ns.ScrollRowIntoView(self, reagentScroll) -- a reagent the d-pad reaches is scrolled into view, as a list row is
 		ns.OwnTooltip(self)
@@ -900,7 +896,8 @@ local function MakeReagentRow()
 		GameTooltip:Show()
 	end)
 	button:SetScript("OnLeave", GameTooltip_Hide)
-	button.Text = reagentChild:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
+	-- On the button, so the pair moves to the details together when a pooled one is adopted.
+	button.Text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlight_NoShadow")
 	button.Text:SetPoint("LEFT", button, "RIGHT", REAGENT_TEXT_GAP, 0)
 	button.Text:SetSize(REAGENT_NAME_WIDTH, REAGENT_NAME_HEIGHT) -- Blizzard's slot name box, so long names wrap as the pane's do
 	button.Text:SetJustifyH("LEFT")
@@ -1010,9 +1007,8 @@ end
 -- on a Button of ours, so no Blizzard menu is ever set up on it.
 local function MakeMapMore()
 	local art = MenuArt()
-	local button = CreateFrame("Button", nil, detail)
+	local button = CreateFrame("Button", nil, detail or pool.holder)
 	button:SetSize(PANEL_INNER_WIDTH, SOURCE_HEIGHT)
-	button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, BUTTON_BOTTOM)
 	button.Background = button:CreateTexture(nil, "BACKGROUND")
 	button.Background:SetPoint("TOPLEFT", -art.bleed, art.bleed)
 	button.Background:SetPoint("BOTTOMRIGHT", art.bleed, -art.bleed)
@@ -1036,6 +1032,8 @@ local function MakeMapMore()
 	end
 	Look(button)
 	button:SetScript("OnClick", function()
+		-- Keys go to the open list through a call the client restricts in combat (PLAYER_REGEN_DISABLED closes it).
+		if InCombatLockdown() then return end
 		mapOpen = not mapOpen
 		UpdatePlaceMenu()
 	end)
@@ -1050,9 +1048,8 @@ end
 -- several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
 -- would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
-	local button = CreateFrame("Button", nil, detail, "UIPanelButtonTemplate")
+	local button = CreateFrame("Button", nil, detail or pool.holder, "UIPanelButtonTemplate")
 	button:SetSize(PANEL_INNER_WIDTH, SOURCE_HEIGHT)
-	button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, BUTTON_BOTTOM) -- the window's action buttons sit at the bottom of their page
 	button:SetText(MAP_PIN)
 	button:SetScript("OnClick", function(self)
 		if self.single then
@@ -1133,12 +1130,14 @@ local function DetailData(recipeInfo)
 		if reagent and reagent.itemID then
 			local entry = { itemID = reagent.itemID, need = slot.quantityRequired, have = C_Item.GetItemCount(reagent.itemID, true) }
 			entry.name = C_Item.GetItemNameByID(reagent.itemID)
-			-- The client answers only for items it has loaded, and loads one only when asked; its answer is GET_ITEM_INFO_RECEIVED.
-			if not entry.name then
-				-- The game's own wait for an item's data (ItemMixin): draw the details again once its name is known.
-				Item:CreateFromItemID(reagent.itemID):ContinueOnItemLoad(function()
-					detailSignature = nil
-					FillDetail()
+			-- The client answers only for items it has loaded, and loads one only when asked. The game's own wait for an item's data
+			-- (ItemMixin), once per item however often the details draw; the answer redraws the details in one frame's work.
+			if not entry.name and not pool.itemWait[reagent.itemID] then
+				local waitingID = reagent.itemID
+				pool.itemWait[waitingID] = true
+				Item:CreateFromItemID(waitingID):ContinueOnItemLoad(function()
+					pool.itemWait[waitingID] = nil
+					pool.RedrawDetail()
 				end)
 			end
 			data.reagents[#data.reagents + 1] = entry
@@ -1151,7 +1150,6 @@ local function DetailData(recipeInfo)
 	return data, table.concat(parts, ",")
 end
 
-local itemWatch -- item names arrive later; the details are drawn again when they do, and only while one is missing
 
 -- What the box shows with no recipe, and between recipes: the schematic background of the profession, as the window's pane has it
 -- before a pick.
@@ -1195,8 +1193,17 @@ FillDetail = function()
 		end
 		return
 	end
+	--@debug@
+	local part = debugprofilestop()
+	--@end-debug@
 	local data, signature = DetailData(selected)
+	--@debug@
+	ns.PerfMs("details data", debugprofilestop() - part)
+	--@end-debug@
 	if signature == detailSignature then return end
+	--@debug@
+	part = debugprofilestop()
+	--@end-debug@
 	detailSignature = signature
 	local schematic = data.schematic
 	local itemID = schematic and schematic.outputItemID
@@ -1217,13 +1224,17 @@ FillDetail = function()
 	detail.Name:Show()
 	SetDetailBackground() -- the window's own schematic background (Blizzard_ProfessionsCrafting.lua:1032)
 
-	local missing = false
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
 	reagentScroll:SetShown(#data.reagents > 0)
 	if changedRecipe then reagentScroll:SetVerticalScroll(0) end
+	--@debug@
+	ns.PerfMs("details header", debugprofilestop() - part)
+	part = debugprofilestop()
+	--@end-debug@
 	local y = 0 -- within the scroll child
 	for index, entry in ipairs(data.reagents) do
 		local button = Pooled(reagentRows, index, MakeReagentRow)
+		if button:GetParent() ~= reagentChild then button:SetParent(reagentChild) end
 		button.itemID = entry.itemID
 		button:SetPoint("TOPLEFT", reagentChild, "TOPLEFT", REAGENT_LEFT, -y)
 		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
@@ -1233,7 +1244,6 @@ FillDetail = function()
 		button.Text:SetText(color:WrapTextInColorCode(("%s %s"):format(TRADESKILL_REAGENT_COUNT:format(entry.have, entry.need), entry.name or "")))
 		button:Show()
 		button.Text:Show()
-		missing = missing or not entry.name
 		y = y + REAGENT_PITCH
 	end
 	for index = #data.reagents + 1, #reagentRows do
@@ -1242,9 +1252,15 @@ FillDetail = function()
 	end
 	if #data.reagents > 0 then reagentChild:SetHeight(y - REAGENT_PITCH + REAGENT_SIZE) end -- to the last icon's bottom
 
+	--@debug@
+	ns.PerfMs("details reagents", debugprofilestop() - part)
+	part = debugprofilestop()
+	--@end-debug@
 	-- The sources are the button's tooltip, not lines in the box. With none to pin it stays, disabled, so the tooltip still tells them.
 	mapButton = mapButton or MakeMapButton()
 	mapMore = mapMore or MakeMapMore()
+	pool.AdoptMapControl(mapButton)
+	pool.AdoptMapControl(mapMore)
 	local several = #data.places > 1
 	mapButton:SetShown(#data.sources > 0 and not several)
 	mapButton:SetEnabled(#data.places > 0)
@@ -1256,13 +1272,9 @@ FillDetail = function()
 
 	UpdatePlaceMenu() -- the list floats: it never takes height from the details
 	--@debug@
+	ns.PerfMs("details map", debugprofilestop() - part)
 	if ns.OnPanelDrawn then ns.OnPanelDrawn(professionInfo and professionInfo.professionID, selected.recipeID) end
 	--@end-debug@
-	if missing then
-		itemWatch:RegisterEvent("GET_ITEM_INFO_RECEIVED")
-	else
-		itemWatch:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
-	end
 end
 
 -- The last recipe chosen in each profession this session, brought back when the window opens on it again.
@@ -1292,10 +1304,11 @@ end
 
 -- The in-place refresh, in steps within the build's budget like the build itself; a newer refresh or a rebuild takes over.
 local refreshToken = 0
-local function RefreshStep(token, index, last)
+local function RefreshStep(token, index, last, frameStart)
 	if token ~= refreshToken then return end
 	local started = debugprofilestop()
-	while index <= last and debugprofilestop() - started < BUILD_BUDGET_MS do
+	local budgetStart = frameStart or started
+	while index <= last and (index == 1 or debugprofilestop() - budgetStart < BUILD_BUDGET_MS) do
 		if items[index].recipe then ShowRow(slots[index], items[index].recipe) end
 		index = index + 1
 	end
@@ -1321,6 +1334,7 @@ end
 
 local function Update()
 	requested = false
+	local frameStart = debugprofilestop() -- the build and refresh steps below spend what this frame has left
 	-- Runs while the panel is hidden too: a find, a learned recipe or a search can bring it back.
 	if not (panel and wanted and professionInfo) then return end
 	--@debug@
@@ -1399,7 +1413,7 @@ local function Update()
 	if signature == shownSignature then
 		-- Same content: refresh what is shown in place and leave every frame where it is.
 		refreshToken = refreshToken + 1
-		RefreshStep(refreshToken, 1, math.min(built - 1, #items))
+		RefreshStep(refreshToken, 1, math.min(built - 1, #items), frameStart)
 		return
 	end
 	shownSignature = signature
@@ -1423,7 +1437,7 @@ local function Update()
 	end
 	for index = rowCount + 1, #rows do rows[index]:Hide() end
 	for index = headingCount + 1, #headings do headings[index]:Hide() end
-	BuildStep(generation)
+	BuildStep(generation, frameStart)
 end
 --@debug@
 -- The whole redraw in one frame: the list read, the unlearned recipes, the signature and the start of the build.
@@ -1436,6 +1450,46 @@ do
 	end
 end
 --@end-debug@
+
+-- The details' frames are made ahead like the list's rows: the first draw of a session made them in its own frame (21.6 ms measured).
+-- They wait on the holder, hidden, and the details adopt them. The reagent rows made ahead are a handful; a recipe with more makes the rest.
+pool.detailRows = 8
+function pool.MakeDetailFrame()
+	local frame
+	if #reagentRows < pool.detailRows then
+		frame = MakeReagentRow()
+		reagentRows[#reagentRows + 1] = frame
+	elseif not mapButton then
+		frame = MakeMapButton()
+		mapButton = frame
+	elseif not mapMore then
+		frame = MakeMapMore()
+		mapMore = frame
+	else
+		return false
+	end
+	frame:Hide() -- the details show it when a recipe needs it
+	return true
+end
+
+-- Show Map's two buttons sit in the strip under the box, in the details' frame.
+function pool.AdoptMapControl(button)
+	if button:GetParent() == detail then return end
+	button:SetParent(detail)
+	button:ClearAllPoints()
+	button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, BUTTON_BOTTOM) -- the window's action buttons sit at the bottom of their page
+end
+
+-- The details drawn again, however many items arrive in a frame.
+function pool.RedrawDetail()
+	if pool.redrawQueued then return end
+	pool.redrawQueued = true
+	RunNextFrame(function()
+		pool.redrawQueued = false
+		detailSignature = nil
+		if panel and selected then FillDetail() end
+	end)
+end
 
 -- Frames made ahead of need, out of combat, in slices of BUILD_BUDGET_MS (docs/client-notes.md, "Panel"), so a profession only fills
 -- frames that exist. The target is what the character's professions would list now, plus these margins for finds that arrive meanwhile.
@@ -1521,6 +1575,16 @@ function pool.step()
 		return -- PLAYER_REGEN_ENABLED starts it again
 	end
 	local started = debugprofilestop()
+	-- The details' frames come first: they are what the first recipe picked needs.
+	local detailMade = 0
+	while (detailMade == 0 or debugprofilestop() - started < BUILD_BUDGET_MS) and pool.MakeDetailFrame() do
+		detailMade = detailMade + 1
+	end
+	if detailMade > 0 then
+		ns.toolkit:Trace(ns.module, "POOL details' frames made %d in %.1f ms (%d reagent rows)", detailMade, debugprofilestop() - started, #reagentRows)
+		pool.kick()
+		return
+	end
 	if pool.scan then
 		local scan = pool.scan
 		local counted = 0
@@ -1806,11 +1870,6 @@ local function CreatePanel()
 		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
 	end)
 	reagentScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -REAGENTS_VIEW_TOP)
-	-- Asked for only while the details wait on item data.
-	itemWatch = ns.toolkit:EventFrame(ns.module, {
-		GET_ITEM_INFO_RECEIVED = function() detailSignature = nil; FillDetail() end,
-	}, { later = { GET_ITEM_INFO_RECEIVED = true } })
-
 	scroll, child = CreateSlimScroll(listArea, function(frame, barShown)
 		frame:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", barShown and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
 	end)
@@ -1880,6 +1939,7 @@ ns.toolkit:EventFrame(ns.module, {
 	-- Our jumps are refused in combat and block the d-pad there; this event comes just before the lockdown, while they can
 	-- still be cleared (SmartNavigation.lua, the override handling in Navigate). They are set again after combat.
 	PLAYER_REGEN_DISABLED = function()
+		ClosePlaces() -- its key handler calls a function the client restricts in combat
 		ClearNav()
 		navPending = true
 	end,
