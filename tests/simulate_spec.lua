@@ -899,7 +899,7 @@ describe("simulation", function()
 
 	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
 	describe("panel", function()
-		local pns, queue, buttons, traces, init, Fake, inLine, clientDifficulty, clientCapped
+		local pns, queue, buttons, traces, init, Fake, inLine, clientDifficulty, clientCapped, skillRank
 		local made = {} -- every stand-in frame, in creation order
 		local strings = {} -- every stand-in font string
 		local function Flush() while #queue > 0 do table.remove(queue, 1)() end end
@@ -1021,7 +1021,8 @@ describe("simulation", function()
 			  GetOnlyShowSkillUpRecipes = function() return false end, GetOnlyShowFirstCraftRecipes = function() return false end,
 			  GetRecipeSchematic = function() return nil end, GetTradeSkillLineForRecipe = function() return 164 end }
 			GetProfessions = function() return 1 end
-			GetProfessionInfo = function() return "Blacksmithing", 0, 1, 75, 0, 0, 164 end
+			skillRank = 1
+			GetProfessionInfo = function() return "Blacksmithing", 0, skillRank, 75, 0, 0, 164 end
 			load("Unlearned.lua", pns)
 			pns.GetRecipeFaction = function() return false end -- read from tooltip data
 			pns.GetRecipeLock = function() return false end
@@ -1151,7 +1152,12 @@ describe("simulation", function()
 			}
 			for _, case in ipairs(cases) do
 				clientDifficulty[case.recipe], clientCapped[case.recipe] = case.client, case.capped
-				pns.ClearUnlearnedCache()
+				-- The skill event the client sends; the read keeps its answers until a rank or cap moved.
+				skillRank = case.skill
+				for _, frame in ipairs(made) do
+					local scripts = rawget(frame, "scripts")
+					if scripts and scripts.OnEvent then pcall(scripts.OnEvent, frame, "SKILL_LINES_CHANGED") end
+				end
 				init(case.skill)
 				Flush()
 				local row

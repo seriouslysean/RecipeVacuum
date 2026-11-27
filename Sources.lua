@@ -323,6 +323,7 @@ end
 ns.MAX_ITEM_ATTEMPTS = 3 -- also the cap on Heard's re-reads of an item that never answers
 local LOAD_TIMEOUT = 10
 local awaitedItems, linkAttempts = {}, {}
+local LINK_LOG_MS = 1 -- an item read at least this slow gets a trace line
 
 ns.toolkit:EventFrame(ns.module, {
 	ITEM_DATA_LOAD_RESULT = function(itemID, success)
@@ -375,17 +376,26 @@ function ns.GetRecipeItems(recipeID)
 end
 
 -- Links recorded recipe items to the recipes they teach; true only when no item is outstanding. An item is outstanding while its data loads or is unanswered, until it has been tried MAX_ITEM_ATTEMPTS times.
-function ns.LinkPending()
+function ns.LinkPending(yield)
 	local db = ns.db
 	local complete = true
-	for itemID, item in pairs(db.pendingItems) do
-		if ns.GetSeededRecipe(itemID) then
+	-- A snapshot of the IDs: the read may yield between items, and a find can add one meanwhile.
+	local ids = {}
+	for itemID in pairs(db.pendingItems) do ids[#ids + 1] = itemID end
+	for _, itemID in ipairs(ids) do
+		local item = db.pendingItems[itemID]
+		-- No item left means it was linked or dropped while the read waited.
+		if item and ns.GetSeededRecipe(itemID) then
 			db.pendingItems[itemID] = nil
-		elseif awaitedItems[itemID] and GetTime() - awaitedItems[itemID] < LOAD_TIMEOUT then
+		elseif item and awaitedItems[itemID] and GetTime() - awaitedItems[itemID] < LOAD_TIMEOUT then
 			complete = false
-		elseif not item.none and (linkAttempts[itemID] or 0) < ns.MAX_ITEM_ATTEMPTS then
+		elseif item and not item.none and (linkAttempts[itemID] or 0) < ns.MAX_ITEM_ATTEMPTS then
 			awaitedItems[itemID] = nil
+			-- One item's tooltip cannot be split; the read yields before the next and the cost is logged (docs/client-notes.md, "Panel").
+			local started = debugprofilestop()
 			local recipeID = ns.GetTaughtRecipe(itemID)
+			local ms = debugprofilestop() - started
+			if ms >= LINK_LOG_MS then ns.toolkit:Trace(ns.module, "LINK item %d read in %.1f ms", itemID, ms) end
 			if recipeID == nil then
 				linkAttempts[itemID] = (linkAttempts[itemID] or 0) + 1
 				-- Only a requested load answers with an event; cached data without a tooltip yet is asked again next time.
@@ -410,6 +420,7 @@ function ns.LinkPending()
 				item.none = true -- teaches nothing; not asked again
 			end
 		end
+		if yield then yield() end
 	end
 	return complete
 end

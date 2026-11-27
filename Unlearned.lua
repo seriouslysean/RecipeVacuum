@@ -7,32 +7,59 @@ local L = ns.L
 -- The ID is ours: the game's category IDs are positive and -1 is its Favorites header (Blizzard_Professions.lua).
 local MISCELLANEOUS_CATEGORY_ID = -2
 
--- Cached per profession until something that changes the list happens: a recipe learned, a skill change (it moves every recipe's
--- difficulty and the rank cap), or a new source. Window opens and data source switches change none of them, so they keep the cache.
-local cache = {}
+-- Two stages, each cleared by what changes its inputs: the client's answer (learning a recipe; a rank or cap change only refreshes
+-- difficulty) and our source summaries (any change to the known sources). Window opens and source switches change neither
+-- (docs/client-notes.md, "Panel").
+local reads = {} -- stage one, [professionID] = { candidates, established, complete, skillChanges }
+local cache = {} -- stage two, [professionID] = categories of a complete read
 -- The read runs in slices, a few ms a frame, as a coroutine (the pattern addons use for long loops); one job per profession.
-local jobs = {} -- [professionID] = { co, slices, ms, worst }
+local jobs = {} -- [professionID] = { co, slices, ms, worst, stage, stageMs }
 local partial = {} -- [professionID] = categories of a finished read whose data was incomplete, handed to the next call once
 local listed = {} -- [professionID] = { categories, list, total }, built with the read
 local SLICE_MS = 2 -- the read shares its first frame with the panel's other work, so a slice stays well under the 5 ms frame bar
+local skillChanges = 0 -- raised when a profession's rank or cap changed, which moves every recipe's difficulty
 
-local function Forget(reason)
+-- A profession's rank and cap, as the skill bar reads them (GetProfessionInfo), to tell a skill event that moved nothing.
+local function SkillSnapshot()
+	local parts = {}
+	for _, index in pairs({ GetProfessions() }) do
+		local _, _, rank, maxRank, _, _, skillLine = GetProfessionInfo(index)
+		parts[#parts + 1] = ("%s:%s:%s"):format(tostring(skillLine), tostring(rank), tostring(maxRank))
+	end
+	table.sort(parts)
+	return table.concat(parts, ",")
+end
+local skillSnapshot
+
+local function ForgetSummaries(reason)
 	wipe(cache)
 	wipe(jobs) -- a running read sees its job gone and stops
 	wipe(partial)
-	ns.toolkit:Trace(ns.module, "UNLEARNED cache cleared by %s", reason)
+	ns.toolkit:Trace(ns.module, "UNLEARNED summaries cleared by %s, the client's answers kept", reason)
 end
 
-local function ClearCaches(event)
-	Forget(event)
-	ns.ClearRecipeLocks()
-end
-ns.toolkit:EventFrame(ns.module, { NEW_RECIPE_LEARNED = function() ClearCaches("NEW_RECIPE_LEARNED") end,
-	SKILL_LINES_CHANGED = function() ClearCaches("SKILL_LINES_CHANGED") end })
+ns.toolkit:EventFrame(ns.module, {
+	NEW_RECIPE_LEARNED = function()
+		wipe(reads)
+		ForgetSummaries("NEW_RECIPE_LEARNED")
+		ns.ClearRecipeLocks()
+	end,
+	SKILL_LINES_CHANGED = function()
+		ns.ClearRecipeLocks()
+		local snapshot = SkillSnapshot()
+		if snapshot == skillSnapshot then
+			ns.toolkit:Trace(ns.module, "UNLEARNED SKILL_LINES_CHANGED moved no profession's rank or cap, nothing cleared")
+			return
+		end
+		skillSnapshot = snapshot
+		skillChanges = skillChanges + 1
+		ForgetSummaries("a rank or cap change")
+	end,
+})
 
 -- New recorded sources invalidate the cached source summaries.
 function ns.ClearUnlearnedCache()
-	Forget("new sources")
+	ForgetSummaries("new sources")
 end
 
 local function SortByName(a, b)
@@ -63,8 +90,26 @@ local function SortRecipes(left, right)
 	return left.recipeID < right.recipeID
 end
 
+-- The time since the last mark goes to the stage that was running, so the trace names the slow one.
+local function Charge(job)
+	if not job then return end
+	local now = debugprofilestop()
+	job.stageMs[job.stage] = (job.stageMs[job.stage] or 0) + now - job.mark
+	job.mark = now
+end
+
+local function Stage(job, name)
+	if job then
+		Charge(job)
+		job.stage = name
+	end
+end
+
 local function Yield(job)
-	if job and debugprofilestop() - job.sliceStart >= SLICE_MS then coroutine.yield() end
+	if job and debugprofilestop() - job.sliceStart >= SLICE_MS then
+		Charge(job)
+		coroutine.yield()
+	end
 end
 
 -- What the panel lists for a profession: the unlearned recipes of the open skill line that pass the show rule (ns.IsListed), in one flat
@@ -86,14 +131,10 @@ local function BuildListed(professionID, categories, job)
 	return entry
 end
 
--- The read itself. Returns the categories and whether the client's data was complete; job is nil outside a sliced run.
-local function Read(professionID, job)
-	-- Recorded recipe items link to their recipes first, so their sources count below.
-	local linksComplete = not next(ns.db.pendingItems) or ns.LinkPending()
-	Yield(job)
-
-	-- One pass over unlearned recipes, leaving out another faction's.
-	local unlearned, established = {}, {}
+-- Stage one: the client's answer for a profession, its unlearned candidates (another faction's left out) and the categories its
+-- learned recipes establish.
+local function ReadClient(professionID, job)
+	local candidates, established = {}, {}
 	local playerFaction = UnitFactionGroup("player")
 	local indexComplete, factionsComplete = true, true
 	local knownCount, knownNew = 0, 0
@@ -123,17 +164,34 @@ local function Read(professionID, job)
 				end
 				-- Other-faction versions are left out, as Blizzard never lists them.
 				if not (faction and faction ~= playerFaction) then
-					table.insert(unlearned, recipeInfo)
+					table.insert(candidates, recipeInfo)
 				end
 			end
 		end
 	end
-
 	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: %d known recipes marked met at Self Found, %d new", professionID, knownCount, knownNew)
+	return { candidates = candidates, established = established, complete = indexComplete and factionsComplete, skillChanges = skillChanges }
+end
 
-	-- Sources first, since one known source keeps its whole category's header.
+-- A rank or cap change moves only each recipe's difficulty and whether it can raise skill, so those are read again for the candidates.
+local function RefreshSkill(professionID, read, job)
+	read.skillChanges = skillChanges
+	for _, recipeInfo in ipairs(read.candidates) do
+		Yield(job)
+		local fresh = C_TradeSkillUI.GetRecipeInfo(recipeInfo.recipeID)
+		if fresh then
+			recipeInfo.relativeDifficulty, recipeInfo.canSkillUp = fresh.relativeDifficulty, fresh.canSkillUp
+		end
+	end
+	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: difficulty read again for %d candidates", professionID, #read.candidates)
+end
+
+-- Stage two: sources first, since one known source keeps its whole category's header; then the categories and the list.
+local function Summarize(professionID, read, job)
+	local established = {}
+	for categoryID in pairs(read.established) do established[categoryID] = true end
 	local seen, rows = {}, {}
-	for _, recipeInfo in ipairs(unlearned) do
+	for _, recipeInfo in ipairs(read.candidates) do
 		Yield(job)
 		if not seen[recipeInfo.recipeID] then
 			seen[recipeInfo.recipeID] = true
@@ -173,16 +231,47 @@ local function Read(professionID, job)
 		table.sort(category.recipes, SortRecipes)
 	end
 	BuildListed(professionID, categories, job)
-	return categories, indexComplete and factionsComplete and linksComplete
+	return categories
+end
+
+-- The read itself. Returns the categories and whether the client's data was complete; job is nil outside a sliced run.
+local function Read(professionID, job)
+	-- Recorded recipe items link to their recipes first, so their sources count below.
+	Stage(job, "links")
+	local linksComplete = not next(ns.db.pendingItems) or ns.LinkPending(job and function() Yield(job) end)
+	Yield(job)
+	local read = reads[professionID]
+	if not read then
+		Stage(job, "client")
+		read = ReadClient(professionID, job)
+		-- An incomplete answer is not kept: names or factions are still loading.
+		if read.complete then reads[professionID] = read end
+	elseif read.skillChanges ~= skillChanges then
+		Stage(job, "difficulty")
+		RefreshSkill(professionID, read, job)
+	end
+	Stage(job, "summaries")
+	return Summarize(professionID, read, job), read.complete and linksComplete
+end
+
+local function StageLine(job)
+	local names = {}
+	for name in pairs(job.stageMs) do names[#names + 1] = name end
+	table.sort(names)
+	for index, name in ipairs(names) do names[index] = ("%s %.1f"):format(name, job.stageMs[name]) end
+	return table.concat(names, ", ")
 end
 
 -- Runs one slice of a job; true once it has finished. A job that was cleared meanwhile stops without a result.
 local function Slice(professionID, job)
 	if jobs[professionID] ~= job then return true end
 	job.sliceStart = debugprofilestop()
+	job.mark = job.sliceStart
 	local ok, categories, complete = coroutine.resume(job.co)
+	Charge(job)
 	local ms = debugprofilestop() - job.sliceStart
-	job.slices, job.ms, job.worst = job.slices + 1, job.ms + ms, math.max(job.worst, ms)
+	job.slices, job.ms = job.slices + 1, job.ms + ms
+	if ms > job.worst then job.worst, job.worstStage = ms, job.stage end
 	--@debug@
 	ns.PerfMs("unlearned slice", ms)
 	--@end-debug@
@@ -198,8 +287,8 @@ local function Slice(professionID, job)
 	else
 		partial[professionID] = categories
 	end
-	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d read in %d slices, %.1f ms in all, worst slice %.1f ms, %s", professionID,
-		job.slices, job.ms, job.worst, complete and "cached" or "data incomplete, not cached")
+	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d read in %d slices, %.1f ms in all (%s), worst slice %.1f ms in %s, %s", professionID,
+		job.slices, job.ms, StageLine(job), job.worst, tostring(job.worstStage), complete and "cached" or "data incomplete, not cached")
 	return true
 end
 
@@ -230,7 +319,7 @@ function ns.GetUnlearnedRecipes(professionInfo)
 	if jobs[professionID] then
 		return nil
 	end
-	local job = { slices = 0, ms = 0, worst = 0, sliceStart = 0 }
+	local job = { slices = 0, ms = 0, worst = 0, sliceStart = 0, mark = 0, stage = "start", stageMs = {} }
 	job.co = coroutine.create(function() return Read(professionID, job) end)
 	jobs[professionID] = job
 	if not Slice(professionID, job) then
