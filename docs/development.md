@@ -66,49 +66,6 @@ A file must still compile with the marked blocks removed.
 
 In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. Watch and log are the toolkit's, shared by every Boltgrip addon (owner, 2026-11-25: "Go, kit commands only"): The log is on from the start in a working build (owner, 2026-11-25: "don't I want an always on debug mode while testing?"): it records where loot, quest rewards, vendor stock and trainer lists come from, and every sharing step, written by the toolkit (lines starting `SHARE`: probes sent and heard, finds asked for, batches sent and received with row counts, merged or rejected), with one chat line when recipes are involved. `/boltgrip watch off` pauses it and is remembered; `/boltgrip watch on` resumes. `/boltgrip log` shows each addon's current run in a window to copy from; `/boltgrip log all` shows the last 20,000 lines of each; `/boltgrip log clear` empties them. The log is written with the saved variables on `/reload` or logout.
 
-## Control Test
-
-Control Test is a checkout-only Settings category, `Control Test`, registered with Blizzard's Settings API. It is stripped from releases with the rest of the working-build block. Each numbered subcategory is one row shape, so a result is about that shape. The parent page has no rows. Turn other addons off before a run: on 2026-11-26 another addon tainted the Settings open path and later pages stopped at the first row. Use the Gamepad UI.
-
-One comparison per reload. `/reload`, open Options, open the first page, switch once, stop (the matrix runs S3 and S6 are the exceptions, two switches each). The saved working log is the record. Each category display writes `CT show <page> from <previous page>`, including a Blizzard page when one was left. A blocked action is already logged with its stack. Pass means d-pad DOWN reaches every row in order, including Last Row, and A toggles a checkbox, with no blocked-action line.
-
-Pages 1 and 2 are the matrix. 1 Plain Checkboxes has 3 plain checkboxes. 2 Grouped Checkboxes has 18 plain checkboxes under 3 headers.
-
-| Run | After `/reload` | What it asks |
-|---|---|---|
-| S1 | Open 2 Grouped Checkboxes first | The long plain page by itself |
-| S2 | 1 Plain Checkboxes, then 2 | A switch between the two plain pages |
-| S3 | Gamepad, then Interface, then Controls | Blizzard pages only, in one session (two switches) |
-| S4 | 1, then 2. Next reload: 2, then Interface | Whether a plain page leaves a mark on a Blizzard page |
-| S5 | Interface, then 2 | Whether a Blizzard page leaves a mark on a plain page |
-| S6 | 2, then 1, then 2 again, in one session | The second visit (two switches) |
-
-Then one shape at a time, always against page 1, and always one switch per reload. For page N: one run is 1 then N, the next reload is N then 1. Walk them in this order. Leave Shown Source and Parent Checkbox on during a reachability pair. Both start on. Turning Shown Source off hides its rows. Turning Parent Checkbox off greys its rows, and the game then skips them.
-
-1. Plain Checkboxes. Three plain checkboxes. The neutral page.
-2. Grouped Checkboxes. Eighteen plain checkboxes under three headers.
-3. Shown When On. Four checkboxes with a shown predicate, plus the source checkbox.
-4. Search Tags. Four checkboxes with search tags.
-5. Indented Checkboxes. A parent checkbox and four indented children.
-6. Named Stops. Four sliders with the stops Off, Low, Medium, High and Max.
-7. Button Rows. Four buttons, and nothing else of another shape above the trailer.
-8. Checkbox And Slider. Four rows that each hold a checkbox and a slider.
-9. Registered Rows. Four checkboxes added through the registrar.
-10. Open From Code. Four buttons that open a page from code.
-11. Checkbox And Button. Eight bow buttons under an Emotes header.
-12. Dropdown Last. Four dropdowns. Opening one breaks navigation until reload.
-13. Lua Error. One button that raises a Lua error. Close the error window, then press Interact on a target: whether Blizzard's error window breaks the gamepad Interact action for the session (seen on the Deck, 2026-11-26). Its own run, then `/reload`.
-
-Every page ends with the button Refresh Navigation and then the checkbox Last Row. Page 1 is the neutral page and still carries that button. A plain-to-plain pass means the trailer was not enough, on its own, to fail the page.
-
-`/recipevacuum navdump` reads the gamepad navigation state and writes one `CT navdump` line. `/recipevacuum navrefresh`, and the Refresh Navigation button, call `SmartNavigation:RefreshButtonGroups()` out of combat and write a before line and an after line. That is the refresh test. Use it as its own run. The category line does not refresh.
-
-Page 10's Open buttons call `Settings.OpenToCategory`. Page 12 is the dropdown, last on purpose. Its tooltip says that opening the menu breaks navigation until reload. Treat a press of Open, or of A on a dropdown, as the whole run, then `/reload`.
-
-Skipped, because the client has no usable row for them without a custom template. An expandable section: its mixin errors unless the page supplies its own expanded-state and height. A key binding row: a new binding needs a `Bindings.xml` entry, and an existing index would rebind a real action. Several checkboxes in one row: no Settings template holds more than one checkbox. That would be a custom row. The checkbox-and-button rows use Blizzard's checkbox-with-button template through the generic initializer. The secure builder also adds the setting's name as a search tag, so that page is not a clean example of a page with no search tags.
-
-The checkout's conformance check allows Blizzard's Settings row builders, and of the gamepad-banned calls only `Settings.CreateDropdown` and `Settings.OpenToCategory`, inside a working-build block, because this file is the measurement and releases strip the block. The allowance is the toolkit's (its `tests/conformance.lua`).
-
 ## Seeding
 
 `Data/Seed.lua` comes from the game, not from us. For each new game build, before a release:

@@ -31,4 +31,3 @@ Ranks.lua
 Panel.lua
 
 Troubleshooting.lua
-ControlTest.lua
