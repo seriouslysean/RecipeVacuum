@@ -12,7 +12,7 @@ With the Gamepad UI (Steam Deck), Blizzard's own code refuses to run on anything
 - `SmartNavigation.lua` `EnsureIsSecure` stops when it reads anything addon code wrote. After rows were inserted into the profession recipe list, the d-pad stopped moving (stack: `Navigate`, `SelectButton`, `EnsureIsSecure`).
 - `ADDON_ACTION_FORBIDDEN` named Recipe Vacuum for `SetPreferredGamepadInteractTarget`.
 - Opening the character window from the gamepad radial failed with "attempt to compare a secret number value (execution tainted by 'RecipeVacuum')".
-- `OpenWorldMap` from addon code taints, and so do `MenuUtil.CreateContextMenu` and `Menu.ModifyMenu` entries. A map pin is `C_Map.SetUserWaypoint` plus `C_SuperTrack.SetSuperTrackedUserWaypoint(true)`, with nothing opened.
+- `MenuUtil.CreateContextMenu` and `Menu.ModifyMenu` entries from addon code taint. `OpenWorldMap` was removed with them (d49f59d) without being measured alone; the Mac test (2026-11-27 15:26:36, `map open test map=1415 shown=true`) opened the map with nothing blocked, so Map Pin opens it with mouse and keyboard; under the Gamepad UI it sets the pin and tracking only until a Deck test passes (kit decision 0068).
 
 What is no longer done: unlearned rows in the recipe list, source marks on rows, the source line, item row and map button in the recipe pane, the Recipe Vacuum section of the filter menu, the first-run help tip, and any call that refreshes Blizzard's list. Unlearned recipes will live in Recipe Vacuum's own panel beside the window, fed by `ns.GetUnlearnedRecipes`.
 

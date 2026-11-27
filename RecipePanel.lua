@@ -71,7 +71,8 @@ function ns.SourceRows(recipeInfo)
 	return rows
 end
 
--- Sets the waypoint and super-tracks it, as Blizzard's own pin links do (ItemRefHandlers.lua); nothing follows a pin that was not set. The world map is never opened: opening it from addon code taints (docs/client-notes.md, "Gamepad").
+-- Sets the waypoint and super-tracks it, as Blizzard's own pin links do (ItemRefHandlers.lua), then opens the map at it with
+-- mouse and keyboard, measured clean on the Mac; under the Gamepad UI only once a Deck test passes (kit decision 0068).
 function ns.ShowOnMap(target)
 	ns.toolkit:Trace(ns.module, "map pin", "label", target.label, "map", target.mapID)
 	if not C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(target.mapID, target.x, target.y)) then
@@ -80,4 +81,8 @@ function ns.ShowOnMap(target)
 	C_SuperTrack.SetSuperTrackedUserWaypoint(true)
 	ns.lastPin = target -- the working build's map-open test pins it again (decision 0068)
 	ns.toolkit:Say(ns.module, ns.voice.pinned, target.label)
+	if not ns.toolkit.IsGamepadUI() then
+		OpenWorldMap(target.mapID)
+	end
+	ns.toolkit:Trace(ns.module, "map open", "map", target.mapID, "opened", not ns.toolkit.IsGamepadUI())
 end
