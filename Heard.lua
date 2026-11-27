@@ -158,13 +158,13 @@ local REFRESH_DELAY = 1
 local refreshQueued
 
 -- Whether the character has the profession a recipe belongs to: its skill line against GetProfessions' lines.
-local function HasProfession(recipeID)
-	return ns.GetProfessionCaps()[ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))] ~= nil
+local function HasProfession(recipeID, caps)
+	return (caps or ns.GetProfessionCaps())[ns.ProfessionLine(C_TradeSkillUI.GetTradeSkillLineForRecipe(recipeID))] ~= nil
 end
 
 -- A recipe met at Self Found for the first time while a window is open counts toward that window's closing line, once:
 -- a repeat sighting changes nothing here, so it is not counted again.
-local function Note(bucket, id, level, window)
+local function Note(bucket, id, level, window, caps)
 	local met = ns.db.met[bucket]
 	if met[id] and met[id] <= level then
 		return
@@ -174,7 +174,7 @@ local function Note(bucket, id, level, window)
 		window = window or Target()
 		if not window then
 			ns.toolkit:Trace(ns.module, "SEEN recipe %d not counted, no window open", id)
-		elseif HasProfession(id) then
+		elseif HasProfession(id, caps) then
 			counts[window] = (counts[window] or 0) + 1
 			ns.toolkit:Trace(ns.module, "SEEN recipe %d counted for %s", id, window)
 		else
@@ -227,8 +227,36 @@ local function OnChat(message)
 	end
 end
 
--- A shown profession lists every recipe its player knows: guild views count as Friends, links as Public.
+-- A shown profession lists every recipe its player knows: another player's, linked or a guild member's, is something the player saw
+-- for themselves. The walk is sliced like the unlearned read, one recipe at least a frame (docs/client-notes.md, "Panel").
 local shownPending
+local shownRun = 0 -- a newer profession shown ends the walk of an older one
+local SHOWN_STEP_MS = 2
+
+local function ReadShownStep(run, ids, at, caps, started, learned)
+	if run ~= shownRun then return end
+	local stepStart = debugprofilestop()
+	local count = #ids
+	while at <= count do
+		-- The window closed or switched: its recipes are no longer the ones this walk was asked about.
+		if not C_TradeSkillUI.IsTradeSkillReady() then return end
+		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(ids[at])
+		if recipeInfo and recipeInfo.learned then
+			learned = learned + 1
+			Note("recipes", ids[at], LEVEL.SELF, nil, caps)
+		end
+		at = at + 1
+		if debugprofilestop() - stepStart >= SHOWN_STEP_MS then break end
+	end
+	--@debug@
+	ns.PerfMs("heard shown profession step", debugprofilestop() - stepStart)
+	--@end-debug@
+	if at <= count then
+		RunNextFrame(function() ReadShownStep(run, ids, at, caps, started, learned) end)
+	else
+		ns.toolkit:Trace(ns.module, "SEEN shown profession read: %d recipes, %d learned, %.1f ms since it began", count, learned, debugprofilestop() - started)
+	end
+end
 
 local function ReadShownProfession()
 	if not shownPending or not C_TradeSkillUI.IsTradeSkillReady() then
@@ -237,17 +265,11 @@ local function ReadShownProfession()
 	shownPending = nil
 	local linked = C_TradeSkillUI.IsTradeSkillLinked()
 	local guild = C_TradeSkillUI.IsTradeSkillGuild() or C_TradeSkillUI.IsTradeSkillGuildMember()
-	-- Another player's profession, linked or a guild member's, is something the player saw for themselves.
 	if not (linked or guild) then
 		return
 	end
-	local level = LEVEL.SELF
-	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
-		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
-		if recipeInfo and recipeInfo.learned then
-			Note("recipes", recipeID, level)
-		end
-	end
+	shownRun = shownRun + 1
+	ReadShownStep(shownRun, C_TradeSkillUI.GetAllRecipeIDs(), 1, ns.GetProfessionCaps(), debugprofilestop(), 0)
 end
 
 -- A recipe item the player sees, in the bags or on any item tooltip, is met at Self Found: not where it came from
@@ -377,10 +399,12 @@ local handlers = {
 	BAG_CLOSED = function() QueueBagSync() end,
 	TRADE_SKILL_SHOW = function()
 		shownPending = true
+		shownRun = shownRun + 1
 		ReadShownProfession()
 	end,
 	TRADE_SKILL_DATA_SOURCE_CHANGED = function()
 		shownPending = true
+		shownRun = shownRun + 1
 		ReadShownProfession()
 	end,
 	TRADE_SKILL_LIST_UPDATE = function() ReadShownProfession() end,
