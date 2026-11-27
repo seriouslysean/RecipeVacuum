@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 52
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 53
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -378,6 +378,7 @@ function lib:StartLog(module, saved, handlers)
 	end
 	log.module, log.saved, log.handlers = module, saved, handlers or {}
 	self:AddWorkingSection(module)
+	if module.workingSection then self:ShowBuilds() end
 	saved.devLog = saved.devLog or {}
 	if not self.logWriter then
 		self.logWriter = CreateFrame("Frame")
@@ -794,6 +795,25 @@ local function AddWorkingRows(module)
 	end
 end
 
+-- Working builds name themselves in the bottom-left corner, kit MINOR and each module's short name and deploy stamp, so a
+-- screenshot shows which builds it caught. module.short names it, else the capitals of its title ("Recipe Vacuum" is rv).
+function lib:ShowBuilds()
+	local parts = { "jbg" .. MINOR }
+	for _, name in ipairs(self.logOrder or {}) do
+		local module = self.logs[name] and self.logs[name].module
+		if module and module.workingSection then
+			local short = module.short or (module.title or name):gsub("[^%u]", ""):lower()
+			local stamp = (C_AddOns.GetAddOnMetadata(name, "Version") or "?"):match("^(%S+)") or "?"
+			table.insert(parts, short .. " " .. stamp)
+		end
+	end
+	if not self.buildText then
+		self.buildText = UIParent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+		self.buildText:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 4, 4)
+	end
+	self.buildText:SetText(table.concat(parts, " · "))
+end
+
 function lib:AddWorkingSection(module)
 	if module.workingSection or not module.finished then return end
 	local command = self.commands[module.command or ""]
@@ -803,6 +823,7 @@ function lib:AddWorkingSection(module)
 	end
 	if not (hasCommands or self.logs[module.addon]) then return end
 	module.workingSection = true
+	self:ShowBuilds()
 	if self.workingBuilt then return AddWorkingRows(module) end
 	self.workingQueue = self.workingQueue or {}
 	table.insert(self.workingQueue, module)
