@@ -1291,6 +1291,9 @@ FillDetail = function()
 	mapMore.places = data.places
 
 	UpdatePlaceMenu() -- the list floats: it never takes height from the details
+	ns.toolkit:Trace(ns.module, "map controls", "sources", #data.sources, "places", #data.places, "button_shown", mapButton:IsShown(),
+		"button_visible", mapButton:IsVisible(), "more_shown", mapMore:IsShown(), "parent_visible", mapButton:GetParent():IsVisible(),
+		"top", mapButton:GetTop(), "bottom", mapButton:GetBottom(), "alpha", mapButton:GetEffectiveAlpha())
 	--@debug@
 	ns.PerfMs("details map", debugprofilestop() - part)
 	--@end-debug@
