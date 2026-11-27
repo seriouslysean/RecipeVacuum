@@ -126,7 +126,7 @@ The panel groups the found recipes by rank band of their required skill (`ns.Ban
 
 ## Discovery
 
-The panel's discovery bar is found over total for the open skill line (`ns.GetListedRecipes`, `Unlearned.lua`). Found is the recipes the show rule lists, ignoring the search and filters. Total is every unlearned candidate of the skill line before the show rule: not the other faction's, nothing of another expansion's. The bar says how much of what the character could still learn has been found, and the panel keeps no list of the rest.
+The panel's discovery bar is found over total for the open skill line (`ns.GetListedRecipes`, `Unlearned.lua`). Found is the recipes the show rule lists, ignoring the search and filters. Total is every unlearned candidate of the skill line before the show rule: not the other faction's, nothing of another expansion's. Those candidates come from Recipe Vacuum's own data (the seed, the layers and what the client lists), not from every recipe in the game, so the Public tooltip says "Recipes you have found, out of those Recipe Vacuum knows you can still learn." (owner, 2026-11-27: "it's all the recipes we _know_ about, not that exist"). The Self Found and Friends tooltip, "Recipes you have found and can still learn in this profession.", claims no total and stays. The bar says how much of what the character could still learn has been found, and the panel keeps no list of the rest.
 
 The total is a spoiler for a player who has not chosen public data (owner, 2026-11-26), so it follows the source level (`sourceLevel`):
 

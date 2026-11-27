@@ -1898,7 +1898,7 @@ local function CreatePanel()
 	rankBar:EnableMouse(true)
 	rankBar:SetScript("OnEnter", function(self)
 		ns.OwnTooltip(self)
-		GameTooltip_AddNormalLine(GameTooltip, ShowsTotal() and L["Recipes found out of all the ones you can still learn in this profession."]
+		GameTooltip_AddNormalLine(GameTooltip, ShowsTotal() and L["Recipes you have found, out of those Recipe Vacuum knows you can still learn."]
 			or L["Recipes you have found and can still learn in this profession."])
 		GameTooltip:Show()
 	end)
