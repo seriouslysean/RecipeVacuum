@@ -89,6 +89,9 @@ for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInit
 	"Settings%.OpenToCategory" }) do
 	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
 end
+-- Blizzard's shared HelpTip pool: a module's HelpTip:Show writes onto pooled Blizzard frames, and Blizzard's action bar
+-- update then reads them tainted and is blocked in combat (Tackletron, 2026-11-27). Use a private HelpTipTemplate frame.
+table.insert(FORBIDDEN, { "%f[%w_]HelpTip:", "writes into Blizzard's shared HelpTip pool (docs/standards.md, \"Gamepad UI\")" })
 -- The rest of docs/options.md, "Banned controls": each is measured on the Steam Deck or has no module that needs it.
 for _, name in ipairs({ "AddShownPredicate", "Settings%.RegisterInitializer", "Settings%.RegisterCanvasLayoutCategory",
 	"Settings%.RegisterCanvasLayoutSubcategory", "CreateSettingsCheckboxSliderInitializer",
