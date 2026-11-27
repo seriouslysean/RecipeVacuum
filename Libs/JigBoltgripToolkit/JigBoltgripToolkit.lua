@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 53
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 54
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -775,22 +775,31 @@ function lib:BuildOptions(module, db, sections)
 end
 
 -- Closing sections every module page shares: commands and links.
--- One Working Build section on the toolkit's page (a gamepad has no keyboard): a reload, then each working build's
--- development commands. Built at login, after the module list; a module marked later is appended.
+-- Working builds get buttons, since a gamepad has no keyboard. The toolkit's page holds only what is the kit's: reload, the
+-- shared watch switch and the log viewer. A module's own development commands go on its own page.
+local function AddKitWorkingRows()
+	local _, layout = lib:GetCategory()
+	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
+		L["Working build only: reload and the development commands, as buttons."]))
+	layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
+	for _, row in ipairs({ { "/boltgrip watch", "watch" }, { "/boltgrip log", "log" }, { "/boltgrip log clear", "log", "clear" } }) do
+		layout:AddInitializer(CreateSettingsButtonInitializer(row[1], L["Run"], function() KitCommand(row[2], row[3]) end, row[1], false))
+	end
+end
+
 local function AddWorkingRows(module)
 	local command, working = lib.commands[module.command or ""], {}
 	for _, entry in ipairs(command and command.entries or {}) do
 		if entry.troubleshooting then table.insert(working, entry) end
 	end
-	local _, layout = lib:GetCategory()
-	if not lib.workingHeader then
-		lib.workingHeader = true
-		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
-			L["Working build only: reload and the development commands, as buttons."]))
-		layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
+	if not lib.kitWorkingRows then
+		lib.kitWorkingRows = true
+		AddKitWorkingRows()
 	end
+	if #working == 0 then return end
+	module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"]))
 	for _, entry in ipairs(working) do
-		layout:AddInitializer(CreateSettingsButtonInitializer(module.title .. ": /" .. command.name .. " " .. entry.action, L["Run"],
+		module.layout:AddInitializer(CreateSettingsButtonInitializer("/" .. command.name .. " " .. entry.action, L["Run"],
 			function() entry.run("") end, entry.description, false))
 	end
 end
