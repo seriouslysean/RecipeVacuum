@@ -1765,7 +1765,7 @@ end
 -- source switching, and learning or a skill change (docs/client-notes.md, "Panel").
 local eventFrame = CreateFrame("Frame")
 for _, event in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "NEW_RECIPE_LEARNED", "SKILL_LINES_CHANGED", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
-	"BAG_UPDATE_DELAYED", "PLAYER_LOGIN", "PLAYERBANKSLOTS_CHANGED", "PLAYERREAGENTBANKSLOTS_CHANGED" }) do -- bags change the counts; the same content refreshes rows in place
+	"BAG_UPDATE_DELAYED", "PLAYER_LOGIN", "PLAYERBANKSLOTS_CHANGED" }) do -- bags change the counts; the same content refreshes rows in place
 	eventFrame:RegisterEvent(event)
 end
 eventFrame:SetScript("OnEvent", function(_, event)
@@ -1779,7 +1779,7 @@ eventFrame:SetScript("OnEvent", function(_, event)
 		pool.resume()
 	elseif event == "PLAYER_LOGIN" then
 		pool.afterLogin()
-	elseif event == "PLAYERBANKSLOTS_CHANGED" or event == "PLAYERREAGENTBANKSLOTS_CHANGED" then
+	elseif event == "PLAYERBANKSLOTS_CHANGED" then
 		wipe(craftable.held) -- the next draw reads the bank's counts again; a bank change alone asks for no redraw
 	else
 		if event == "BAG_UPDATE_DELAYED" then wipe(craftable.held) end
