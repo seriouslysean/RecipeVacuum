@@ -154,8 +154,6 @@ function lib:Say(module, line, ...)
 	AddLine(("%s %s %s"):format(MARK, L["Boltgrip's %s %s."]:format(DeviceName(module), noise), report))
 end
 
--- A voiced line said once ever: db[key] remembers it, for the first time a module changes something the
--- player did not set (docs/standards.md, "Game settings"). Returns whether it spoke.
 -- An item in a chat line, as the game names items in chat: its link, else its name while it loads, else "item:<id>"
 -- (docs/standards.md, "Voice").
 function lib.ItemText(itemID)
@@ -165,6 +163,8 @@ function lib.ItemText(itemID)
 	return name or C_Item.GetItemNameByID(itemID) or ("item:" .. tostring(itemID))
 end
 
+-- A voiced line said once ever: db[key] remembers it, for the first time a module changes something the
+-- player did not set (docs/standards.md, "Game settings"). Returns whether it spoke.
 function lib:SayOnce(module, db, key, line, ...)
 	self:RememberOnce(module, db, key)
 	if db[key] then
