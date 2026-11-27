@@ -4,4 +4,4 @@ A module of Jig Boltgrip's Toolkit. Every module follows the toolkit's shared [s
 
 - `scripts/check` runs everything CI runs. Turn on the pre-push hook once per clone with `git config core.hooksPath .githooks`, and never skip it.
 - Mouse and keyboard and gamepad are both first-class: nothing releases until both are checked in game.
-- Comments say why, never history; decisions and measurements go in `docs/`.
+- Comments say why, never history; measurements go in `docs/`, decisions in the toolkit's [docs/decisions](https://github.com/seriouslysean/JigBoltgripToolkit/tree/main/docs/decisions).
