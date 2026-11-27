@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 49
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 50
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -18,6 +18,7 @@ do
 		"%s commands:", "Troubleshooting", "List these commands",
 		"Prints these commands in your chat window, with what each one does.",
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
+		"Working Build", "Working build only: reload and the development commands, as buttons.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
 		"Also tracks what your party, guild and friends find.", "Boltgrip's %s %s.",
@@ -788,6 +789,21 @@ function lib:FinishModule(module)
 					"/" .. command.name .. " " .. entry.action, L["Run"], function() entry.run("") end,
 					entry.note and (entry.description .. "\n" .. entry.note) or entry.description, false))
 			end
+		end
+	end
+	-- Development commands exist only in a working build, so they mark one. They become buttons beside a reload, since a
+	-- gamepad has no keyboard (docs/standards.md, "Working build helpers").
+	local working = {}
+	for _, entry in ipairs(command and command.entries or {}) do
+		if entry.troubleshooting then table.insert(working, entry) end
+	end
+	if #working > 0 then
+		module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
+			L["Working build only: reload and the development commands, as buttons."]))
+		module.layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
+		for _, entry in ipairs(working) do
+			module.layout:AddInitializer(CreateSettingsButtonInitializer("/" .. command.name .. " " .. entry.action, L["Run"],
+				function() entry.run("") end, entry.description, false))
 		end
 	end
 	local links = ModuleLinks(module.addon)
