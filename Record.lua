@@ -123,6 +123,14 @@ local function EndTrainerJob(job)
 	if trainerJob == job then trainerJob = nil end
 end
 
+-- A scan that ends before its finish frame still saved the recipes it read, so the visit's count and the panel's sources follow.
+local function AbortTrainerJob(job, reason)
+	if trainerJob ~= job then return end
+	ns.toolkit:Trace(ns.module, "TRAINER scan stopped at service %d of %d: %s; %d new recipes kept", job.index, job.services, reason, job.count)
+	EndTrainerJob(job)
+	FinishScan(job.count, job.npc, job.changed)
+end
+
 local function Skip(job, reason)
 	job.skipped[reason] = (job.skipped[reason] or 0) + 1
 end
@@ -207,8 +215,7 @@ local function TrainerStep(job)
 		job.stale = nil
 		job.restarts = job.restarts + 1
 		if job.restarts > TRAINER_MAX_RESTARTS then
-			ns.toolkit:Trace(ns.module, "TRAINER scan stopped after %d restarts: the list kept changing", TRAINER_MAX_RESTARTS)
-			EndTrainerJob(job)
+			AbortTrainerJob(job, ("the list kept changing through %d restarts"):format(TRAINER_MAX_RESTARTS))
 			return
 		end
 		ns.toolkit:Trace(ns.module, "TRAINER list changed at service %d of %d, read again from the top (restart %d)", job.index, job.services, job.restarts)
@@ -281,7 +288,9 @@ local function RecordTrainer()
 	local professionTrainer = IsTradeskillTrainer()
 	local npc = CurrentNPC()
 	if not npc then
-		return true
+		-- The client can hide the NPC's GUID at the show; the next update asks again.
+		ns.toolkit:Trace(ns.module, "TRAINER no creature to record yet, asked again on the next update")
+		return false
 	end
 	if trainerJob then
 		ns.toolkit:Trace(ns.module, "TRAINER scan already running, not started again")
@@ -354,8 +363,7 @@ local function FinishVisit()
 		timer = nil
 	end
 	if trainerJob then
-		ns.toolkit:Trace(ns.module, "TRAINER scan stopped at service %d of %d: the visit ended", trainerJob.index, trainerJob.services)
-		EndTrainerJob(trainerJob)
+		AbortTrainerJob(trainerJob, "the visit ended")
 	end
 	Announce(newSources, visitNPC and (ns.GetNPC(visitNPC.npcID) or {}).name)
 	newSources, visitNPC, record = 0, nil, nil
@@ -405,8 +413,9 @@ local function OnVisitEvent(event, itemID)
 	elseif (event == "TRAINER_CLOSED" and record == RecordTrainer)
 		or (event == "MERCHANT_CLOSED" and record == RecordVendor) then
 		FinishVisit()
-	elseif event == "TRAINER_UPDATE" and trainerJob then
-		-- Filters and purchases fire it; a scan in progress reads again from the top.
+	elseif trainerJob and (event == "TRAINER_UPDATE" or (event == "TRAINER_SERVICE_INFO_NAME_UPDATE" and trainerJob.skipped["no name yet"])) then
+		-- Filters and purchases fire TRAINER_UPDATE, and a name that arrives after the scan skipped its service fills it in; either way a
+		-- scan in progress reads again from the top (services read before cost no tooltip), as the 0.2 s timer would find the job still running.
 		trainerJob.stale = true
 		return
 	elseif not ((record == RecordTrainer and (event == "TRAINER_SERVICE_INFO_NAME_UPDATE" or event == "TRAINER_UPDATE"))

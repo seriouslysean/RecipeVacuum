@@ -713,7 +713,20 @@ local function BuildStep(buildGeneration)
 		nextItem = nextItem + 1
 	end
 	-- Rows built after the reveal join the jumps now, inside the step's time, so down never ends at the last row built so far.
-	if scroll.revealed and nextItem <= #items then SyncNav() end
+	-- Only while the step has time left: SyncNav walks every built row, and the build's end sets the jumps for all of them anyway.
+	if scroll.revealed and nextItem <= #items then
+		if debugprofilestop() - started < BUILD_BUDGET_MS then
+			--@debug@
+			local navStart = debugprofilestop()
+			--@end-debug@
+			SyncNav()
+			--@debug@
+			ns.Perf("panel nav sync", navStart)
+			--@end-debug@
+		else
+			ns.toolkit:Trace(ns.module, "UI nav sync after row %d left to the build's end: the step used its %d ms", nextItem - 1, BUILD_BUDGET_MS)
+		end
+	end
 	local stepMs = debugprofilestop() - started
 	buildMs = buildMs + stepMs
 	scroll.worstStepMs, scroll.mostStepItems = math.max(scroll.worstStepMs or 0, stepMs), math.max(scroll.mostStepItems or 0, done)
