@@ -813,8 +813,12 @@ local function RecordLayout()
 	-- The overview tab: its section edges, so our list and details can split where its bottom row starts.
 	local book = ProfessionsFrame and ProfessionsFrame.BookPage
 	if book and book:IsVisible() then
+		-- The sections sit in the page's content frame (Camelot/Blizzard_ProfessionsBookTemplates.xml, ProfessionsContentFrame).
+		local content = book.ProfessionsContentFrame or book
+		local found = 0
 		for _, key in ipairs({ "PrimaryProfession1", "PrimaryProfession2", "SecondaryProfession1" }) do
-			local region = book[key]
+			local region = content[key]
+			if region then found = found + 1 end
 			local scale = region and region:GetEffectiveScale()
 			local top, bottom = region and region:GetTop(), region and region:GetBottom()
 			toolkit:Trace(ns.module, "layout edge", "name", "blizzard overview " .. key, "top", top and top * scale,
@@ -823,7 +827,7 @@ local function RecordLayout()
 		local scale = ProfessionsFrame:GetEffectiveScale()
 		toolkit:Trace(ns.module, "layout edge", "name", "blizzard window", "top", ProfessionsFrame:GetTop() * scale,
 			"bottom", ProfessionsFrame:GetBottom() * scale)
-		return nil, "Overview recorded."
+		return { pairs = {}, profession = "overview", overview = found }
 	end
 	if not (page and page:IsVisible() and parts.panel and parts.panel:IsShown()) then
 		return nil, "Open a profession, then run it again."
@@ -873,6 +877,9 @@ end
 table.insert(troubleshooting, { "layout", label = "Window Layout", button = "Record", "Record Blizzard's profession window and our panel layout", function()
 	local record, reason = RecordLayout()
 	if not record then return ns.toolkit:Debug("layout not_recorded reason=" .. LV(reason)) end
+	if record.overview then
+		return ns.toolkit:Debug(("layout overview recorded sections=%d next=logout"):format(record.overview))
+	end
 	ns.toolkit:Debug(("layout recorded measures=%d profession=%s next=reload"):format(#record.pairs, LV(record.profession)))
 end, quiet = true })
 
