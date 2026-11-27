@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 54
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 56
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
