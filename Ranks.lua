@@ -97,8 +97,10 @@ ns.toolkit:EventFrame(ns.module, {
 	QUEST_COMPLETE = function()
 		local unitType, npcID = ns.toolkit.GUID(UnitGUID("questnpc"))
 		local mapID, x, y = ns.GetPlayerLocation()
+		local readable = ns.toolkit.Readable
+		local name, faction = UnitName("questnpc"), UnitFactionGroup("questnpc")
 		completing = unitType == "Creature" and { quest = GetQuestID(), giver = { npcID,
-			UnitName("questnpc"), mapID, x, y, faction = (UnitFactionGroup("questnpc")) } } or nil
+			readable(name) and name or nil, mapID, x, y, faction = readable(faction) and faction or nil } } or nil
 	end,
 	QUEST_TURNED_IN = function(questID)
 		-- The giver counts only for the quest whose completion window it was.

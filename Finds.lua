@@ -28,7 +28,7 @@ local MAX_NAME_LENGTH = 64 -- caps what a peer can send
 
 -- Names a receiver would reject are left out, so one long name never stalls a peer's sync.
 local function WireName(name)
-	return name and #name <= MAX_NAME_LENGTH and name or nil
+	return name and wire.Name(name, MAX_NAME_LENGTH) and name or nil
 end
 
 local function WireRow(observation, context)

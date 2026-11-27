@@ -17,12 +17,20 @@ function ns.GetPlayerLocation()
 		return mapID
 	end
 	local x, y = position:GetXY()
+	-- A position the client hides is no position: Round would do arithmetic on it.
+	if not (ns.toolkit.Readable(x) and ns.toolkit.Readable(y)) then
+		return mapID
+	end
 	return mapID, Round(x), Round(y)
 end
 local GetPlayerLocation = ns.GetPlayerLocation
 
 local BUILD = ns.BUILD
 local Readable, GUID = ns.toolkit.Readable, ns.toolkit.GUID
+-- A name or faction the client may hide: a hidden value is nil here, as a bare test of one is a Lua error on this client.
+local function Visible(value)
+	return Readable(value) and value or nil
+end
 
 -- The NPC being talked to, or nil when the client hides it (secret values); saved by NoteVisit only for an NPC with a recipe.
 local function CurrentNPC()
@@ -33,7 +41,7 @@ local function CurrentNPC()
 	local seen = GetServerTime()
 	local mapID, x, y = GetPlayerLocation()
 	return { field = "npc", value = npcID, npcID = npcID, faction = (UnitFactionGroup("player")), seen = seen,
-		name = UnitName("npc"), mapID = mapID, x = x, y = y, npcFaction = (UnitFactionGroup("npc")) }
+		name = Visible(UnitName("npc")), mapID = mapID, x = x, y = y, npcFaction = Visible((UnitFactionGroup("npc"))) }
 end
 
 -- Runs when a scan found at least one recipe, new or saved, so a trainer whose recipes are all known still refreshes its position.
@@ -837,7 +845,7 @@ local function ReadQuest(event)
 	if unitType then
 		if unitType == "Creature" and id then
 			local mapID, x, y = GetPlayerLocation()
-			questNPC = { id, UnitName("questnpc"), mapID, x, y, GetServerTime(), faction = (UnitFactionGroup("questnpc")) }
+			questNPC = { id, Visible(UnitName("questnpc")), mapID, x, y, GetServerTime(), faction = Visible((UnitFactionGroup("questnpc"))) }
 			details[event == "QUEST_COMPLETE" and "finisher" or "npc"] = id
 			-- A quest's place is where it is given; the turn-in may be elsewhere.
 			if event == "QUEST_DETAIL" then details.map = mapID end

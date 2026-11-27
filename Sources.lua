@@ -783,7 +783,10 @@ function ns.ReadSpecialization(recipeID)
 		return false
 	end
 	local schematic = C_TradeSkillUI.GetRecipeSchematic(recipeID, false)
-	local itemID = schematic and schematic.outputItemID
+	if not schematic then
+		return nil -- not loaded is not "makes nothing": nothing is saved, and the next draw asks again
+	end
+	local itemID = schematic.outputItemID
 	if not itemID then
 		facts.spec[recipeID], recipeSpecs[recipeID] = false, false
 		return false
