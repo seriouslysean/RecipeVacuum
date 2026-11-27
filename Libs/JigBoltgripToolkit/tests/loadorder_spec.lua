@@ -187,6 +187,20 @@ describe("load order", function()
 			"an event is one to three lowercase words")
 	end)
 
+	-- Fails if a chat line names an item by plain text when its link is known, or breaks before the item is cached.
+	it("an item in a chat line is its link, else its name, else its ID", function()
+		NewClient()
+		Load(CURRENT)
+		local tk = LibStub("JigBoltgripToolkit-1.0")
+		local cached = { [1] = { "Shiny Bauble", "|cff1eff00|Hitem:6529|h[Shiny Bauble]|h|r" } }
+		C_Item = { GetItemInfo = function(id) local item = cached[id] if item then return item[1], item[2] end end,
+			RequestLoadItemDataByID = function() end, GetItemNameByID = function(id) return id == 2 and "Aquadynamic Fish Attractor" or nil end }
+		local link, name, unknown = tk.ItemText(1), tk.ItemText(2), tk.ItemText(3)
+		C_Item = nil
+		assert(link:find("|Hitem:6529|", 1, true) and name == "Aquadynamic Fish Attractor" and unknown == "item:3",
+			"an item in a chat line is its link, else its name, else its ID")
+	end)
+
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()
 		NewClient()

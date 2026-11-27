@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 83
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 84
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -156,6 +156,15 @@ end
 
 -- A voiced line said once ever: db[key] remembers it, for the first time a module changes something the
 -- player did not set (docs/standards.md, "Game settings"). Returns whether it spoke.
+-- An item in a chat line, as the game names items in chat: its link, else its name while it loads, else "item:<id>"
+-- (docs/standards.md, "Voice").
+function lib.ItemText(itemID)
+	local name, link = C_Item.GetItemInfo(itemID)
+	if link then return link end
+	C_Item.RequestLoadItemDataByID(itemID)
+	return name or C_Item.GetItemNameByID(itemID) or ("item:" .. tostring(itemID))
+end
+
 function lib:SayOnce(module, db, key, line, ...)
 	self:RememberOnce(module, db, key)
 	if db[key] then
