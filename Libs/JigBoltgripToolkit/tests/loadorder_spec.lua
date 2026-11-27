@@ -129,8 +129,8 @@ describe("load order", function()
 			assert(Count(buttons, "button", "Alpha title") == 0 and Count(buttons, "button", "Beta title") == 0,
 				order.name .. ": no Open row per addon")
 		end)
-		it(order.name .. ": one About page", function()
-			assert(Count(buttons, "canvas", "Jig Boltgrip's Toolkit") == 1, order.name .. ": one About page")
+		it(order.name .. ": no canvas page", function()
+			assert(Count(buttons, "canvas", "Jig Boltgrip's Toolkit") == 0, order.name .. ": no canvas page")
 		end)
 	end
 

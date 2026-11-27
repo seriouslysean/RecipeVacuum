@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 72
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 73
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -21,8 +21,7 @@ do
 		"Working Build", "Read the working log. Working builds only.",
 		"Working Log", "Show",
 		"Opens every module's working log in the copy window.",
-		"Hey there! I like to keep simplicity in mind with the tools I create, and I don't need much. I've put together a toolkit of the features I find most useful while adventuring in the world.",
-		"Each device does one thing, and (hopefully) does it well. I hope they help you on your journey, too. Safe travels!", "Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
+		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
 		"Also tracks what your party, guild and friends find.", "Boltgrip's %s %s.",
@@ -38,17 +37,11 @@ lib.records = lib.records or {} -- module records made by NewModule, by addon na
 -- Header for modules' key bindings: a module's Bindings.xml uses category="BINDING_HEADER_JIGBOLTGRIPTOOLKIT".
 BINDING_HEADER_JIGBOLTGRIPTOOLKIT = lib.title
 
--- Module pages use only Blizzard's vertical-layout initializers, so the Settings search finds them. The toolkit's own
--- page is an About page (the another addon shape) on Blizzard's canvas page, since no settings row wraps a paragraph
--- (docs/options.md, "Toolkit page").
-local ABOUT_LINKS = { { "GitHub", "https://github.com/seriouslysean/JigBoltgripToolkit" } }
-local ABOUT_WIDTH = 560
-
+-- Every page, the toolkit's own included, uses only Blizzard's vertical-layout initializers: a canvas page came up
+-- empty and broke the controller on the Deck (docs/options.md, "Toolkit page").
 function lib:GetCategory()
 	if not self.category then
-		self.aboutFrame = CreateFrame("Frame")
-		self.aboutFrame:SetScript("OnShow", function(frame) lib:FillAbout(frame) end)
-		self.category = Settings.RegisterCanvasLayoutCategory(self.aboutFrame, self.title)
+		self.category, self.layout = Settings.RegisterVerticalLayoutCategory(self.title)
 		-- Open in the AddOns list, so the modules show; Blizzard reads the flag securely (Blizzard_Category.lua:114-123).
 		self.category:SetExpanded(true)
 		Settings.RegisterAddOnCategory(self.category)
@@ -947,47 +940,12 @@ end
 -- Working builds get buttons, since a gamepad has no keyboard. The toolkit's page holds only the kit's watch switch and
 -- log viewer, named with the verb on the button as Blizzard's rows are; no reload row, the game menu has one
 -- (docs/options.md, "Toolkit page"). A module's own development commands go on its own page.
-local function AboutText(frame, previous, font, text, gap)
-	local line = frame:CreateFontString(nil, "ARTWORK", font)
-	line:SetPoint("TOPLEFT", previous, previous == frame and "TOPLEFT" or "BOTTOMLEFT", previous == frame and 16 or 0,
-		previous == frame and -16 or -(gap or 8))
-	line:SetWidth(ABOUT_WIDTH)
-	line:SetJustifyH("LEFT")
-	line:SetText(text)
-	return line
-end
-
-local function AboutButton(frame, previous, text, onClick)
-	local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-	button:SetText(text)
-	button:SetSize(button:GetTextWidth() + 40, 22)
-	button:SetPoint("TOPLEFT", previous, "BOTTOMLEFT", 0, -6)
-	button:SetScript("OnClick", onClick)
-	return button
-end
-
--- Built on first show, when every module has registered; Blizzard fonts and buttons only.
-function lib:FillAbout(frame)
-	if frame.filled then return end
-	frame.filled = true
-	local last = AboutText(frame, frame, "GameFontNormalHuge", self.title)
-	last = AboutText(frame, last, "GameFontHighlight", L["Hey there! I like to keep simplicity in mind with the tools I create, and I don't need much. I've put together a toolkit of the features I find most useful while adventuring in the world."], 16)
-	last = AboutText(frame, last, "GameFontHighlight", L["Each device does one thing, and (hopefully) does it well. I hope they help you on your journey, too. Safe travels!"], 10)
-	local modules = {}
-	for _, module in ipairs(self.modules) do table.insert(modules, module) end
-	table.sort(modules, function(a, b) return (a.title or a.addon):lower() < (b.title or b.addon):lower() end)
-	for i, module in ipairs(modules) do
-		last = AboutText(frame, last, "GameFontHighlightSmall", NORMAL_FONT_COLOR:WrapTextInColorCode(module.title)
-			.. (module.notes and (" - " .. module.notes) or ""), i == 1 and 16 or 4)
-	end
-	for _, link in ipairs(ABOUT_LINKS) do
-		last = AboutText(frame, last, "GameFontHighlightSmall", link[1] .. ": " .. link[2], 16)
-		last = AboutButton(frame, last, L["Copy link"], function() ShowLink(self.title .. ": " .. link[1], link[2]) end)
-	end
-	if self.kitWorkingRows then
-		last = AboutText(frame, last, "GameFontNormal", L["Working Build"], 16)
-		AboutButton(frame, last, L["Working Log"], function() KitCommand("log") end)
-	end
+local function AddKitWorkingRows()
+	local _, layout = lib:GetCategory()
+	layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
+		L["Read the working log. Working builds only."]))
+	layout:AddInitializer(CreateSettingsButtonInitializer(L["Working Log"], L["Show"], function() KitCommand("log") end,
+		L["Opens every module's working log in the copy window."], false))
 end
 
 local function AddWorkingRows(module)
@@ -997,6 +955,7 @@ local function AddWorkingRows(module)
 	end
 	if not lib.kitWorkingRows then
 		lib.kitWorkingRows = true
+		AddKitWorkingRows()
 	end
 	if #working == 0 then return end
 	module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"]))
