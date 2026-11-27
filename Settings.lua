@@ -33,7 +33,7 @@ function ns.InitSettings()
 		{ heading = L["Personal Finds"], place = "features", rows = {
 			{ kind = "checkbox", key = "selfFound", label = L["Track Personal Finds"], default = true,
 				tooltip = L["Remembers the trainers, vendors, quests and loot you see, on every character."] },
-			{ kind = "checkbox", key = "announceNewFinds", label = L["Chat Alerts"], default = true, under = "selfFound",
+			{ kind = "checkbox", key = "announceNewFinds", label = L["Show Chat Alerts"], default = true, under = "selfFound",
 				tooltip = L["Prints a message in chat after visits and windows with new recipes."] },
 		} },
 	})
