@@ -33,6 +33,7 @@ local function NewClient()
 	EventUtil = { ContinueOnPlayerLogin = function(callback) callback() end, ContinueOnAddOnLoaded = function() end }
 	-- Blizzard's Settings page order (GameplaySettingsGroup.lua), enUS titles.
 	CUSTOM_GAMEPLAY_SETTINGS_ORDER = { ["Combat"] = 10, ["Keybindings"] = 14 }
+	SETTINGS_KEYBINDINGS_LABEL = "Keybindings"
 	CONTEXT_ACTION_LABEL_OPEN = "Open"
 	function strtrim(text) return (text:gsub("^%s+", ""):gsub("%s+$", "")) end
 	C_AddOns = { GetAddOnMetadata = function(addon, field)
@@ -226,10 +227,10 @@ describe("load order", function()
 					values = tk:SourceChoices({ self = "Tracks only things you see for yourself.", public = "Also tracks things people link in chat.", openings = false }) },
 			} },
 		})
-		-- Fails if a module's sections are not put in the toolkit's one order: sources, features, Blizzard's.
+		-- Fails if a module's sections are not put in the toolkit's one order: sources, features, Blizzard's, key bindings.
 		local headings = {}
 		for _, row in ipairs(buttons) do if row.header then headings[#headings + 1] = row.header end end
-		assert(table.concat(headings, ",") == "Thing Sources,Things,Combat,Keybindings,Audio",
+		assert(table.concat(headings, ",") == "Thing Sources,Things,Combat,Audio,Keybindings",
 			"sections follow the toolkit's order whatever order a module lists them in")
 	end)
 	-- Fails if a sources section may put another row above its source choice.

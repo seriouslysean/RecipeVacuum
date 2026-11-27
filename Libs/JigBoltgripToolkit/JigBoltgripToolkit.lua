@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 73
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 74
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -818,7 +818,8 @@ end
 local VAR_TYPES = { boolean = "Boolean", number = "Number", string = "String" }
 
 -- One order on every page (docs/standards.md, "Options"); each section says its place.
-local SECTION_PLACES = { sources = 1, features = 2, blizzard = 3 }
+-- Key bindings come after the game's other settings, as Blizzard's Keybindings page does (docs/options.md, "Order and grouping").
+local SECTION_PLACES = { sources = 1, features = 2, blizzard = 3, keys = 4 }
 
 -- Blizzard's sections in the order of its own Settings pages, read from the game's order table
 -- (Blizzard_SettingsDefinitions_Frame, GameplaySettingsGroup.lua); a page not in it, such as Audio,
@@ -846,6 +847,7 @@ local function OrderedSections(sections)
 			end
 			assert(choices == 1, ("section %q needs exactly one source choice"):format(section.heading))
 		end
+		if section.place == "blizzard" and section.heading == SETTINGS_KEYBINDINGS_LABEL then rank = SECTION_PLACES.keys end
 		ordered[#ordered + 1] = { section = section, rank = rank, index = index,
 			blizzard = section.place == "blizzard" and BlizzardOrder(section.heading) or 0 }
 	end
