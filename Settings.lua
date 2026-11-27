@@ -5,7 +5,8 @@ local LEVEL = ns.LEVEL
 
 -- Player commands; Troubleshooting.lua adds diagnostics. One table drives the chat help and the Commands rows.
 ns.commands = ns.commands or {}
-table.insert(ns.commands, 1, { action = "export", description = L["Copy the recipe sources you found"],
+table.insert(ns.commands, 1, { action = "export", label = L["Export Recipe Sources"], button = L["Export"],
+	description = L["Copy the recipe sources you found"],
 	note = L["Opens a window of every recipe source you found, ready to copy."], run = function()
 	ns.ExportFinds()
 end })

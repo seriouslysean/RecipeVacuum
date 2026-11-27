@@ -38,6 +38,8 @@ L["Prints a message in chat after visits and windows with new recipes."] = true
 
 -- Commands (Settings.lua)
 L["Copy the recipe sources you found"] = true
+L["Export Recipe Sources"] = true
+L["Export"] = true
 L["Opens a window of every recipe source you found, ready to copy."] = true
 
 -- Tooltips (Sources.lua)

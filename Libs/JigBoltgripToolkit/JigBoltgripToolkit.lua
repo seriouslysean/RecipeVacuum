@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 66
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 67
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -291,21 +291,33 @@ function lib:RegisterModule(addonName, class)
 	return module
 end
 
--- One Open row per module, by title. The button is always there; OpenOptions decides at the press whether the
--- gamepad interface is on.
+-- One Open row per module, by title. A module that registers after the Working Build rows still lands among the
+-- modules, so rows go in at their sorted place in our own layout's list. The button is always there; OpenOptions
+-- decides at the press whether the gamepad interface is on.
+local function SortKey(module) return (module.title or module.addon):lower() end
+
 function lib:AddModuleRows()
 	local _, layout = self:GetCategory()
-	self.rowsAdded = self.rowsAdded or {}
-	local pending = {}
+	self.rowsAdded, self.moduleRows = self.rowsAdded or {}, self.moduleRows or {}
 	for _, module in ipairs(self.modules) do
-		if not self.rowsAdded[module] then table.insert(pending, module) end
-	end
-	table.sort(pending, function(a, b) return (a.title or a.addon):lower() < (b.title or b.addon):lower() end)
-	for _, module in ipairs(pending) do
-		self.rowsAdded[module] = true
-		layout:AddInitializer(CreateSettingsButtonInitializer(module.title, CONTEXT_ACTION_LABEL_OPEN, function()
-			lib:OpenOptions(module)
-		end, module.notes, false))
+		if not self.rowsAdded[module] then
+			self.rowsAdded[module] = true
+			local row = CreateSettingsButtonInitializer(module.title, CONTEXT_ACTION_LABEL_OPEN, function()
+				lib:OpenOptions(module)
+			end, module.notes, false)
+			local rows, at = self.moduleRows, #self.moduleRows + 1
+			for i, other in ipairs(rows) do
+				if SortKey(module) < SortKey(other.module) then at = i break end
+			end
+			-- Module rows sit together at the top of the page, in order.
+			local initializers, first = layout:GetInitializers(), 1
+			for i, initializer in ipairs(initializers) do
+				if rows[1] and initializer == rows[1].row then first = i break end
+			end
+			local position = first + at - 1
+			table.insert(initializers, position, row)
+			table.insert(rows, at, { module = module, row = row })
+		end
 	end
 end
 
@@ -1004,8 +1016,8 @@ local function AddWorkingRows(module)
 	if #working == 0 then return end
 	module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"]))
 	for _, entry in ipairs(working) do
-		module.layout:AddInitializer(CreateSettingsButtonInitializer("/" .. command.name .. " " .. entry.action, L["Run"],
-			function() entry.run("") end, entry.description, false))
+		module.layout:AddInitializer(CreateSettingsButtonInitializer(entry.label or ("/" .. command.name .. " " .. entry.action),
+			entry.button or L["Run"], function() entry.run("") end, entry.description, false))
 	end
 end
 
@@ -1065,7 +1077,7 @@ function lib:FinishModule(module)
 			for _, entry in ipairs(rows) do
 				-- The button's click handler gets the button, not typed words: run it as the bare command.
 				module.layout:AddInitializer(CreateSettingsButtonInitializer(
-					"/" .. command.name .. " " .. entry.action, L["Run"], function() entry.run("") end,
+					entry.label or ("/" .. command.name .. " " .. entry.action), entry.button or L["Run"], function() entry.run("") end,
 					entry.note and (entry.description .. "\n" .. entry.note) or entry.description, false))
 			end
 		end

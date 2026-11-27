@@ -38,7 +38,8 @@ local function NewClient()
 		if field == "Title" then return addon .. " title" end
 	end }
 	local function Category()
-		return { GetID = function() return 1 end, SetExpanded = function() end }, { AddInitializer = function(_, row) table.insert(buttons, row) end }
+		return { GetID = function() return 1 end, SetExpanded = function() end }, { AddInitializer = function(_, row) table.insert(buttons, row) end,
+			GetInitializers = function() return buttons end }
 	end
 	Settings = {
 		RegisterVerticalLayoutCategory = Category,
@@ -127,6 +128,20 @@ describe("load order", function()
 			assert(Count(buttons, "header", "AddOns") <= 1, order.name .. ": never two toolkit headers")
 		end)
 	end
+
+	-- Fails if a module that registers after the Working Build rows lands below them or out of title order.
+	it("a late module's Open row goes among the modules, by title", function()
+		NewClient()
+		Load(CURRENT)
+		StartAddon("Beta", "beta")
+		table.insert(buttons, { header = "Working Build" })
+		StartAddon("Alpha", "alpha")
+		local function At(field, value)
+			for i, row in ipairs(buttons) do if row[field] == value then return i end end
+		end
+		assert(At("button", "Alpha title") < At("button", "Beta title") and At("button", "Beta title") < At("header", "Working Build"),
+			"a late module's Open row goes among the modules, by title")
+	end)
 
 	-- Starting the same addon twice (a module file loaded again) adds nothing.
 	it("registering a module again returns the same module", function()

@@ -92,6 +92,9 @@ end
 -- Blizzard's shared HelpTip pool: a module's HelpTip:Show writes onto pooled Blizzard frames, and Blizzard's action bar
 -- update then reads them tainted and is blocked in combat (Tackletron, 2026-11-27). Use a private HelpTipTemplate frame.
 table.insert(FORBIDDEN, { "%f[%w_]HelpTip:", "writes into Blizzard's shared HelpTip pool (docs/standards.md, \"Gamepad UI\")" })
+-- A popup shown from addon code activates the Gamepad UI's popup bindings tainted (StaticPopupGamepad.lua, through
+-- InputBindingManager), the path that blocks the gamepad interact target. Tell the player in chat instead.
+table.insert(FORBIDDEN, { "%f[%w_]StaticPopup_Show%f[^%w_]", "activates the Gamepad UI's popup bindings tainted (docs/standards.md, \"Gamepad UI\")" })
 -- The rest of docs/options.md, "Banned controls": each is measured on the Steam Deck or has no module that needs it.
 for _, name in ipairs({ "AddShownPredicate", "Settings%.RegisterInitializer", "Settings%.RegisterCanvasLayoutCategory",
 	"Settings%.RegisterCanvasLayoutSubcategory", "CreateSettingsCheckboxSliderInitializer",
