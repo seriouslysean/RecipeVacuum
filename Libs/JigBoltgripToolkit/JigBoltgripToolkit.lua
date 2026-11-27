@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 51
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 52
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -40,6 +40,8 @@ function lib:GetCategory()
 	if not self.category then
 		self.category, self.layout = Settings.RegisterVerticalLayoutCategory(self.title)
 		self.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(ADDONS or "AddOns"))
+		-- Open in the AddOns list, so the modules show; Blizzard reads the flag securely (Blizzard_Category.lua:114-123).
+		self.category:SetExpanded(true)
 		Settings.RegisterAddOnCategory(self.category)
 	end
 	return self.category, self.layout
@@ -772,22 +774,44 @@ function lib:BuildOptions(module, db, sections)
 end
 
 -- Closing sections every module page shares: commands and links.
--- A working build's page gets a reload and its development commands as buttons: a gamepad has no keyboard. Development
--- commands or a started log mark one, so a log started after the page was built adds the section then.
-function lib:AddWorkingSection(module)
-	if module.workingSection or not module.finished then return end
-	local command, working = self.commands[module.command or ""], {}
+-- One Working Build section on the toolkit's page (a gamepad has no keyboard): a reload, then each working build's
+-- development commands. Built at login, after the module list; a module marked later is appended.
+local function AddWorkingRows(module)
+	local command, working = lib.commands[module.command or ""], {}
 	for _, entry in ipairs(command and command.entries or {}) do
 		if entry.troubleshooting then table.insert(working, entry) end
 	end
-	if #working == 0 and not self.logs[module.addon] then return end
-	module.workingSection = true
-	module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
-		L["Working build only: reload and the development commands, as buttons."]))
-	module.layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
+	local _, layout = lib:GetCategory()
+	if not lib.workingHeader then
+		lib.workingHeader = true
+		layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
+			L["Working build only: reload and the development commands, as buttons."]))
+		layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
+	end
 	for _, entry in ipairs(working) do
-		module.layout:AddInitializer(CreateSettingsButtonInitializer("/" .. command.name .. " " .. entry.action, L["Run"],
+		layout:AddInitializer(CreateSettingsButtonInitializer(module.title .. ": /" .. command.name .. " " .. entry.action, L["Run"],
 			function() entry.run("") end, entry.description, false))
+	end
+end
+
+function lib:AddWorkingSection(module)
+	if module.workingSection or not module.finished then return end
+	local command = self.commands[module.command or ""]
+	local hasCommands = false
+	for _, entry in ipairs(command and command.entries or {}) do
+		if entry.troubleshooting then hasCommands = true end
+	end
+	if not (hasCommands or self.logs[module.addon]) then return end
+	module.workingSection = true
+	if self.workingBuilt then return AddWorkingRows(module) end
+	self.workingQueue = self.workingQueue or {}
+	table.insert(self.workingQueue, module)
+	if not self.workingWaiter then
+		self.workingWaiter = true
+		EventUtil.ContinueOnPlayerLogin(function()
+			lib.workingBuilt = true
+			for _, queued in ipairs(lib.workingQueue) do AddWorkingRows(queued) end
+		end)
 	end
 end
 

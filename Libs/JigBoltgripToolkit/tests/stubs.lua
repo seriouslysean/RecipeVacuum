@@ -131,7 +131,7 @@ end
 -- Settings: every row the kit adds is recorded in order.
 client.rows = {}
 local function Category()
-	return { GetID = function() return 1 end }, { AddInitializer = function(_, row) table.insert(client.rows, row) end }
+	return { GetID = function() return 1 end, SetExpanded = function() end }, { AddInitializer = function(_, row) table.insert(client.rows, row) end }
 end
 Settings = setmetatable({
 	RegisterVerticalLayoutCategory = Category,
