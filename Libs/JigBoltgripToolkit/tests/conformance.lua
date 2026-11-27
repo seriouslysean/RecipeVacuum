@@ -91,9 +91,12 @@ for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInit
 		-- Opening the map is under test, never proven tainting on its own (decision 0068); a working build may call it.
 		inDebug = name == "OpenWorldMap" or nil })
 end
--- Blizzard's shared HelpTip pool: a module's HelpTip:Show writes onto pooled Blizzard frames, and Blizzard's action bar
--- update then reads them tainted and is blocked in combat (Tackletron, 2026-11-27). Use a private HelpTipTemplate frame.
-table.insert(FORBIDDEN, { "%f[%w_]HelpTip:", "writes into Blizzard's shared HelpTip pool (docs/standards.md, \"Gamepad UI\")" })
+-- No tutorial tips: a pad never shows them, so first-use guidance is a once-only chat line (lib:SayOnce) on every device
+-- (decision 0074). HelpTip:Show also writes onto Blizzard's shared pool and taints the action bar in combat.
+table.insert(FORBIDDEN, { "%f[%w_]HelpTip", "a tutorial tip; first-use guidance is a once-only chat line (docs/standards.md, \"Voice\")" })
+-- A module logs through lib:Trace(module, "event", key, value, ...) only; Log and LogAll take finished lines and are the
+-- kit's own (decision 0074).
+table.insert(FORBIDDEN, { "toolkit:LogAll?%(", "a log line built by hand; call toolkit:Trace(module, \"event\", key, value, ...)" })
 -- A popup shown from addon code activates the Gamepad UI's popup bindings tainted (StaticPopupGamepad.lua, through
 -- InputBindingManager), the path that blocks the gamepad interact target. Tell the player in chat instead.
 table.insert(FORBIDDEN, { "%f[%w_]StaticPopup_Show%f[^%w_]", "activates the Gamepad UI's popup bindings tainted (docs/standards.md, \"Gamepad UI\")" })
