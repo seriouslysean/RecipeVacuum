@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 74
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 75
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1076,7 +1076,9 @@ function lib:ShowText(title, text, refresh)
 	frame.Title:SetText(title)
 	frame.ScrollingEditBox:SetText(text)
 	frame:Show()
-	if refresh then return end
+	-- A gamepad has no keyboard to copy with, and a focused box keeps B from closing the window (seen on the Deck):
+	-- there the window opens unfocused, so B closes it through UISpecialFrames.
+	if refresh or GamepadUI() then return end
 	local editBox = frame.ScrollingEditBox:GetEditBox()
 	editBox:SetFocus()
 	editBox:HighlightText()
