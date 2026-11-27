@@ -455,7 +455,7 @@ local troubleshooting = {}
 -- Development commands, each removed once its question is answered; perf backs the performance claims (release regression checks).
 -- Item probe: saves an item's tooltip lines with every plain field, to learn what the game says about
 -- items the addon cannot place yet (profession rank books first). Remove once answered.
-table.insert(troubleshooting, { "item", "Save an item's tooltip data to the log", function(text)
+table.insert(troubleshooting, { "item", label = "Item Tooltip Data", button = "Save", "Save an item's tooltip data to the log", function(text)
 	local itemID = tonumber(text)
 	if not itemID then
 		return ns.toolkit:Print("Give an item ID: /recipevacuum item 16083")
@@ -499,7 +499,7 @@ local MOCK_BOOK_RANKS = { [16072] = { 185, 150 }, [16084] = { 129, 150 } } -- Co
 -- spell 18248 (Wowhead WoW Forever quest and npc pages, read 2026-11-25). Fishing skill line 356, from 225.
 local MOCK_QUEST_RANK = { quest = 6607, npc = 12919, name = "Nat Pagle", map = 1445, x = 0.584, y = 0.600,
 	skillLine = 356, fromCap = 225 }
-table.insert(troubleshooting, { "mockranks", "Add test rank sources for this session", function()
+table.insert(troubleshooting, { "mockranks", label = "Test Rank Sources", button = "Add", "Add test rank sources for this session", function()
 	local now = GetServerTime()
 	for _, row in ipairs(MOCK_BOOK_VENDORS) do
 		local itemID, npcID, name, faction, mapID, x, y = unpack(row)
@@ -527,13 +527,13 @@ end, quiet = true })
 
 -- Facts cache test: drops the cache, so the next unlearned-recipe build runs cold without it.
 -- Compare that build's "unlearned recipes" timing with one after a plain reload (cache kept).
-table.insert(troubleshooting, { "nofacts", "Drop the recipe facts cache for a timing test", function()
+table.insert(troubleshooting, { "nofacts", label = "Recipe Facts Cache", button = "Drop", "Drop the recipe facts cache for a timing test", function()
 	ns.db.recipeFacts = nil
 	ns.ClearRecipeLocks()
 	ns.SourcesChanged()
 	ns.toolkit:Print("Recipe facts cache dropped. Reload to build the unlearned recipes cold.")
 end, quiet = true })
-table.insert(troubleshooting, { "perf", "Show how long the window and its lookups took", function()
+table.insert(troubleshooting, { "perf", label = "Window Timings", button = "Show", "Show how long the window and its lookups took", function()
 	local function Ms(value)
 		return value and ("%.1f ms"):format(value) or voice.noSample
 	end
@@ -842,7 +842,7 @@ local function RecordLayout()
 	return record
 end
 
-table.insert(troubleshooting, { "layout", "Record Blizzard's profession window and our panel layout", function()
+table.insert(troubleshooting, { "layout", label = "Window Layout", button = "Record", "Record Blizzard's profession window and our panel layout", function()
 	local record, reason = RecordLayout()
 	if not record then return ns.toolkit:Print(reason) end
 	ns.toolkit:Print(("Layout recorded: %d measures for %s. Reload to write them."):format(#record.pairs, record.profession))
@@ -875,7 +875,7 @@ local function CountFinds(layer)
 	return count
 end
 
-table.insert(troubleshooting, { "sharetest", "Test sharing without a second player", function()
+table.insert(troubleshooting, { "sharetest", label = "Sharing", button = "Test", "Test sharing without a second player", function()
 	ns.db.devShareTest = { date("%Y-%m-%d %H:%M:%S") }
 	local real = ns.db
 	local scratch = { npcs = {}, objects = {}, shared = ns.NewLayer(), itemRecipe = {}, pendingItems = {} }
@@ -894,13 +894,14 @@ table.insert(troubleshooting, { "sharetest", "Test sharing without a second play
 	end)
 end, quiet = true })
 -- Seeding test; remove with the scan code once seeding is decided.
-table.insert(troubleshooting, { "scan", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
+table.insert(troubleshooting, { "scan", label = "Recipe Items", button = "Find", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 
 ns.commands = ns.commands or {}
 for _, command in ipairs(troubleshooting) do
 	local action, description, run = command[1], command[2], command[3]
 	-- Quiet commands print to chat only, so the profession window stays in view.
 	table.insert(ns.commands, { action = action, usage = command.usage, description = description, troubleshooting = true,
+		label = command.label, button = command.button,
 		run = command.quiet and run or toolkit:LoggedCommand(ns.module, action, run, ProfessionLine) })
 end
 

@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 67
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 68
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -20,7 +20,7 @@ do
 		"Commands", "Type these in chat, or run them here. /%s help lists them all.", "Run",
 		"Working Build", "Watch and read the working log. Working builds only.",
 		"Live Watch", "Switch", "Turns detailed lines on or off for every module.", "Working Log", "Show",
-		"Opens every module's working log in the copy window.", "Clear Working Log", "Clear", "Empties every module's working log.",
+		"Opens every module's working log in the copy window.",
 		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
@@ -997,7 +997,6 @@ local function AddKitWorkingRows()
 	for _, row in ipairs({
 		{ L["Live Watch"], L["Switch"], L["Turns detailed lines on or off for every module."], "watch" },
 		{ L["Working Log"], L["Show"], L["Opens every module's working log in the copy window."], "log" },
-		{ L["Clear Working Log"], L["Clear"], L["Empties every module's working log."], "log", "clear" },
 	}) do
 		layout:AddInitializer(CreateSettingsButtonInitializer(row[1], row[2], function() KitCommand(row[4], row[5]) end,
 			row[3], false))
