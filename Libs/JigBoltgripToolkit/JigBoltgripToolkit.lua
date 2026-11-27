@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 54
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 55
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -393,7 +393,7 @@ function lib:StartLog(module, saved, handlers)
 	local version, build = GetBuildInfo()
 	self:Log(module, "")
 	self:Log(module, ("%s session: client %s (%s) | addon %s | %s, level %d | %s"):format(date("%Y-%m-%d %H:%M:%S"),
-		version, build, C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player") or "?",
+		version, build, lib:Stamp(module), UnitName("player") or "?",
 		UnitLevel("player") or 0, ZoneLine()), true)
 	self:Log(module, DeviceLine())
 	if not log.watching then
@@ -527,7 +527,7 @@ function lib:LoggedCommand(module, action, run, details)
 		log.viewStart = #log.saved.devLog + 1
 		self:Log(module, ("%s /%s %s"):format(date("%Y-%m-%d %H:%M:%S"), module.command or module.addon:lower(), action), true)
 		self:Log(module, ("client %s (%s) | addon %s | %s, %s, level %d"):format(version, build,
-			C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?", UnitName("player"), tostring(faction),
+			lib:Stamp(module), UnitName("player"), tostring(faction),
 			UnitLevel("player")))
 		for _, line in ipairs(details and details() or {}) do
 			self:Log(module, line)
@@ -804,6 +804,12 @@ local function AddWorkingRows(module)
 	end
 end
 
+-- The build a module is running: its deploy stamp (module.build, from its Build.lua, current after a reload), else the TOC's
+-- Version, which the client reads only at startup.
+function lib:Stamp(module)
+	return module.build or C_AddOns.GetAddOnMetadata(module.addon, "Version") or "?"
+end
+
 -- Working builds name themselves in the bottom-left corner, kit MINOR and each module's short name and deploy stamp, so a
 -- screenshot shows which builds it caught. module.short names it, else the capitals of its title ("Recipe Vacuum" is rv).
 function lib:ShowBuilds()
@@ -812,7 +818,7 @@ function lib:ShowBuilds()
 		local module = self.logs[name] and self.logs[name].module
 		if module and module.workingSection then
 			local short = module.short or (module.title or name):gsub("[^%u]", ""):lower()
-			local stamp = (C_AddOns.GetAddOnMetadata(name, "Version") or "?"):match("^(%S+)") or "?"
+			local stamp = lib:Stamp(module):match("^(%S+)") or "?"
 			table.insert(parts, short .. " " .. stamp)
 		end
 	end
