@@ -58,5 +58,6 @@ Reference material lives in `docs/`; code comments stay short and point there.
 | [docs/client-notes.md](docs/client-notes.md) | What the Forever client does where the addon depends on it, as measured |
 | [docs/voice.md](docs/voice.md) | The chat voice: rules, sources, delivery |
 | [docs/development.md](docs/development.md) | Setup, checks, the working build, troubleshooting commands, seeding, release |
+| [docs/decisions.md](docs/decisions.md) | Recipe Vacuum's own choices, why, and what would reopen them; choices for every module are in the toolkit's |
 
 Run `scripts/check` before every commit (docs/development.md, "Checks").
