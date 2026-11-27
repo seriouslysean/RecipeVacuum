@@ -58,22 +58,17 @@ local function Show(line)
 end
 
 -- Says one of the Vacuum's lines: logged, and shown in chat unless a watch callback is running.
--- A development line: logged, and shown as a plain line in chat.
-local function Voiced(line)
-	Append(LOG_TAG .. line)
-	toolkit:Print(line)
-end
-
 local function Say(line, ...)
 	line = select("#", ...) > 0 and line:format(...) or line
 	Append(LOG_TAG .. line)
 	if not logOnly then toolkit:Print(line) end
 end
 
--- The one chat line a watch event may print: it found recipes (voice rules: docs/voice.md; Homing Robot OOX-17/TN is the model).
+-- What a watch event found, in the log only: the working build always watches, so a chat line here would repeat on every
+-- window; the player's own line is the release one for new finds (docs/voice.md).
 local function WatchFound(count)
 	if count > 0 then
-		Voiced(voice.detected:format(count, count == 1 and "recipe" or "recipes"))
+		Append(LOG_TAG .. voice.detected:format(count, count == 1 and "recipe" or "recipes"))
 	end
 end
 
