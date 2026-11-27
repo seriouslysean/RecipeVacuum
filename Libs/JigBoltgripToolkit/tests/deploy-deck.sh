@@ -17,6 +17,4 @@ rsync -a --delete --exclude='.*' --exclude=AGENTS.md --exclude=CLAUDE.md --exclu
 	--exclude=tests --exclude=tools --exclude=scripts --exclude=research_notes --exclude=reports \
 	--exclude='Libs/JigBoltgripToolkit/tests' -e "ssh -o BatchMode=yes -o ConnectTimeout=8" ./ "$host:$addons/$name/"
 ssh -o BatchMode=yes "$host" "sed -i 's/^## Version: .*/## Version: $stamp/' \"$addons/$name/$name.toc\""
-# The TOC is read only at startup; Build.lua is read on every reload, so the stamp is current after Reload UI.
-ssh -o BatchMode=yes "$host" "[ ! -f \"$addons/$name/Build.lua\" ] || sed -i 's/^ns.build = nil$/ns.build = \"$stamp\"/' \"$addons/$name/Build.lua\""
 echo "deployed $name $stamp to $host"

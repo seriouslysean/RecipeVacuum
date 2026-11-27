@@ -16,7 +16,6 @@ Libs\AceComm-3.0\AceComm-3.0.lua
 Libs\JigBoltgripToolkit\JigBoltgripToolkit.lua
 
 Locales\enUS.lua
-Build.lua
 Data\Seed.lua
 Data\Included.lua
 Core.lua

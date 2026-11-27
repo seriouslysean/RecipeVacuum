@@ -18,7 +18,6 @@ function ns.InitSettings()
 	local toolkit = ns.toolkit
 	local module = toolkit:RegisterModule(addonName, ns.device.class)
 	ns.module = module
-	module.build = ns.build
 	toolkit:BuildOptions(module, ns.db, {
 		{ heading = L["Recipe Sources"], place = "sources", rows = {
 			{ kind = "choice", key = "sourceLevel", label = L["Recipe Sources"], default = LEVEL.FRIENDS,
