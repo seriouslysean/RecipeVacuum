@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 62
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 63
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -333,7 +333,7 @@ function lib:EnableWorkingBuild()
 	-- message itself is logged where Blizzard prints it (ChatFrameUtil.lua), with the stack that led there.
 	if ChatFrameUtil and ChatFrameUtil.AddSystemMessage then
 		hooksecurefunc(ChatFrameUtil, "AddSystemMessage", function(text)
-			if text == INTERFACE_ACTION_BLOCKED then
+			if lib.Readable(text) and text == INTERFACE_ACTION_BLOCKED then
 				lib:LogAll("interface action blocked (no event): " .. tostring(text))
 				lib:LogAll(debugstack(3, 12, 0))
 			end
