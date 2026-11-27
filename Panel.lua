@@ -105,10 +105,9 @@ local OUTPUT_SUB_GAP = 5
 local DETAIL_GAP = RING_RISE + 2 -- the ring hangs into the gap above the box, so the list ends above it
 local DETAIL_BOTTOM = 20 -- content ends this far above the pane's bottom (:62), clear of the border's corner art
 -- Our icon hangs above the box, so our header ends at its requirement line (one line of name, 14, then 5 and 12): the label sits the
--- window's 33 below that, fixed, so it never moves from recipe to recipe.
+-- window's 33 below that, at the same place in the scrolled content for every recipe.
 local HEADER_BOTTOM = 27.5 + 14 + 5 + 12
 local REAGENTS_TOP, REAGENTS_LEFT = HEADER_BOTTOM + 33, 27
-local REAGENTS_LABEL_AT = { "TOPLEFT", REAGENTS_LEFT, -REAGENTS_TOP }
 local REAGENTS_LABEL_HEIGHT = 20
 local REAGENT_ICON_BELOW_LABEL = 25.5
 local REAGENT_LEFT, REAGENT_PITCH = 28, 45
@@ -121,7 +120,10 @@ local BUTTON_BOTTOM = 7
 local SOURCE_HEIGHT = 28 -- the window's Create button, measured
 local STRIP_HEIGHT = 38
 local PANEL_INNER_WIDTH = PANEL_WIDTH - 2 * FRAME_INSET
-local REAGENTS_VIEW_TOP = REAGENTS_TOP + REAGENT_ICON_BELOW_LABEL -- the scrolling reagents start at the first icon
+local REAGENTS_VIEW_TOP = REAGENTS_TOP + REAGENT_ICON_BELOW_LABEL -- the first reagent icon, from the box's top
+-- Everything under the hanging icon scrolls as one, the header with the reagents, as the quest log's details scroll their title
+-- (QuestMapFrame.xml:801, QuestMapDetailsScrollFrame); the view starts at the box's frame line (docs/client-notes.md, "Panel").
+local DETAIL_SCROLL_TOP = LINE_IN_TOP
 -- The details are half the room between the list's top and the Map Pin strip, but never less than what shows the header and this
 -- many reagents without scrolling; their height does not depend on the recipe (docs/client-notes.md, "Panel").
 local FIT_REAGENTS = 3
@@ -129,7 +131,7 @@ local DETAIL_FIT_HEIGHT = REAGENTS_VIEW_TOP + (FIT_REAGENTS - 1) * REAGENT_PITCH
 local DETAIL_SCROLL_RIGHT = FRAME_INSET -- the reagents' scroll bar clears the box's border
 
 local panel, listArea, scroll, child, empty, rankBar, detail
-local reagentScroll, reagentChild -- the reagent rows scroll inside the details when they do not fit
+local detailScroll, detailChild -- the details under the icon: name, requirement, label and reagents, scrolled as one
 local placedKey
 local SelectRecipe -- defined with the details; a row tap selects through it
 local selected -- the recipe whose details show: set by a tap, kept until another is tapped, the profession changes or it leaves the list
@@ -895,9 +897,9 @@ local function Pooled(frames, index, make)
 end
 
 local function MakeReagentRow()
-	local button = CreateFrame("ItemButton", nil, reagentChild or pool.holder, "ProfessionsButtonTemplate")
+	local button = CreateFrame("ItemButton", nil, detailChild or pool.holder, "ProfessionsButtonTemplate")
 	button:SetScript("OnEnter", function(self)
-		ns.ScrollRowIntoView(self, reagentScroll) -- a reagent the d-pad reaches is scrolled into view, as a list row is
+		ns.ScrollRowIntoView(self, detailScroll) -- a reagent the d-pad reaches is scrolled into view, as a list row is
 		ns.OwnTooltip(self)
 		GameTooltip:SetItemByID(self.itemID)
 		GameTooltip:Show()
@@ -1167,7 +1169,7 @@ end
 
 local function ShowEmptyDetail()
 	detail.recipeID, detail.itemID = nil, nil
-	for _, part in ipairs({ detail.Output, detail.Name, detail.Sub, detail.ReagentsLabel, reagentScroll }) do part:Hide() end
+	for _, part in ipairs({ detail.Output, detail.Name, detail.Sub, detail.ReagentsLabel, detailScroll }) do part:Hide() end
 	for _, button in ipairs(reagentRows) do
 		button:Hide()
 		button.Text:Hide()
@@ -1232,18 +1234,18 @@ FillDetail = function()
 	SetDetailBackground() -- the window's own schematic background (Blizzard_ProfessionsCrafting.lua:1032)
 
 	detail.ReagentsLabel:SetShown(#data.reagents > 0)
-	reagentScroll:SetShown(#data.reagents > 0)
-	if changedRecipe then reagentScroll:SetVerticalScroll(0) end
+	detailScroll:Show()
+	if changedRecipe then detailScroll:SetVerticalScroll(0) end -- a new recipe opens at its name
 	--@debug@
 	ns.PerfMs("details header", debugprofilestop() - part)
 	part = debugprofilestop()
 	--@end-debug@
-	local y = 0 -- within the scroll child
+	local y = REAGENTS_VIEW_TOP - DETAIL_SCROLL_TOP -- within the scroll child, under the header and label
 	for index, entry in ipairs(data.reagents) do
 		local button = Pooled(reagentRows, index, MakeReagentRow)
-		if button:GetParent() ~= reagentChild then button:SetParent(reagentChild) end
+		if button:GetParent() ~= detailChild then button:SetParent(detailChild) end
 		button.itemID = entry.itemID
-		button:SetPoint("TOPLEFT", reagentChild, "TOPLEFT", REAGENT_LEFT, -y)
+		button:SetPoint("TOPLEFT", detailChild, "TOPLEFT", REAGENT_LEFT, -y)
 		button.Icon:SetTexture(C_Item.GetItemIconByID(entry.itemID))
 		local quality = C_Item.GetItemQualityByID(entry.itemID)
 		if quality then button:SetSlotQuality(quality) else button.IconBorder:Hide() end
@@ -1257,7 +1259,8 @@ FillDetail = function()
 		reagentRows[index]:Hide()
 		reagentRows[index].Text:Hide()
 	end
-	if #data.reagents > 0 then reagentChild:SetHeight(y - REAGENT_PITCH + REAGENT_SIZE) end -- to the last icon's bottom
+	-- To the last icon's bottom, or the requirement line's with no reagents.
+	detailChild:SetHeight(#data.reagents > 0 and y - REAGENT_PITCH + REAGENT_SIZE or HEADER_BOTTOM - DETAIL_SCROLL_TOP)
 
 	--@debug@
 	ns.PerfMs("details reagents", debugprofilestop() - part)
@@ -1912,31 +1915,33 @@ local function CreatePanel()
 	detail.Output:SetPoint("TOPLEFT", detail, "TOPLEFT", OUTPUT_LEFT, RING_RISE - OUTPUT_RING_INSET)
 	detail.Output:SetFrameLevel(ICON_LEVEL)
 	detail.Output:SetScript("OnEnter", function(self)
+		-- The d-pad reaching the made item brings its name back into view; a mouse resting on it leaves the scroll alone.
+		if ns.toolkit.IsGamepadUI() then detailScroll:SetVerticalScroll(0) end
 		ns.OwnTooltip(self)
 		if detail.itemID then GameTooltip:SetItemByID(detail.itemID) else GameTooltip:SetSpellByID(detail.recipeID) end
 		GameTooltip:Show()
 	end)
 	detail.Output:SetScript("OnLeave", GameTooltip_Hide)
+	-- One scroll for the rest of the box: it clips, so the hanging icon stays on the box itself, as the window's portrait stays put.
+	detailScroll, detailChild = CreateSlimScroll(detail, function(frame, barShown)
+		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
+	end)
+	detailScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -DETAIL_SCROLL_TOP)
 	local textWidth = PANEL_INNER_WIDTH - NAME_LEFT - FRAME_INSET
-	detail.Name = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
-	detail.Name:SetPoint("TOPLEFT", detail, "TOPLEFT", NAME_LEFT, -NAME_TOP)
+	detail.Name = detailChild:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
+	detail.Name:SetPoint("TOPLEFT", detailChild, "TOPLEFT", NAME_LEFT, -(NAME_TOP - DETAIL_SCROLL_TOP))
 	detail.Name:SetWidth(textWidth)
 	detail.Name:SetJustifyH("LEFT")
 	detail.Name:SetJustifyV("TOP")
-	detail.Sub = detail:CreateFontString(nil, "ARTWORK", "GameFontNormal") -- the pane's own requirement line font, measured
+	detail.Sub = detailChild:CreateFontString(nil, "ARTWORK", "GameFontNormal") -- the pane's own requirement line font, measured
 	detail.Sub:SetPoint("TOPLEFT", detail.Name, "BOTTOMLEFT", 0, -OUTPUT_SUB_GAP)
 	detail.Sub:SetWidth(textWidth)
 	detail.Sub:SetJustifyH("LEFT")
-	detail.ReagentsLabel = detail:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+	detail.ReagentsLabel = detailChild:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
 	detail.ReagentsLabel:SetText(PROFESSIONS_REAGENT_CONTAINER_LABEL)
 	detail.ReagentsLabel:SetHeight(REAGENTS_LABEL_HEIGHT)
 	detail.ReagentsLabel:SetJustifyH("LEFT")
-	detail.ReagentsLabel:SetPoint(REAGENTS_LABEL_AT[1], detail, unpack(REAGENTS_LABEL_AT)) -- fixed, as the window's pane keeps it
-	-- The reagents scroll inside the box under their label when they do not fit.
-	reagentScroll, reagentChild = CreateSlimScroll(detail, function(frame, barShown)
-		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
-	end)
-	reagentScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -REAGENTS_VIEW_TOP)
+	detail.ReagentsLabel:SetPoint("TOPLEFT", detailChild, "TOPLEFT", REAGENTS_LEFT, -(REAGENTS_TOP - DETAIL_SCROLL_TOP))
 	scroll, child = CreateSlimScroll(listArea, function(frame, barShown)
 		frame:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", barShown and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
 	end)

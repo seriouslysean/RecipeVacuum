@@ -1561,6 +1561,26 @@ describe("simulation", function()
 			schematic.reagentSlotSchematics = {}
 			assert(ok, err)
 		end)
+		-- Fails if the details' header stays fixed above the reagents: the owner chose one scroll for the whole box, as the quest
+		-- log's details scroll their title (QuestMapFrame.xml:801), and a new recipe must open at its name.
+		it("the details' header scrolls with the reagents, and a new recipe opens at the top", function()
+			local detail, detailScroll
+			for _, frame in ipairs(made) do if rawget(frame, "ReagentsLabel") then detail = frame end end
+			for _, frame in ipairs(made) do if rawget(frame, "ScrollBar") and rawget(frame, "parent") == detail then detailScroll = frame end end
+			local content = rawget(detail.Name, "parent")
+			assert(detailScroll and rawget(content, "parent") == detailScroll and rawget(detail.ReagentsLabel, "parent") == content,
+				"the name and the reagents label are inside the details' scroll")
+			local tops = {}
+			detailScroll.SetVerticalScroll = function(_, offset) tops[#tops + 1] = offset end
+			local picks = {}
+			for _, button in ipairs(buttons) do if button:IsShown() and rawget(button, "recipe") then picks[#picks + 1] = button end end
+			picks[1].scripts.OnClick(picks[1], "LeftButton")
+			Flush()
+			tops = {}
+			picks[2].scripts.OnClick(picks[2], "LeftButton")
+			Flush()
+			assert(tops[1] == 0, "a new recipe scrolls the details back to the top")
+		end)
 		-- Fails if the panel stays up with nothing found and nothing narrowing the list, hides while a search matches nothing (the message
 		-- shows instead), or stays hidden once a find or a search brings it back.
 		it("hides when nothing found is left and nothing narrows the list, and returns with a find or a search", function()
