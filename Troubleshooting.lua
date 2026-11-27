@@ -810,6 +810,21 @@ local function RecordLayout()
 	local parts = ns.DevPanelParts()
 	local page = ProfessionsFrame and ProfessionsFrame.CraftingPage
 	-- The details are measured only while a recipe is selected in ours; the rest is measured either way.
+	-- The overview tab: its section edges, so our list and details can split where its bottom row starts.
+	local book = ProfessionsFrame and ProfessionsFrame.BookPage
+	if book and book:IsVisible() then
+		for _, key in ipairs({ "PrimaryProfession1", "PrimaryProfession2", "SecondaryProfession1" }) do
+			local region = book[key]
+			local scale = region and region:GetEffectiveScale()
+			local top, bottom = region and region:GetTop(), region and region:GetBottom()
+			toolkit:Trace(ns.module, "layout edge", "name", "blizzard overview " .. key, "top", top and top * scale,
+				"bottom", bottom and bottom * scale)
+		end
+		local scale = ProfessionsFrame:GetEffectiveScale()
+		toolkit:Trace(ns.module, "layout edge", "name", "blizzard window", "top", ProfessionsFrame:GetTop() * scale,
+			"bottom", ProfessionsFrame:GetBottom() * scale)
+		return nil, "Overview recorded."
+	end
 	if not (page and page:IsVisible() and parts.panel and parts.panel:IsShown()) then
 		return nil, "Open a profession, then run it again."
 	end
