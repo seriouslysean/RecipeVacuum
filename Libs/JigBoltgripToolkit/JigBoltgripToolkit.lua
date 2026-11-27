@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 70
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 71
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -21,7 +21,7 @@ do
 		"Working Build", "Read the working log. Working builds only.",
 		"Working Log", "Show",
 		"Opens every module's working log in the copy window.",
-		"Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
+		"One gadget, one job. Each has its own page below.", "Links", "Copy link", "Website", "CurseForge", "Find it in Options, then %s, %s, %s.",
 		"Open the options", "Saved data is from a newer version of %s; it was left unchanged.",
 		"Self Found", "Public", "Short range.", "Medium range.", "Long range.",
 		"Also tracks what your party, guild and friends find.", "Boltgrip's %s %s.",
@@ -42,11 +42,18 @@ BINDING_HEADER_JIGBOLTGRIPTOOLKIT = lib.title
 -- false for search tags, as Blizzard does.
 function lib:GetCategory()
 	if not self.category then
-		-- No heading: the page's title already names the toolkit (docs/options.md, "Toolkit page").
+		-- The intro is a heading line, since Blizzard has no plain text row and the d-pad can't reach a heading's
+		-- tooltip (docs/options.md, "Toolkit page").
 		self.category, self.layout = Settings.RegisterVerticalLayoutCategory(self.title)
 		-- Open in the AddOns list, so the modules show; Blizzard reads the flag securely (Blizzard_Category.lua:114-123).
 		self.category:SetExpanded(true)
 		Settings.RegisterAddOnCategory(self.category)
+	end
+	-- An older copy may have made the page first; the intro still goes at its top.
+	if not self.introAdded then
+		self.introAdded = true
+		table.insert(self.layout:GetInitializers(), 1,
+			CreateSettingsListSectionHeaderInitializer(L["One gadget, one job. Each has its own page below."]))
 	end
 	return self.category, self.layout
 end

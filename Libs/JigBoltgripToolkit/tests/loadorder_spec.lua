@@ -124,8 +124,8 @@ describe("load order", function()
 			assert(Count(buttons, "button", "Alpha title") == 0 and Count(buttons, "button", "Beta title") == 0,
 				order.name .. ": no Open row per addon")
 		end)
-		it(order.name .. ": never two toolkit headers", function()
-			assert(Count(buttons, "header", "AddOns") <= 1, order.name .. ": never two toolkit headers")
+		it(order.name .. ": one intro line", function()
+			assert(Count(buttons, "header", "One gadget, one job. Each has its own page below.") == 1, order.name .. ": one intro line")
 		end)
 	end
 
