@@ -190,6 +190,15 @@ local function Note(bucket, id, level, window)
 	end
 end
 
+-- A recipe any character on the account knows is met at Self Found: knowing it is seeing it, the details stay the player's own
+-- (docs/data.md, "Come across"). One table write, no window count and no refresh; true when it is new.
+function ns.NoteKnown(recipeID)
+	local met = ns.db.met.recipes
+	if met[recipeID] == LEVEL.SELF then return false end
+	met[recipeID] = LEVEL.SELF
+	return true
+end
+
 -- A line without a link costs one plain search.
 local function OnChat(message)
 	if not Readable(message) or not message:find("|H", 1, true) then
@@ -348,6 +357,11 @@ local handlers = {
 		end
 		if window and closing[window] and Unanswered(window) == 0 then
 			EndClosing(window)
+		end
+	end,
+	NEW_RECIPE_LEARNED = function(recipeID)
+		if type(recipeID) == "number" and ns.NoteKnown(recipeID) then
+			ns.toolkit:Trace(ns.module, "SEEN recipe %d learned, met at Self Found", recipeID)
 		end
 	end,
 	BAG_UPDATE_DELAYED = function() ReadBags() end,

@@ -74,7 +74,7 @@ The player chooses how far the addon listens (`sourceLevel`, `ns.LEVEL` in `Core
 |---|---|---|
 | Self Found (1) | Everything the player saw: own finds and every come-across signal below | What Share My Finds sends |
 | Friends (2), the default | Also the shared layer: finds from party, raid, guild and friends' addons | What Share My Finds sends |
-| Public (3) | Also the data shipped with the addon | What Share My Finds sends |
+| Public (3) | Also the data shipped with the addon (`ns.included`), and only here (owner, 2026-11-27: shipped data "Public only"; `VisibleLayers` in `Sources.lua`) | What Share My Finds sends |
 
 Self Found is knowing, with the details your own (owner, 2026-11-26: "Remember self found is knowing, but the details are your own"): seeing a recipe anywhere (bags, a tooltip, chat, another player's profession) records only that it exists, and where it comes from (who sells, teaches or drops it, and where) is only ever what the player found in person. Other players' details arrive only through sharing, at Friends.
 
@@ -92,6 +92,9 @@ Everything is recorded at every level, tagged with the level it arrived at; the 
 | A recipe item on any item tooltip the player hovers (bags, bank, auction house, vendor, chat link, trade, comparison) | Self Found |
 | A recipe item or recipe link in any chat: party, raid, instance, guild, officer, say, yell, a numbered channel, a whisper (Battle.net too) or a loot line | Self Found |
 | A profession of another player the player opens: a linked one or a guild member's | Self Found |
+| A recipe any character on the account knows, written when a profession's recipes are read (the unlearned-recipe pass) and on `NEW_RECIPE_LEARNED` | Self Found |
+
+A known recipe is met account-wide (`RecipeVacuumDB.met` is shared by every character; owner, 2026-11-27: "self found is knowing, but the details are your own"), so an alt lists it with the source-unknown mark until a source is recorded. It costs one table write per known recipe (`ns.NoteKnown`), no login pass, and it adds nothing to a window's count or the refresh queue. `met` is local: nothing of it is sent to friends (`Finds.lua` and the sharing layer read only `found`). The working log has "UNLEARNED profession N: n known recipes marked met at Self Found, m new" for each read and "SEEN recipe N learned" for each new one.
 
 A recipe item in the bags counts as seen by the player (owner, 2026-11-26: "it makes sense to me. I saw them."), so the recipe is kept at Self Found without where the item came from. The scan reads item IDs only and reads each item once a session; an item whose data has not loaded is read again on the next bag event, three times at most a session (`ns.MAX_ITEM_ATTEMPTS`); a late answer to the last request is read once more.
 

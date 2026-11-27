@@ -1444,7 +1444,9 @@ function pool.ids()
 		end
 	end
 	-- The layers the list reads at the chosen level (ns.GetSources).
-	local layers = ns.db.sourceLevel >= ns.LEVEL.FRIENDS and { ns.db.found, ns.db.shared, ns.included } or { ns.db.found }
+	local chosen = ns.db.sourceLevel
+	local layers = chosen >= ns.LEVEL.PUBLIC and { ns.db.found, ns.db.shared, ns.included }
+		or chosen >= ns.LEVEL.FRIENDS and { ns.db.found, ns.db.shared } or { ns.db.found }
 	for _, layer in ipairs(layers) do
 		for recipeID in pairs(layer.recipes) do add(recipeID) end
 		for itemID in pairs(layer.items) do add(ns.GetSeededRecipe(itemID) or ns.db.itemRecipe[itemID]) end

@@ -20,11 +20,13 @@ ns.sourceTypes = {
 	drop    = { label = BATTLE_PET_SOURCE_1 or "Drop",   atlas = "lootroll-icon-need", size = 14 },
 }
 
--- Self Found shows only the player's own finds (docs/data.md).
+-- Self Found shows only the player's own finds, Friends adds the shared layer, and the shipped data shows only at Public (docs/data.md).
 local function VisibleLayers()
 	local db = ns.db
-	if db.sourceLevel >= ns.LEVEL.FRIENDS then
+	if db.sourceLevel >= ns.LEVEL.PUBLIC then
 		return db.found, db.shared, ns.included
+	elseif db.sourceLevel >= ns.LEVEL.FRIENDS then
+		return db.found, db.shared
 	end
 	return db.found
 end

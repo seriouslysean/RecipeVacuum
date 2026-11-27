@@ -96,6 +96,7 @@ local function Read(professionID, job)
 	local unlearned, established = {}, {}
 	local playerFaction = UnitFactionGroup("player")
 	local indexComplete, factionsComplete = true, true
+	local knownCount, knownNew = 0, 0
 	for _, recipeID in ipairs(C_TradeSkillUI.GetAllRecipeIDs()) do
 		Yield(job)
 		local recipeInfo = C_TradeSkillUI.GetRecipeInfo(recipeID)
@@ -107,6 +108,10 @@ local function Read(professionID, job)
 			-- unlearned ones are read when listed.
 			if recipeInfo.learned and not ns.HasSpecialization(recipeID) then
 				ns.ReadSpecialization(recipeID)
+			end
+			if recipeInfo.learned then
+				knownCount = knownCount + 1
+				if ns.NoteKnown(recipeID) then knownNew = knownNew + 1 end
 			end
 			recipeInfo = Professions.GetFirstRecipe(recipeInfo)
 			if recipeInfo and recipeInfo.learned then
@@ -123,6 +128,8 @@ local function Read(professionID, job)
 			end
 		end
 	end
+
+	ns.toolkit:Trace(ns.module, "UNLEARNED profession %d: %d known recipes marked met at Self Found, %d new", professionID, knownCount, knownNew)
 
 	-- Sources first, since one known source keeps its whole category's header.
 	local seen, rows = {}, {}
