@@ -54,7 +54,7 @@ Code between `--@debug@` and `--@end-debug@` exists in a checkout and is strippe
 - turns on the game's Lua error display (`scriptErrors`) at load and leaves it on;
 - uses a scan from the current game build ahead of the seed.
 
-The layout is recorded only from the Window Layout [Record] row. It used to be taken by itself whenever the panel drew a different view (25c7ef5); the logfmt rule of 2026-11-27 says a development tool logs only when its button is pressed (kit `docs/standards.md`, "Working build"), so that stopped.
+The layout is recorded only from the Window Layout [Record] row. It used to be taken by itself whenever the panel drew a different view (25c7ef5); the logfmt rule of 2026-11-27 says a development tool logs only when its button is pressed (kit `docs/standards.md`, "Working build"), so that stopped. `/recipevacuum layout` takes one on demand. It measures Blizzard's profession window against our panel so the layout is matched mechanically (owner, 2026-11-26: "I shouldn't have to correct what is a mechanical match").
 
     luajit tools/layout-diff.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua>
 

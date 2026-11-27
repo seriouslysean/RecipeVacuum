@@ -102,6 +102,9 @@ local OUTPUT_LEFT = -RING_LEFT + OUTPUT_RING_INSET
 local NAME_TOP = 27.5
 local NAME_LEFT = OUTPUT_LEFT + 47 + 14
 local OUTPUT_SUB_GAP = 5
+-- The name and requirement wrap at the pane's own limit (Camelot/Blizzard_ProfessionsRecipeSchematicFormOverride.lua:19-21,
+-- GetOutputItemMaxWidth), and never under the details' scroll bar.
+local OUTPUT_TEXT_MAX = 225
 local DETAIL_GAP = RING_RISE + 2 -- the ring hangs into the gap above the box, so the list ends above it
 local DETAIL_BOTTOM = 20 -- content ends this far above the pane's bottom (:62), clear of the border's corner art
 -- Our icon hangs above the box, so our header ends at its requirement line (one line of name, 14, then 5 and 12): the label sits the
@@ -1928,7 +1931,7 @@ local function CreatePanel()
 		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
 	end)
 	detailScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -DETAIL_SCROLL_TOP)
-	local textWidth = PANEL_INNER_WIDTH - NAME_LEFT - FRAME_INSET
+	local textWidth = math.min(OUTPUT_TEXT_MAX, PANEL_INNER_WIDTH - NAME_LEFT - FRAME_INSET - SCROLLBAR_WIDTH)
 	detail.Name = detailChild:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
 	detail.Name:SetPoint("TOPLEFT", detailChild, "TOPLEFT", NAME_LEFT, -(NAME_TOP - DETAIL_SCROLL_TOP))
 	detail.Name:SetWidth(textWidth)
