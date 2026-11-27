@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 50
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 51
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -375,6 +375,7 @@ function lib:StartLog(module, saved, handlers)
 		self.logOrder[#self.logOrder + 1] = module.addon
 	end
 	log.module, log.saved, log.handlers = module, saved, handlers or {}
+	self:AddWorkingSection(module)
 	saved.devLog = saved.devLog or {}
 	if not self.logWriter then
 		self.logWriter = CreateFrame("Frame")
@@ -771,6 +772,25 @@ function lib:BuildOptions(module, db, sections)
 end
 
 -- Closing sections every module page shares: commands and links.
+-- A working build's page gets a reload and its development commands as buttons: a gamepad has no keyboard. Development
+-- commands or a started log mark one, so a log started after the page was built adds the section then.
+function lib:AddWorkingSection(module)
+	if module.workingSection or not module.finished then return end
+	local command, working = self.commands[module.command or ""], {}
+	for _, entry in ipairs(command and command.entries or {}) do
+		if entry.troubleshooting then table.insert(working, entry) end
+	end
+	if #working == 0 and not self.logs[module.addon] then return end
+	module.workingSection = true
+	module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
+		L["Working build only: reload and the development commands, as buttons."]))
+	module.layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
+	for _, entry in ipairs(working) do
+		module.layout:AddInitializer(CreateSettingsButtonInitializer("/" .. command.name .. " " .. entry.action, L["Run"],
+			function() entry.run("") end, entry.description, false))
+	end
+end
+
 function lib:FinishModule(module)
 	local command = self.commands[module.command or ""]
 	if command then
@@ -791,21 +811,8 @@ function lib:FinishModule(module)
 			end
 		end
 	end
-	-- Development commands exist only in a working build, so they mark one. They become buttons beside a reload, since a
-	-- gamepad has no keyboard (docs/standards.md, "Working build helpers").
-	local working = {}
-	for _, entry in ipairs(command and command.entries or {}) do
-		if entry.troubleshooting then table.insert(working, entry) end
-	end
-	if #working > 0 then
-		module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Working Build"],
-			L["Working build only: reload and the development commands, as buttons."]))
-		module.layout:AddInitializer(CreateSettingsButtonInitializer(RELOADUI, L["Run"], function() C_UI.Reload() end, RELOADUI, false))
-		for _, entry in ipairs(working) do
-			module.layout:AddInitializer(CreateSettingsButtonInitializer("/" .. command.name .. " " .. entry.action, L["Run"],
-				function() entry.run("") end, entry.description, false))
-		end
-	end
+	module.finished = true
+	lib:AddWorkingSection(module)
 	local links = ModuleLinks(module.addon)
 	if #links > 0 then
 		module.layout:AddInitializer(CreateSettingsListSectionHeaderInitializer(L["Links"]))
