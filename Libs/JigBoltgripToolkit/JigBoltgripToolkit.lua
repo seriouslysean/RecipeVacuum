@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 58
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 62
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -47,10 +47,6 @@ function lib:GetCategory()
 		Settings.RegisterAddOnCategory(self.category)
 	end
 	return self.category, self.layout
-end
-
-local function ShowLink(title, url)
-	lib:ShowText(title, url)
 end
 
 -- Links from the standard TOC fields X-Website and X-Curse-Project-ID. LaunchURL and CopyToClipboard
@@ -136,11 +132,21 @@ function lib:PrintBlock(header, rows)
 	end
 end
 
--- The gamepad interface is chosen before load, so this is fixed for a session.
+-- Asked where the answer is used, never kept: the client switches interface style on INPUT_DEVICE_INTERFACE_TRANSITION
+-- without a reload (Blizzard_SharedXML/InputUtil.lua).
 local function GamepadUI()
 	return InputUtil ~= nil and InputUtil.IsGamepadUIEnabled ~= nil and InputUtil.IsGamepadUIEnabled() or false
 end
 lib.IsGamepadUI = GamepadUI
+
+-- A copy window is of no use without a keyboard, so under the gamepad interface the address goes to chat.
+local function ShowLink(title, url)
+	if GamepadUI() then
+		lib:Print(url)
+	else
+		lib:ShowText(title, url)
+	end
+end
 
 -- Values the client may hide from addons (issecretvalue). Readable is false for nil and for a hidden value;
 -- Describe is tostring that never touches one; GUID gives a GUID's kind and its numeric ID ("Creature",
@@ -188,29 +194,60 @@ local function CopyDefault(value)
 	return copy
 end
 
+-- A keyed table of defaults is filled key by key, so a key added to a nested table reaches saves that already have it; a list is
+-- one value, as a player's shorter list must not be topped up.
 local function FillDefaults(db, defaults)
 	for key, value in pairs(defaults or {}) do
-		if db[key] == nil then db[key] = CopyDefault(value) end
+		if db[key] == nil then
+			db[key] = CopyDefault(value)
+		elseif type(value) == "table" and type(db[key]) == "table" and value[1] == nil then
+			FillDefaults(db[key], value)
+		end
 	end
 end
 
+-- The saved variable as a table to use, and whether it is the saved one: a value that is not a table, or from a newer build, is
+-- left as it is and the module runs on an empty copy.
+local function UsableSave(self, module, globalName, current)
+	local saved = _G[globalName]
+	if saved ~= nil and type(saved) ~= "table" then
+		self:Trace(module, "SAVED %s is a %s, not a table; left unchanged, running on an empty copy", globalName, type(saved))
+		return {}, false
+	end
+	local result = saved or {}
+	if type(result.schema) == "number" and result.schema > current then
+		return {}, false, true
+	end
+	return result, true
+end
+
+-- Each table runs the steps above its own schema number, so a character table is brought up on its own login, whatever the
+-- account's table has already done. A character table with no number is taken as current: it was made before the number was kept.
+local function Upgrade(target, steps, from, to, ...)
+	for step = from + 1, to do
+		if steps and steps[step] then steps[step](target, ...) end
+		target.schema = step
+	end
+	target.schema = to
+end
+
 function lib:LoadSaved(module, globalName, spec)
-	local db = _G[globalName] or {}
-	local characterDb = spec.character and (_G[spec.character] or {}) or nil
-	local version = db.schema or (spec.legacy and spec.legacy(db)) or spec.schema
-	if version > spec.schema then
-		db, characterDb = {}, characterDb and {}
-		version = spec.schema
+	local db, usable, newer = UsableSave(self, module, globalName, spec.schema)
+	local characterDb, characterUsable, characterNewer
+	if spec.character then
+		characterDb, characterUsable, characterNewer = UsableSave(self, module, spec.character, spec.schema)
+	end
+	if newer or characterNewer then
 		self:Print(spec.newer or L["Saved data is from a newer version of %s; it was left unchanged."]:format(module.title))
-	else
-		_G[globalName] = db
-		if characterDb then _G[spec.character] = characterDb end
 	end
-	for step = version + 1, spec.schema do
-		spec.migrations[step](db, characterDb)
-		db.schema = step
-	end
-	db.schema = spec.schema
+	if usable then _G[globalName] = db end
+	if characterUsable then _G[spec.character] = characterDb end
+	local version = type(db.schema) == "number" and db.schema or (spec.legacy and spec.legacy(db)) or spec.schema
+	if not usable then version = spec.schema end
+	local characterVersion = characterDb and (type(characterDb.schema) == "number" and characterDb.schema or math.min(version, spec.schema))
+	-- The account's steps get the character table too, as the first character's login runs them (once, for the account).
+	Upgrade(db, spec.migrations, version, spec.schema, characterDb)
+	if characterDb then Upgrade(characterDb, spec.characterMigrations, characterVersion, spec.schema) end
 	FillDefaults(db, spec.defaults)
 	if characterDb then FillDefaults(characterDb, spec.characterDefaults) end
 	return db, characterDb
@@ -233,18 +270,15 @@ function lib:RegisterModule(addonName, class)
 	module.title, module.notes, module.category, module.layout = title, notes, category, layout
 	module.class = class or module.class
 	table.insert(self.modules, module)
-	-- The gamepad interface is chosen before load (changing it reloads the UI); there the page's own list
-	-- already reaches each module, and an Open button would select a category from addon code.
-	if not GamepadUI() then
-		parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, CONTEXT_ACTION_LABEL_OPEN, function()
-			lib:OpenOptions(module)
-		end, notes, false))
-	end
+	-- The button is always there; OpenOptions decides at the press whether the gamepad interface is on.
+	parentLayout:AddInitializer(CreateSettingsButtonInitializer(title, CONTEXT_ACTION_LABEL_OPEN, function()
+		lib:OpenOptions(module)
+	end, notes, false))
 	return module
 end
 
--- Opening the Settings window from addon code runs ShowUIPanel tainted, which the gamepad interface then
--- refuses (docs/standards.md, "Gamepad UI"); there the player is told where the page is instead.
+-- Selecting our category from addon code is blocked under the gamepad interface (docs/standards.md, "Gamepad UI");
+-- there the player is told where the page is instead.
 function lib:OpenOptions(module)
 	if GamepadUI() then
 		self:Print(L["Find it in Options, then %s, %s, %s."]:format(ADDONS, self.title, module.title))
@@ -544,7 +578,10 @@ function lib:EventFrame(module, handlers, options)
 	local frame = CreateFrame("Frame")
 	for event in pairs(handlers) do
 		local unit = options.unit and options.unit[event]
-		if unit then
+		-- A game update that drops an event makes the module slower, not broken (Blizzard_Console.lua guards the same way).
+		if C_EventUtils and C_EventUtils.IsEventValid and not C_EventUtils.IsEventValid(event) then
+			lib:Trace(module, "EVENT %s is not a client event; not registered", event)
+		elseif unit then
 			frame:RegisterUnitEvent(event, unit)
 		elseif not (options.later and options.later[event]) then
 			frame:RegisterEvent(event)
@@ -1178,6 +1215,7 @@ local REQUEST_TIMEOUT = 30
 local REQUEST_RETRIES = 2 -- re-asks after a timeout
 local MAX_COLLECTION_ID_LENGTH = 32
 local COLLECTION_ID_RANGE = 1000000000 -- a collection ID is its creation time and a random number below this
+local MAX_CACHED_REPLIES = 4
 local REPLY_DELAY = 3 -- seconds a channel's probes are collected before one answer goes out
 local WHISPER_ERROR_WINDOW = 10 -- seconds after a send in which the game's "no such player" line counts
 local CLOCK_SKEW = 300 -- seconds a peer's clock may run ahead
@@ -1296,7 +1334,7 @@ function lib:NewShare(module, spec)
 	local share = setmetatable({
 		module = module, spec = spec, prefix = prefix, dataPrefix = prefix .. "D", testPrefix = prefix .. "T",
 		revisions = {}, friends = {}, waiting = {}, replied = {}, cachedReplies = {}, whispered = {}, unreachable = {},
-		replyTimers = {}, bnetPresence = {}, changedFriends = {},
+		replyTimers = {}, bnetPresence = {}, changedFriends = {}, inWorld = IsLoggedIn() == true,
 	}, { __index = self.shareMethods })
 	self.shares[module.addon] = share
 	table.insert(self.shareList, share)
@@ -1512,23 +1550,26 @@ end
 
 function Share:Broadcast(kind)
 	local message = self:Offer(kind)
-	if self.guild then self:Send(message, "GUILD") end
-	if self.home then self:Send(message, self.home) end
-	if self.instance then self:Send(message, "INSTANCE_CHAT") end
+	local sent = 0
+	if self.guild then self:Send(message, "GUILD") sent = sent + 1 end
+	if self.home then self:Send(message, self.home) sent = sent + 1 end
+	if self.instance then self:Send(message, "INSTANCE_CHAT") sent = sent + 1 end
 	for name in pairs(self.friends) do
 		if self.replied[name] and not IsGuildMemberByName(name) and not IsGroupMember(name) then
 			self:Send(message, "WHISPER", name)
+			sent = sent + 1
 		end
 	end
+	Trace(self, "%s sent to %d channels or friends", message, sent)
 end
 
 function Share:ScheduleOffer()
 	wipe(self.cachedReplies)
-	if not self.enabled or self.offerQueued then return end
-	-- A trainer or merchant visit can find dozens of entries; one offer covers them.
-	self.offerQueued = true
-	C_Timer.After(0, function()
-		self.offerQueued = nil
+	if not self.enabled then return end
+	-- A trainer or merchant visit finds entries over many frames; one offer goes out once they stop, as answers do (REPLY_DELAY).
+	if self.offerTimer then self.offerTimer:Cancel() end
+	self.offerTimer = C_Timer.NewTimer(REPLY_DELAY, function()
+		self.offerTimer = nil
 		if self:Ready() then self:Broadcast(KIND.OFFER) end
 	end)
 end
@@ -1538,6 +1579,7 @@ end
 function Share:Reply(after)
 	local cached = self.cachedReplies[after]
 	if cached then return cached end
+	local started = debugprofilestop()
 	local limit = MAX_ROWS
 	while true do
 		local rows, through = self:Since(after, limit)
@@ -1545,7 +1587,12 @@ function Share:Reply(after)
 		if not encoded then return nil end
 		if #encoded <= SEND_LIMIT or limit <= 1 then
 			local message = ("%s %s %d %d %s"):format(KIND.DATA, self.exchange.id, after, through, encoded)
+			-- A peer asking from every revision cannot grow the cache past a few replies.
+			local held = 0
+			for _ in pairs(self.cachedReplies) do held = held + 1 end
+			if held >= MAX_CACHED_REPLIES then wipe(self.cachedReplies) end
 			self.cachedReplies[after] = message
+			lib:Time(self.module, "share reply", started)
 			return message
 		end
 		limit = math.floor(limit / 2)
@@ -1675,6 +1722,12 @@ end
 
 function Share:OnData(message, channel, sender)
 	if not self:Ready() or issecretvalue(sender) or issecretvalue(message) then return end
+	local started = debugprofilestop()
+	self:HandleData(message, channel, sender)
+	lib:Time(self.module, "share data", started)
+end
+
+function Share:HandleData(message, channel, sender)
 	if channel ~= "WHISPER" then
 		Trace(self, "data from %s ignored: not a whisper (%s)", sender, tostring(channel))
 		return

@@ -96,6 +96,11 @@ for _, name in ipairs({ "AddShownPredicate", "Settings%.RegisterInitializer", "S
 	"CreateSettingsButtonInitializer", "CreateKeybindingEntryInitializer", "SetParentInitializer" }) do
 	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "a banned control (docs/options.md, \"Banned controls\")" })
 end
+-- A call to a function only Blizzard's deprecated addons define is nil on a player's client (tests/deprecated.lua).
+for name in pairs(assert(dofile(kitDir .. "/tests/deprecated.lua"), "no deprecated list")) do
+	table.insert(FORBIDDEN, { "%f[%w_.]" .. name:gsub("%.", "%%.") .. "%f[^%w_]%s*%(",
+		"a call to a deprecated shim the client does not load by default (tests/deprecated.lua)" })
+end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps
 -- them on the namespace, and the locale files take the addon's name from the TOC.
 table.insert(FORBIDDEN, { "[GN][ew][tw]Locale%(%s*\"", "a locale table is named by the addon's name from the TOC, not a string" })
@@ -233,7 +238,7 @@ local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("
 check("the embedded kit has no XML", listing == "")
 local toolkitCheckout = addonDir .. "/../JigBoltgripToolkit"
 for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua", "tests/module-check.sh",
-	"tests/deploy-deck.sh", "tests/agents-opening.md" }) do
+	"tests/deploy-deck.sh", "tests/agents-opening.md", "tests/deprecated.lua" }) do
 	local theirs = Read(toolkitCheckout .. "/" .. file)
 	if theirs then
 		check("the embedded " .. file .. " is the toolkit's", Read(kitDir .. "/" .. file) == theirs)

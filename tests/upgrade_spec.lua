@@ -32,6 +32,7 @@ describe("upgrade of an old save", function()
 		SlashCmdList = {}
 		function CreateColor(r, g, b) return { r = r, g = g, b = b } end
 		RAID_CLASS_COLORS = { DRUID = { r = 1, g = 0.49, b = 0.04 } }
+		IsLoggedIn = function() return false end
 		dofile(repo .. "/Libs/LibStub/LibStub.lua")
 		GetLocale = GetLocale or function() return "enUS" end -- the client's language
 		geterrorhandler = geterrorhandler or function() return error end

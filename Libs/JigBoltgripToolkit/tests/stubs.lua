@@ -72,6 +72,15 @@ UISpecialFrames = {}
 NORMAL_FONT_COLOR = { WrapTextInColorCode = function(_, text) return text end }
 HIGHLIGHT_FONT_COLOR = NORMAL_FONT_COLOR
 -- Class colors are color objects in the client, so addon code may call their methods.
+-- Enum fields whose values code computes with (bit.band fails on a stub); every other field stays a stub. Values:
+-- Blizzard_APIDocumentationGenerated/SoftTargetConstantsDocumentation.lua.
+Enum = setmetatable({ SoftTargetEnableFlags = { None = 0, Gamepad = 1, Kbm = 2, Any = 3 } }, {
+	__index = function(enum, name)
+		local stub = client.Stub("Enum." .. name)
+		rawset(enum, name, stub)
+		return stub
+	end })
+
 RAID_CLASS_COLORS = setmetatable({}, { __index = function()
 	return { r = 1, g = 1, b = 1, colorStr = "ffffffff", WrapTextInColorCode = function(_, text) return text end,
 		GenerateHexColor = function() return "ffffffff" end, GetRGB = function() return 1, 1, 1 end }
