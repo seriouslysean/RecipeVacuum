@@ -78,8 +78,9 @@ end
 local FORBIDDEN = {
 	{ "DEFAULT_CHAT_FRAME", "chat goes through the kit (Say, Print)" },
 	{ "%f[%w_]print%s*%(", "chat goes through the kit (Say, Print)" },
-	{ "Settings%.Create", "options rows are built by the kit (BuildOptions)" },
-	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)" },
+	-- A working-build block may call Blizzard's Settings builders. Control Test measures those rows and releases strip the block.
+	{ "Settings%.Create", "options rows are built by the kit (BuildOptions)", inDebug = true },
+	{ "CreateSettingsListSectionHeaderInitializer", "options headings are built by the kit (BuildOptions)", inDebug = true },
 	{ "SetCVar%(%s*\"scriptErrors\"", "working builds start with the kit's EnableWorkingBuild" },
 }
 -- Addon code that adds to Blizzard's lists, menus or panels is tainted, and the Gamepad UI then refuses
@@ -87,7 +88,9 @@ local FORBIDDEN = {
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
 	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap",
 	"Settings%.OpenToCategory" }) do
-	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
+	-- Same allowance as above: Settings builders only, and only inside a working-build block.
+	local inDebug = name:find("^Settings%%.") ~= nil
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")", inDebug = inDebug })
 end
 -- Library names and the addon's own name are written once: Core.lua looks the libraries up and keeps
 -- them on the namespace, and the locale files take the addon's name from the TOC.
@@ -109,7 +112,9 @@ for _, file in ipairs(files) do
 			number = number + 1
 			local code = line:gsub("%-%-.*$", "")
 			for _, rule in ipairs(FORBIDDEN) do
-				if code:find(rule[1]) then problems[#problems + 1] = ("line %d: %s"):format(number, rule[2]) end
+				if code:find(rule[1]) and not (open and rule.inDebug) then
+					problems[#problems + 1] = ("line %d: %s"):format(number, rule[2])
+				end
 			end
 			if not open then
 				for _, pattern in ipairs(LITERAL_TEXT) do
