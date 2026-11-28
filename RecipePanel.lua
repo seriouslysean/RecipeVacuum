@@ -6,12 +6,9 @@ local _, ns = ...
 function ns.SourceTarget(observation)
 	local mapID, x, y = ns.SourcePosition(observation)
 	if mapID and x and C_Map.CanSetUserWaypointOnMap(mapID) and not ns.IsOtherFactionNPC(observation) then
-		local name = ns.SourceInfo(observation)
-		local mapInfo = C_Map.GetMapInfo(mapID)
-		return {
-			label = ("%s (%s)"):format(name or UNKNOWN, ns.PlaceName(observation, mapInfo)), -- a drop names its subzone
-			mapID = mapID, x = x, y = y,
-		}
+		local name = ns.SourceInfo(observation) or UNKNOWN
+		local place = ns.PlaceName(observation, C_Map.GetMapInfo(mapID)) -- a drop names its subzone
+		return { label = ("%s (%s)"):format(name, place), name = name, place = place, mapID = mapID, x = x, y = y }
 	end
 end
 
@@ -80,7 +77,7 @@ function ns.ShowOnMap(target)
 	end
 	C_SuperTrack.SetSuperTrackedUserWaypoint(true)
 	ns.lastPin = target -- the working build's map-open test pins it again (decision 0068)
-	ns.toolkit:Say(ns.module, ns.voice.pinned, target.label)
+	ns.toolkit:Say(ns.module, ns.voice.pinned, target.name, target.place) -- the place in the sentence, as Tackletron says its zone
 	if not ns.toolkit.IsGamepadUI() then
 		OpenWorldMap(target.mapID)
 	end
