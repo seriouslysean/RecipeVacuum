@@ -60,6 +60,26 @@ release_build() {
 }
 
 shell() { shellcheck scripts/check && shfmt -d scripts/check; }
+# The client reads Bindings.xml by name, outside the TOC, so no other step parses it.
+xml() {
+	local files
+	files=$(git ls-files '*.xml' | grep -v '^Libs/' || true)
+	[[ -z $files ]] && return 0
+	# shellcheck disable=SC2086 # one path per word
+	xmllint --noout $files
+}
+# The execute bit is for scripts only. A clone whose file modes are rewritten from outside (the launcher does it through
+# the AddOns symlink) once committed 66 plain files as executable.
+modes() {
+	local mode path bad=0
+	while read -r mode _ _ path; do
+		[[ $mode == 100755 ]] || continue
+		[[ $(head -c 2 "$path") == '#!' ]] && continue
+		echo "$path is executable and not a script: git update-index --chmod=-x $path"
+		bad=1
+	done < <(git ls-files -s)
+	return "$bad"
+}
 # A new module may have no specs yet; its line says so rather than passing quietly.
 specs() {
 	if compgen -G "tests/*_spec.lua" >/dev/null; then busted --lua="$lua"; else echo "no specs yet"; fi
@@ -68,6 +88,8 @@ release_specs() { (cd "$stripped" && specs); }
 
 step "syntax (Lua 5.1)" syntax
 step "shell (ShellCheck, shfmt)" shell
+step "XML well-formed" xml
+step "file modes" modes
 step "luacheck" luacheck . -q
 step "conformance" "$lua" Libs/JigBoltgripToolkit/tests/conformance.lua .
 step "release build compiles" release_build

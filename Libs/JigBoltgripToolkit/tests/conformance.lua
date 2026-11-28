@@ -72,6 +72,164 @@ local SOURCE_PHRASES = { "as another addon", "as other addons", "like another ad
 	"wording of another addon", "another addon `", "(another addon", "established addon",
 	"pattern addons use" }
 local SOURCE_EXEMPT = { "^Libs/", "/Libs/", "LICENSE", "THIRD%-PARTY%-NOTICES%.md$", "tests/globalstrings%.lua$" }
+
+-- SHA-256 on plain Lua 5.1 numbers (FIPS 180-4), for the name list below; the client's Lua has no bit library.
+local AND = {}
+local function Band(a, b)
+	if not AND[0] then
+		for x = 0, 255 do
+			AND[x] = {}
+			for y = 0, 255 do
+				local value, bit = 0, 1
+				for _ = 1, 8 do
+					if x % (bit * 2) >= bit and y % (bit * 2) >= bit then value = value + bit end
+					bit = bit * 2
+				end
+				AND[x][y] = value
+			end
+		end
+	end
+	local value, scale = 0, 1
+	for _ = 1, 4 do
+		value = value + AND[a % 256][b % 256] * scale
+		a, b, scale = math.floor(a / 256), math.floor(b / 256), scale * 256
+	end
+	return value
+end
+local function Bxor(a, b) return a + b - 2 * Band(a, b) end
+local function Rotate(x, n) return math.floor(x / 2 ^ n) + (x % 2 ^ n) * 2 ^ (32 - n) end
+local ROUND = {}
+do
+	-- The round constants are the cube roots of the first 64 primes; the start values, the square roots of the first 8.
+	local primes, candidate = {}, 2
+	while #primes < 64 do
+		local prime = true
+		for _, p in ipairs(primes) do
+			if candidate % p == 0 then prime = false break end
+		end
+		if prime then primes[#primes + 1] = candidate end
+		candidate = candidate + 1
+	end
+	for index, prime in ipairs(primes) do
+		local root = prime ^ (1 / 3)
+		ROUND[index] = math.floor((root - math.floor(root)) * 2 ^ 32)
+		if index <= 8 then
+			root = prime ^ (1 / 2)
+			ROUND[-index] = math.floor((root - math.floor(root)) * 2 ^ 32)
+		end
+	end
+end
+local function SHA256(text)
+	local length = #text
+	text = text .. "\128" .. ("\0"):rep((55 - length) % 64) .. ("\0"):rep(4)
+		.. string.char(math.floor(length * 8 / 2 ^ 24) % 256, math.floor(length * 8 / 2 ^ 16) % 256, math.floor(length * 8 / 256) % 256, length * 8 % 256)
+	local h = { ROUND[-1], ROUND[-2], ROUND[-3], ROUND[-4], ROUND[-5], ROUND[-6], ROUND[-7], ROUND[-8] }
+	for block = 1, #text, 64 do
+		local w = {}
+		for index = 1, 16 do
+			local a, b, c, d = text:byte(block + index * 4 - 4, block + index * 4 - 1)
+			w[index] = ((a * 256 + b) * 256 + c) * 256 + d
+		end
+		for index = 17, 64 do
+			local x, y = w[index - 15], w[index - 2]
+			local s0 = Bxor(Bxor(Rotate(x, 7), Rotate(x, 18)), math.floor(x / 8))
+			local s1 = Bxor(Bxor(Rotate(y, 17), Rotate(y, 19)), math.floor(y / 1024))
+			w[index] = (w[index - 16] + s0 + w[index - 7] + s1) % 2 ^ 32
+		end
+		local a, b, c, d, e, f, g, hh = unpack(h)
+		for index = 1, 64 do
+			local s1 = Bxor(Bxor(Rotate(e, 6), Rotate(e, 11)), Rotate(e, 25))
+			local choose = Bxor(Band(e, f), Band(2 ^ 32 - 1 - e, g))
+			local first = (hh + s1 + choose + ROUND[index] + w[index]) % 2 ^ 32
+			local s0 = Bxor(Bxor(Rotate(a, 2), Rotate(a, 13)), Rotate(a, 22))
+			local majority = Bxor(Bxor(Band(a, b), Band(a, c)), Band(b, c))
+			hh, g, f, e, d, c, b, a = g, f, e, (d + first) % 2 ^ 32, c, b, a, (first + s0 + majority) % 2 ^ 32
+		end
+		for index, value in ipairs({ a, b, c, d, e, f, g, hh }) do h[index] = (h[index] + value) % 2 ^ 32 end
+	end
+	return ("%08x%08x%08x%08x%08x%08x%08x%08x"):format(unpack(h))
+end
+
+-- Other addons' names, each as the SHA-256 of the lowercase name with its words joined by one space, so this file
+-- names none (docs/decisions/0086). The hashes keep the names out of reading and search; they are not secret.
+local NAME_HASHES = {}
+for hash in ([[
+	049d97909268f7e2791242a35234e8ac978c789ffbc7dcf4505557e6a6e68ac5 06f31ec2dd41c2dfbbf22cd72d19883a288f222c9970e47e4b2a73b057af1e34
+	09ee19809ff5b78cc300bbf71c98ca36e48b50750aa25e72b925b6f51ee257eb 1115d079a6dde13be951092ccca1b0cd6cd17bd9435312dbfe44e317154cff49
+	204cfa3e56b8a4eb85ef47cbc25cd1a08be320f42d32f496f2c7a616b17ece46 233d9819a36132394a53cbf7341d202e9031eaadc86f33555b74f1fafbe057d2
+	27d5b0f312c6bd61d1f4c0da64e27e93e8c9c88856d1796063d188a45563f0aa 2985f231cb9628e11537923f478f945702fd87c8dab6b08bf944a764040ef683
+	2a2a3143b07d2833b4c83724ef3d9bfcd6b28269b5ceeb7e84291ce4fbeacf46 2ef56b7bda45db9bfdbb1b12b5316ec584bc6bd1852be7bcfe11344a08c75760
+	361e66486b092363bd7e938605a03ad4c78b4942a1754fdfeb27463826e51feb 3cd5681435850a486636e990b1ee055cab044e9ec44efad933e6748882270a8f
+	5134273daa5917e79d0b83b85c08419adf83ef549d0dde74b7229ef7d0674b3b 5711b87131f6d33b17d09e56a87ee01455347e5663986e2f806880945e5e7bef
+	57b1a687a006f1ebc7596f9209216fde970904952bed289547c2eaef91ec47b6 63dd78e5fe326e058bd03fceb8a8c32f4cfdc44a274a78a2bf543157d921709a
+	71b11255f77aa2252ed4c082e63835408db471c65f76767edfb45a1ee36a13da 7831b655a06632832168f81c3106864d203abd6bb358a6dfd7a3491c0ff4b252
+	7b820097d038d763d73baaaee657075378ee77d6e04514f113a877d811888084 7f76ae074cd7048d5b09be15cb67b289099924469b69a2419f6baecc19741f75
+	815ab6b955cb8e2a6d3be682aa381fe41854390f7d964908e384187dce22dd26 852fd12a233f1cfb7e4dfa4d0e97eb182d1da3f19ec9fb8e96538444c0596e3e
+	87f0367f59299d08b54be800a702cd5f7c04af735d084a207561e530c7d48b02 87fc761c97b883d787e1eb9b58983b26c3e23992f3fd130e9d6ac492842f95fa
+	883f4e60b533b8f78ee746de6c52a8a2b97bbc6a3896554c8633ddf0db2354c6 91b9524da43ebb23a31f82c2da0874827594544b1394a399419ae86f9a80b0f7
+	9f59a2fda44c86d95b540cbf700da5097fa652a98cddcbb20ea2df09f5c82be5 a16ff270fe6c62b3d77f297649c504821a422ecdb8579a812d1f3bb954941f03
+	a39ce47df9cd732004d09d9bec2c64b40bb545979aa9751770bbfae873bdce24 a75c0838e8467bc03dcdc6f75c12de9c1f825ffc14c859404e1b13fcf5f27b98
+	a81da606ebdac8b2a8dafbf3ebba5938e84841a42285204ecef879f1effa1790 ad2ae59ee4bc7a7a5fcbf88c9b271f75d173298595ad3e386d9318aee85ac4b9
+	ade81d9f26fbbdcdae48d8ffa5910f262c89249de272109054641f4ab2cb5547 b021433442a145e1208652e6cb5ddd5a97dd8007b6bf885796a787d9418f4798
+	b31bce4721f8db6cac88922f6a339b83e90bfc82f89e0e7503bf70ff7ba6b26c b45abfc4e72ad2e71db0acafba9e67d8a8565dcac2c39471d14cff1950b87a7f
+	b758a31c17f7aef3ae9a92a51b53337f796ea11d1b7897e729390d39ff8a2111 c2cb46f8b213d3a1ec17b82b0cecf7f20981b64b1d20400092d5c53754d2cd8a
+	c753ef152b5485215d504a7958da9a23cf2f45b6e0c3a2fb8fc77cddc38b1e65 d17486c31fed1b6f07318a671cc4e1f7054e22e8cce0a58e8b576e2ca0c8de83
+	d4e519d4a15f96be63cafecc25220c4cd46325ce49be42c85bfa1f3ddbf4bc11 d8bb80e1864cc166c6a7dd2306eda3d71cad874d55d0c82b19c4ce4a252db6d4
+	db954643ef2cb8a12c8f5ef1dedcc0a15974be533deda2256f8f567a3e5fdd1d ddb926370d2abc09faa9446108d591008cd0faabba81038c550b89f49396813e
+	e6d4b03eed903b1dc2330527606783f463f06fd581dcc02df2fa4e84b5c04e90 e942cbbcdfc6aa5333838c54a0b786553016498c469aabef406c288460f48fdb
+	eb291818bbbed4240ebd1f340a2144fcc05b5eea75df123bdb3982a1600faffe eb752349c9f1bd0beccff462ea21a5a0db86a25046994afff026fd10ec45cd55
+	ee46c2202b0052a1464e4f8afa104f8ecb52baebb05a86f3379748aad3386d53 f02b372d7499fe41a706a2dda0b5e6bdac04e8f575628d26dff7d8827615dfdd
+	fbca8ddfbb47024e4a7638aa5ba0945798787e8314c6ae5c6c048797dd21ccc0 ff92c77e1960727fabc99371621b70a923706d83f002ade254a256e0cb861466
+]]):gmatch("%x+") do NAME_HASHES[hash] = true end
+-- Each name's length and byte sum: only a word or phrase that matches one is hashed, which keeps a run fast.
+local NAME_KEYS = {}
+for _, key in ipairs({
+	3056, 4188, 5021, 5025, 5047, 6118, 6127, 6140, 6170, 7006, 7008, 7015, 7224, 7234, 7246, 8099,
+	8106, 9190, 9202, 9211, 9212, 9214, 9217, 9233, 10010, 10032, 10039, 10047, 10054, 10055, 10070, 10092,
+	11067, 11104, 11189, 12024, 13057, 13112, 13123, 13133, 14005, 14096, 14167, 14171, 14172, 14193, 15031, 15116,
+	16059, 17157, 18072, 19068,
+}) do NAME_KEYS[key] = true end
+local NAME_WORDS = 3 -- the longest name, in words
+local tried = {}
+local function IsName(phrase)
+	if tried[phrase] == nil then
+		local sum = 0
+		for index = 1, #phrase do sum = sum + phrase:byte(index) end
+		tried[phrase] = NAME_KEYS[#phrase * 1000 + sum % 251] == true and NAME_HASHES[SHA256(phrase)] == true
+	end
+	return tried[phrase]
+end
+-- Whole lines, code included: a name is banned everywhere. Words are runs of letters and digits; a phrase joins up to
+-- three that only spaces or hyphens part.
+local function NameProblems(path, text)
+	local problems, number = {}, 0
+	for _, pattern in ipairs(SOURCE_EXEMPT) do
+		if path:find(pattern) then return problems end
+	end
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		number = number + 1
+		local words = {}
+		for start, word, stop in line:gsub("BigWigs packager", ""):gmatch("()(%w+)()") do
+			words[#words + 1] = { word:lower(), start, stop }
+		end
+		local found
+		for first = 1, #words do
+			local phrase = words[first][1]
+			for last = first, math.min(first + NAME_WORDS - 1, #words) do
+				if last > first then
+					if not line:gsub("BigWigs packager", ""):sub(words[last - 1][3], words[last][2] - 1):find("^[ %-]+$") then break end
+					phrase = phrase .. " " .. words[last][1]
+				end
+				if IsName(phrase) then found = phrase end
+			end
+		end
+		if found then
+			problems[#problems + 1] = ("%s line %d: %q is another addon's name; cite Blizzard's file, game data or our own test")
+				:format(path, number, found)
+		end
+	end
+	return problems
+end
 local function SourceProblems(path, text)
 	local problems, number = {}, 0
 	for _, pattern in ipairs(SOURCE_EXEMPT) do
@@ -97,7 +255,7 @@ if arg[1] == "--voice" then
 	local problems = {}
 	for i = 2, #arg do
 		local text = assert(io.open(arg[i])):read("*a")
-		for _, list in ipairs({ VoiceProblems(arg[i], text), SourceProblems(arg[i], text) }) do
+		for _, list in ipairs({ VoiceProblems(arg[i], text), SourceProblems(arg[i], text), NameProblems(arg[i], text) }) do
 			for _, problem in ipairs(list) do problems[#problems + 1] = problem end
 		end
 	end
@@ -399,7 +557,7 @@ local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("
 check("the embedded kit has no XML", listing == "")
 local toolkitCheckout = addonDir .. "/../JigBoltgripToolkit"
 for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua", "tests/module-check.sh",
-	"tests/deploy-deck.sh", "tests/agents-opening.md", "tests/deprecated.lua", "tests/globalstrings.lua" }) do
+	"tests/deploy-deck.sh", "tests/agents-opening.md", "tests/readme-license.md", "tests/deprecated.lua", "tests/globalstrings.lua" }) do
 	local theirs = Read(toolkitCheckout .. "/" .. file)
 	if theirs then
 		check("the embedded " .. file .. " is the toolkit's", Read(kitDir .. "/" .. file) == theirs)
@@ -432,6 +590,59 @@ for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.l
 	for _, problem in ipairs(SourceProblems(path, Read(addonDir .. "/" .. path) or "")) do sources[#sources + 1] = problem end
 end
 check("docs and comments name no other addon as a source", #sources == 0, table.concat(sources, "; "))
+
+local names = {}
+for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" "*.toc" "*.xml" "*.yml" "*.sh" "*.py" ".luacheckrc" ".pkgmeta" "scripts/*" ".githooks/*" ":!Libs" 2>/dev/null')):lines() do
+	for _, problem in ipairs(NameProblems(path, Read(addonDir .. "/" .. path) or "")) do names[#names + 1] = problem end
+end
+check("no tracked file holds another addon's name", #names == 0, table.concat(names, "; "))
+
+-- The repository: the same root files, license text and TOC fields in every module, so none drifts
+-- (docs/standards.md, "Repository"). A module with no license file, icon or CI passed every other check.
+local missing = {}
+for _, file in ipairs({ "LICENSE", "README.md", "AGENTS.md", "CLAUDE.md", ".gitignore", ".editorconfig", ".pkgmeta", ".luacheckrc",
+	".busted", ".github/workflows/ci.yml", ".githooks/pre-push", "scripts/check", "scripts/deploy-deck" }) do
+	if not Read(addonDir .. "/" .. file) then missing[#missing + 1] = file end
+end
+check("the repository has every root file", #missing == 0, table.concat(missing, ", "))
+local license = Read(addonDir .. "/LICENSE") or ""
+check("LICENSE is the GNU General Public License, version 3",
+	license:find("GNU GENERAL PUBLIC LICENSE", 1, true) ~= nil and license:find("Version 3, 29 June 2007", 1, true) ~= nil)
+local embedsAce = false
+for _, file in ipairs(libraries) do embedsAce = embedsAce or file:find("^Libs/Ace") ~= nil or file:find("^Libs/CallbackHandler") ~= nil end
+check("an embedded Ace3 library comes with Libs/Ace3-LICENSE.txt", not embedsAce or Read(addonDir .. "/Libs/Ace3-LICENSE.txt") ~= nil)
+local fields = {}
+for _, field in ipairs({ { "Title", "." }, { "Notes", "." }, { "Author", "." }, { "Category", "^Jig Boltgrip's Toolkit$" },
+	{ "Version", "^@project%-version@$" }, { "X-License", "^GPL%-3%.0$" }, { "IconTexture", "." } }) do
+	local value = tocText:match("## " .. field[1]:gsub("%-", "%%-") .. ":%s*([^\r\n]*)")
+	if not (value and value:find(field[2])) then fields[#fields + 1] = field[1] end
+end
+check("the TOC has the fields every module sets", #fields == 0, table.concat(fields, ", "))
+local workflow = Read(addonDir .. "/.github/workflows/ci.yml") or ""
+check("CI calls the toolkit's workflow at one pinned commit",
+	workflow:find("uses: seriouslysean/JigBoltgripToolkit/%.github/workflows/module%-ci%.yml@" .. ("%x"):rep(40) .. "%s") ~= nil)
+local unpackaged, pkgmeta = {}, Read(addonDir .. "/.pkgmeta") or ""
+for _, entry in ipairs({ "AGENTS.md", "CLAUDE.md", "docs", "scripts", "tests", "tools", "Libs/JigBoltgripToolkit/tests" }) do
+	if not pkgmeta:find("\n%s*%- " .. entry:gsub("%p", "%%%0") .. "%s*\n") then unpackaged[#unpackaged + 1] = entry end
+end
+check(".pkgmeta leaves out everything that is not the addon", #unpackaged == 0, table.concat(unpackaged, ", "))
+-- One short README shape: what it is, how to install it, the toolkit's license section word for word, and the line
+-- that links the toolkit as the main repository.
+local readme = Read(addonDir .. "/README.md") or ""
+local licenseSection = assert(Read(kitDir .. "/tests/readme-license.md"), "no tests/readme-license.md in the kit")
+check("README.md has an Install section", readme:find("\n## Install\n", 1, true) ~= nil)
+check("README.md ends with the toolkit's License section", readme:sub(-#licenseSection) == licenseSection,
+	"its last section must be the kit's tests/readme-license.md")
+check("README.md links the toolkit as the main repository",
+	readme:find("Part of [Jig Boltgrip's Toolkit](https://github.com/seriouslysean/JigBoltgripToolkit)", 1, true) ~= nil)
+-- The embedded tests folder holds the shared files only: a stray copy is checked by nothing and goes stale.
+local shared = { ["stubs.lua"] = true, ["conformance.lua"] = true, ["module-check.sh"] = true, ["deploy-deck.sh"] = true,
+	["agents-opening.md"] = true, ["readme-license.md"] = true, ["deprecated.lua"] = true, ["globalstrings.lua"] = true }
+local strays = {}
+for name in assert(io.popen('ls "' .. kitDir .. '/tests"')):lines() do
+	if not shared[name] then strays[#strays + 1] = name end
+end
+check("the embedded tests folder holds only the toolkit's shared files", #strays == 0, table.concat(strays, ", "))
 
 -- 3. Load the addon on the kit's stand-ins and read what it hands the kit.
 local client = dofile(kitDir .. "/tests/stubs.lua")

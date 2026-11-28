@@ -6,10 +6,19 @@
 # corner line shows its first word, the session log all of it (docs/standards.md, "Working build"). The release
 # packager fills the version from the tag instead; the repository's TOC keeps its token.
 #   scripts/deploy-deck [ssh-host]
+# The Deck is named outside the repository: JBT_DECK_HOST (its ssh host) and JBT_DECK_ADDONS (its AddOns folder), from the
+# environment or from the file JBT_DECK_CONFIG names (default ~/.config/jig-boltgrip-toolkit/deck.env).
 set -euo pipefail
 
-host=${1:-deck-host}
-addons='/home/deck/.local/share/Steam/steamapps/compatdata/4077668031/pfx/drive_c/Program Files (x86)/World of Warcraft/_forever_/Interface/AddOns'
+config=${JBT_DECK_CONFIG:-$HOME/.config/jig-boltgrip-toolkit/deck.env}
+# shellcheck source=/dev/null
+[[ -f $config ]] && . "$config"
+host=${1:-${JBT_DECK_HOST:-}}
+addons=${JBT_DECK_ADDONS:-}
+[[ -n $host && -n $addons ]] || {
+	echo "Set JBT_DECK_HOST and JBT_DECK_ADDONS (docs/standards.md, \"Working build\")." >&2
+	exit 2
+}
 name=$(basename "$PWD")
 scripts/check
 # The copy names its code by commit, so a log line traces to the code that ran: "a81c4ef@08", or "7bd31fa+@42" when it carries

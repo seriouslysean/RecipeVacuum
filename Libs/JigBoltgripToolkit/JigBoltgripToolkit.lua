@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 86
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 87
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1413,6 +1413,8 @@ local EXPANDED_LIMIT = 65536 -- decompressed bytes accepted before CBOR decoding
 local MAX_ROWS = 64
 local REQUEST_TIMEOUT = 30
 local REQUEST_RETRIES = 2 -- re-asks after a timeout
+local MAX_CHAIN_REPLIES = 64 -- replies taken for one request; a peer with more waits for its next probe
+local NO_COLLECTION_ID = "0-0" -- what a player who does not share sends in place of their collection's ID
 local MAX_COLLECTION_ID_LENGTH = 32
 local COLLECTION_ID_RANGE = 1000000000 -- a collection ID is its creation time and a random number below this
 local MAX_CACHED_REPLIES = 4
@@ -1713,12 +1715,18 @@ function Share:Send(text, channel, target)
 	end
 end
 
-function Share:SendData(text, target)
+-- A reply is in flight for its sender until its last chunk has gone out (AceComm's callback: bytes sent, bytes in all).
+function Share:SendData(text, target, isReply)
 	if self.unreachable[target] then
 		Trace(self,  "not sent", "target", target, "reason", "unreachable")
 		return
 	end
-	self.comm:SendCommMessage(self.dataPrefix, text, "WHISPER", target, "BULK", function(name) self:WhisperSent(name) end, target)
+	self.replying = self.replying or {}
+	if isReply then self.replying[target] = GetTime() end
+	self.comm:SendCommMessage(self.dataPrefix, text, "WHISPER", target, "BULK", function(name, sent, total)
+		self:WhisperSent(name)
+		if isReply and sent >= total then self.replying[name] = nil end
+	end, target)
 end
 
 function Share:OnSystem(message)
@@ -1739,10 +1747,12 @@ function Share:OnSystem(message)
 	end
 end
 
--- A player who does not share offers revision 0, so no one asks for their finds.
+-- A player who does not share offers revision 0, so no one asks for their finds, and no collection ID: the ID
+-- is one per account, so it would tell a guild or group which characters are the same player.
 function Share:Offer(kind)
 	local exchange = self.exchange
-	return ("%s %s %d"):format(kind, exchange.id, self.spec.sending() and exchange.revision or 0)
+	if not self.spec.sending() then return ("%s %s 0"):format(kind, NO_COLLECTION_ID) end
+	return ("%s %s %d"):format(kind, exchange.id, exchange.revision)
 end
 
 function Share:Broadcast(kind)
@@ -1889,7 +1899,8 @@ function Share:OnProbe(message, channel, sender)
 		Trace(self,  "probe ignored", "name", sender, "reason", "bad_header")
 		return
 	end
-	if id == self.exchange.id then return end
+	-- Our own probe comes back on a group or guild channel; with sharing off it carries no ID to know it by.
+	if id == self.exchange.id or (id == NO_COLLECTION_ID and sender == UnitName("player")) then return end
 	Trace(self,  "heard", "kind", kind, "name", sender, "channel", channel, "collection", id, "revision", revision)
 	if kind == KIND.HELLO then
 		if channel == "WHISPER" then
@@ -1940,9 +1951,16 @@ function Share:HandleData(message, channel, sender)
 			Trace(self,  "request ignored", "name", sender, "after", after or -1, "reason", "off_malformed_or_other")
 			return
 		end
+		-- One reply in flight per sender: each costs an encode and up to SEND_LIMIT bytes of the send queue, so a peer that
+		-- asks faster than replies leave is not answered. A reply that never reports back stops counting after REQUEST_TIMEOUT.
+		local inFlight = self.replying and self.replying[sender]
+		if inFlight and GetTime() - inFlight < REQUEST_TIMEOUT then
+			Trace(self,  "request ignored", "name", sender, "after", after, "reason", "reply_in_flight")
+			return
+		end
 		local reply = self:Reply(after)
 		Trace(self,  "request", "name", sender, "after", after, "reply_bytes", reply and #reply or 0)
-		if reply then self:SendData(reply, sender) end
+		if reply then self:SendData(reply, sender, true) end
 	elseif kind == KIND.DATA and self.spec.receiving() then
 		-- Accept only the reply to our own request.
 		local peer = self.active
@@ -1957,11 +1975,17 @@ function Share:HandleData(message, channel, sender)
 			return
 		end
 		local ok, rows = pcall(Decode, encoded)
+		local count = ok and type(rows) == "table" and #rows or nil
 		local changed, skipped
-		if ok and rows then changed, skipped = self:Merge(rows) end
+		-- A row is one revision, so a reply never holds more rows than the revisions it covers; one that does is refused.
+		if count and count > through - after then
+			Trace(self,  "batch rejected", "rows", count, "revisions", through - after)
+		elseif ok and rows then
+			changed, skipped = self:Merge(rows)
+		end
 		Trace(self, "received", "bytes", #encoded, "name", sender, "from", after, "to", through,
 			"result", not (ok and rows) and "unreadable" or changed == nil and "rejected" or changed and "merged" or "nothing_new",
-			"rows", rows and #rows or nil, "skipped", skipped)
+			"rows", count, "skipped", skipped)
 		if changed == nil then
 			-- Asked for again it would fail the same way, so the cursor moves past it.
 			exchange.received[id] = through
@@ -1972,10 +1996,13 @@ function Share:HandleData(message, channel, sender)
 		peer.tip = math.max(peer.tip, through)
 		self.changedDirty = self.changedDirty or changed
 		exchange.received[id] = through
-		if through < peer.tip then
+		peer.replies = (peer.replies or 0) + 1
+		if through < peer.tip and peer.replies < MAX_CHAIN_REPLIES then
 			peer.after, peer.retries = through, REQUEST_RETRIES
 			self:Ask(peer)
 		else
+			-- The tip is the peer's own claim, so it cannot be what ends a request.
+			if through < peer.tip then Trace(self,  "request capped", "name", sender, "replies", peer.replies, "at", through) end
 			self:FinishRequest()
 		end
 	else
@@ -2141,6 +2168,7 @@ function Share:Connect(value)
 		wipe(self.bnetPresence)
 		wipe(self.changedFriends)
 		wipe(self.cachedReplies)
+		if self.replying then wipe(self.replying) end
 		self.home, self.instance, self.guild, self.deferred, self.rosterRequested, self.changedDirty = nil, nil, nil, nil, nil, nil
 	end
 end

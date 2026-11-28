@@ -5,6 +5,7 @@
 ## Author: Jig Boltgrip
 ## Version: @project-version@
 ## X-License: GPL-3.0
+## X-Website: https://github.com/seriouslysean/RecipeVacuum
 ## SavedVariables: RecipeVacuumDB
 ## IconTexture: Interface\Icons\INV_Gizmo_01
 

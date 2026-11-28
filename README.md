@@ -1,31 +1,13 @@
 # Recipe Vacuum
 
-A WoW Forever addon that tracks where recipes come from and which ones you don't know yet. It leaves Blizzard's profession window alone, so controller navigation and other windows keep working; a panel of its own beside the window lists the recipes you have found and not yet learned, by rank, with a discovery bar and each recipe's details and sources.
+A WoW Forever addon for tracking the recipes you don't know yet and where they come from.
 
-It tracks a recipe once you have come across it, and fills in where it comes from as you learn more. Recipe sources are recorded from the trainers, vendors, quests and loot you see. How far it listens beyond that is a choice under Settings → AddOns → Jig Boltgrip's Toolkit → Recipe Vacuum:
+Part of [Jig Boltgrip's Toolkit](https://github.com/seriouslysean/JigBoltgripToolkit), the main repository: the shared library, the standards and the list of addons. What it does and how to use it: [docs/using.md](docs/using.md).
 
-- **Self Found**: only what you see yourself.
-- **Friends** (the default): also what your party, raid, guild and friends see, link or share. 
-- **Public**: also recipes linked in public chat.
+## Install
 
-**Share My Finds** (on by default) sends what you find to your party, guild and friends who use Recipe Vacuum; turn it off to keep your finds to yourself. On a profession's rank bar, a mark appears when the next rank has a known place; clicking it sets a map pin. **Announce New Finds** controls the chat line after a visit with new sources and the line when a bag, auction house, bank, trade or mail window closes on new recipes for your professions.
+No release yet. A copy of this repository in the game's `Interface/AddOns` folder, named `RecipeVacuum`, runs as a working build: it logs and shows Lua errors.
 
-To contribute discoveries collected while playing alone, type `/recipevacuum export` (or press Run next to it in the options), copy the selected text, and send it to the maintainer as a JSON file. The export contains firsthand observations across the account.
+## License
 
-## Commands
-
-`/recipevacuum help` (or `/boltgrip recipevacuum help`) lists the commands in chat. Player commands also appear in the options page's Commands section.
-
-## Development
-
-- [docs/development.md](docs/development.md): setup, checks, the working build and seeding.
-- [docs/data.md](docs/data.md): where each kind of data lives.
-- [docs/client-notes.md](docs/client-notes.md): what the Forever client does, as measured.
-- [docs/voice.md](docs/voice.md): the chat voice.
-
-## Jig Boltgrip's Toolkit
-
-Recipe Vacuum is a standalone module of Jig Boltgrip's Toolkit. Every module:
-
-- sets `## Category: Jig Boltgrip's Toolkit` in its TOC, so Blizzard's AddOns list groups them;
-- embeds `Libs/LibStub` and `Libs/JigBoltgripToolkit`, which give the toolkit one category in Blizzard's Settings panel, with a subcategory per installed module.
+GPL-3.0; the full text is in `LICENSE`. As section 7 of that license allows, three terms are added: a modified version must be marked as changed and must not be presented as the original (7c); the authors' names may not be used to publicize a modified version (7d); and no trademark right is granted to the name Jig Boltgrip's Toolkit or to the name of any of its addons (7e).

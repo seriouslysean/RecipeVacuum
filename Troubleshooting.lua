@@ -88,7 +88,7 @@ local function Where()
 	return "map", mapID, "pos", position and ("%.3f,%.3f"):format(position:GetXY()) or nil, "instance", (IsInInstance())
 end
 
--- One entry per loot window (LOOT_READY can fire twice, then LOOT_OPENED), with the last spell target, which names gathered and chest objects.
+-- One entry per loot window (both loot events can arrive for one window), with the last spell target, which names gathered and chest objects.
 local castTarget, lootLogged
 local handlers = {
 	UNIT_SPELLCAST_SENT = function(unit, target)
