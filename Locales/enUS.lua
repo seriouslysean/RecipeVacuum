@@ -10,6 +10,7 @@ L["Intake complete! %d recipes from %s!"] = true
 L["%d recipe seen!"] = true
 L["%d recipes seen!"] = true
 L["Coordinates locked! %s triangulated in %s! Pin deployed!"] = true
+L["Hostiles detected! Refusing to triangulate under fire!"] = true
 
 -- Panel (Panel.lua)
 L["Skill %d to %d"] = true

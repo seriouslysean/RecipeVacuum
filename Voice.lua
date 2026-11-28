@@ -13,6 +13,8 @@ ns.voice = {
 	seen = { noise = L["whirs and rattles"], report = L["%d recipes seen!"], reportOne = L["%d recipe seen!"] },
 	-- Said when a map pin is set; argument: the source's label.
 	pinned = { noise = L["whirs and rattles"], report = L["Coordinates locked! %s triangulated in %s! Pin deployed!"] },
+	-- Once a session, when combat starts with the profession window open and Map Pin greyed out (docs/voice.md).
+	underFire = { noise = L["whirs and rattles"], report = L["Hostiles detected! Refusing to triangulate under fire!"] },
 	-- Development lines (checkout builds only): plain, not voiced. The watch and log lines are the toolkit's.
 	-- Arguments: count, "recipe" or "recipes".
 	detected = "%d %s detected!",

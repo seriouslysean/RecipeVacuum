@@ -981,6 +981,7 @@ end
 -- Every source, one line each: "who, type" left and its place right (none for a source with no place). The hint only when a press pins.
 local function ShowMapTooltip(self)
 	ns.OwnTooltip(self)
+	if pool.combat then GameTooltip_AddErrorLine(GameTooltip, ERR_NOT_IN_COMBAT) end
 	if #self.sources == 0 and self.recipeInfo then ns.AddSourceLines(GameTooltip, self.recipeInfo, false, true) end
 	for _, source in ipairs(self.sources) do
 		GameTooltip:AddDoubleLine(source.label, source.place or "", HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
@@ -1314,12 +1315,14 @@ FillDetail = function()
 	pool.AdoptMapControl(mapMore)
 	local several = #data.places > 1
 	mapButton:SetShown(not several)
-	mapButton:SetEnabled(#data.places > 0)
+	mapButton.canPin = #data.places > 0
+	mapButton:SetEnabled(mapButton.canPin and not pool.combat)
 	mapButton.sources = data.sources
 	mapButton.recipeInfo = selected
 	mapButton.single = #data.places == 1 and data.places[1] or false
 	ns.PinShield(mapButton, mapButton:IsShown() and mapButton.single and mapButton.single.target or nil)
 	mapMore:SetShown(several)
+	mapMore:SetEnabled(not pool.combat)
 	mapMore.sources = data.sources
 	mapMore.places = data.places
 
@@ -2083,8 +2086,19 @@ ns.toolkit:EventFrame(ns.module, {
 		ns.HidePinShields()
 		ClearNav()
 		navPending = true
+		-- Map Pin opens the map only through its secure button, which cannot be placed in combat: off until it ends, said once.
+		pool.combat = true
+		if mapButton then mapButton:Disable() end
+		if mapMore then mapMore:Disable() end
+		if not pool.saidUnderFire and ProfessionsFrame and ProfessionsFrame:IsShown() then
+			pool.saidUnderFire = true
+			ns.toolkit:Say(ns.module, ns.voice.underFire)
+		end
 	end,
 	PLAYER_REGEN_ENABLED = function()
+		pool.combat = false
+		if mapButton then mapButton:SetEnabled(mapButton.canPin) end
+		if mapMore then mapMore:Enable() end
 		ns.RestorePinShields()
 		if navPending then SyncNav() end
 		pool.resume()

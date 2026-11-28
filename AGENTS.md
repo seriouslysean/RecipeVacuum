@@ -20,7 +20,7 @@ The short form of the shared standards, as they apply here.
 - Use patterns established addons use, and say which one in a short comment. Nothing custom without a real need.
 - Keep it simple and in one place (DRY). Data lives in tables, not in branches.
 - Fast: no per-row or per-rebuild work that can be cached. Non-recipe loot costs one item-class check.
-- Quiet: no chat output except the one line after a visit with new recipe sources and the one line when a window closes on recipes seen for the character's professions (both turned off by Show Chat Alerts), and the one line when a click sets a map pin.
+- Quiet: no chat output except the one line after a visit with new recipe sources and the one line when a window closes on recipes seen for the character's professions (both turned off by Show Chat Alerts), the one line when a click sets a map pin, and once a session the one line when combat starts with the profession window open.
 - Never write into Blizzard's frames, lists, menus or panels, and open none of its windows except the world map, which Map Pin opens out of combat through the game's own `/mappin` in a secure button (kit decision 0068); while the map pushes the profession window out of the left slot the panel steps aside (kit decision 0077): it taints Blizzard's gamepad navigation and secure code (docs/client-notes.md, "Gamepad"). Reading Blizzard's state through post-hooks is fine.
 - No named magic numbers inline: name them at the top of the file.
 - Works in every client language: identify things by ID, never by matching English text. Names are for display only. Where the game gives no ID, say so in a comment and list it under known gaps.
