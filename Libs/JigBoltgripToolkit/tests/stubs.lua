@@ -156,11 +156,12 @@ function client.Fire(event, ...)
 			local ok, problem = pcall(handler, frame, event, ...)
 			if not ok then
 				problem = event .. ": " .. tostring(problem)
-				-- A stand-in is a table where the client answers a number; arithmetic or a comparison on it
-				-- fails here and never in the game. Those are listed apart, not counted as errors, so no
-				-- addon changes its code for the stand-ins.
+				-- A stand-in is a table where the client answers a number or a string; arithmetic, a comparison
+				-- or Lua 5.1's string functions on it fail here and never in the game. Those are listed apart,
+				-- not counted as errors, so no addon changes its code for the stand-ins.
 				local limit = problem:find("compare %a+ with table") or problem:find("compare table with")
 					or problem:find("arithmetic on .-table value") -- with or without a field name (LuaJIT)
+					or problem:find("string expected, got table") or problem:find("number expected, got table")
 				table.insert(limit and client.standInLimits or client.errors, problem)
 			end
 		end
