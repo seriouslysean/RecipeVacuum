@@ -21,6 +21,7 @@ function ns.GetPlayerLocation()
 	if not (ns.toolkit.Readable(x) and ns.toolkit.Readable(y)) then
 		return mapID
 	end
+	mapID, x, y = ns.ZonePosition(mapID, x, y)
 	return mapID, Round(x), Round(y)
 end
 local GetPlayerLocation = ns.GetPlayerLocation

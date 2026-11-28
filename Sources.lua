@@ -152,6 +152,25 @@ function ns.NewestPosition(positions)
 	return newestMap, newest
 end
 
+-- The game can place the player on a continent map with no zone (Odd Child, map 1415): move such a position to the zone under
+-- it (C_Map.GetMapInfoAtPosition, GetMapRectOnMap), so the pin and the map open on the zone.
+function ns.ZonePosition(mapID, x, y)
+	local mapInfo = mapID and x and C_Map.GetMapInfo(mapID)
+	if not (mapInfo and mapInfo.mapType and mapInfo.mapType <= Enum.UIMapType.Continent) then
+		return mapID, x, y
+	end
+	local zone = C_Map.GetMapInfoAtPosition(mapID, x, y)
+	local minX, maxX, minY, maxY
+	if zone and zone.mapID ~= mapID then
+		minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(zone.mapID, mapID)
+	end
+	if not (minX and maxX > minX and maxY > minY) then
+		return mapID, x, y
+	end
+	ns.toolkit:Trace(ns.module, "zone position", "from", mapID, "to", zone.mapID)
+	return zone.mapID, (x - minX) / (maxX - minX), (y - minY) / (maxY - minY)
+end
+
 -- The fields that identify a source (Core.lua); for a quest the NPC is a detail.
 -- Two drops are in the same place when map, subzone and dungeon all match.
 function ns.SamePlace(a, b)
@@ -510,11 +529,11 @@ function ns.SourcePosition(observation)
 	local _, positions, fallbackMap = ns.SourceInfo(observation)
 	local here = C_Map.GetBestMapForUnit("player")
 	if here and positions and positions[here] then
-		return here, positions[here].x, positions[here].y
+		return ns.ZonePosition(here, positions[here].x, positions[here].y)
 	end
 	local mapID, newest = ns.NewestPosition(positions)
 	if newest then
-		return mapID, newest.x, newest.y
+		return ns.ZonePosition(mapID, newest.x, newest.y) -- also repairs positions saved on a continent before the save did
 	end
 	return fallbackMap
 end
