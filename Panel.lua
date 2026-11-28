@@ -218,10 +218,10 @@ local lastFocused
 
 local function DetailControls()
 	local controls = { detail.Output }
-	if mapButton then controls[#controls + 1] = mapButton end
+	if mapButton then controls[#controls + 1] = ns.PinNavFrame(mapButton) end
 	if mapMore then controls[#controls + 1] = mapMore end
 	for _, list in ipairs({ reagentRows, sourceButtons }) do
-		for _, button in ipairs(list) do controls[#controls + 1] = button end
+		for _, button in ipairs(list) do controls[#controls + 1] = ns.PinNavFrame(button) end
 	end
 	return controls
 end
@@ -298,7 +298,7 @@ local function SyncNav()
 		end
 	end
 	local pin = (mapMore and mapMore:IsShown() and mapMore)
-		or (mapButton and mapButton:IsShown() and mapButton:IsEnabled() and mapButton)
+		or (mapButton and mapButton:IsShown() and mapButton:IsEnabled() and ns.PinNavFrame(mapButton))
 	if pin then
 		SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, pin)
 		SetNav(pin, SMART_NAV_INPUT_DIRECTION.UP, previous)
@@ -317,9 +317,10 @@ local function SyncNav()
 		previous = mapMore
 		for _, button in ipairs(sourceButtons) do
 			if button:IsShown() then
-				SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, button)
-				SetNav(button, SMART_NAV_INPUT_DIRECTION.UP, previous)
-				previous = button
+				local target = ns.PinNavFrame(button)
+				SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, target)
+				SetNav(target, SMART_NAV_INPUT_DIRECTION.UP, previous)
+				previous = target
 			end
 		end
 	end
@@ -1074,42 +1075,15 @@ end
 -- several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
 -- would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
-	local secure = ns.secureMapTest
-	local button = CreateFrame("Button", nil, detail or pool.holder,
-		secure and "UIPanelButtonTemplate, SecureActionButtonTemplate" or "UIPanelButtonTemplate")
+	local button = CreateFrame("Button", nil, detail or pool.holder, "UIPanelButtonTemplate")
 	button:SetSize(PANEL_INNER_WIDTH, SOURCE_HEIGHT)
 	button:SetText(MAP_PIN)
-	local function Press(self)
+	button:SetScript("OnClick", function(self)
 		if self.single then
 			ns.toolkit:Trace(ns.module, "source pressed", "label", self.single.label)
 			ns.ShowOnMap(self.single.target)
 		end
-	end
-	if secure then
-		-- Decision 0068's secure test: the pin is set before the template's secure OnClick clicks the minimap's zone text,
-		-- whose own handler opens the map (Blizzard_Minimap/Mainline/Minimap.lua:110), so the open runs from Blizzard's code.
-		button:RegisterForClicks("AnyUp", "AnyDown")
-		button:SetAttribute("clickbutton", MinimapCluster and MinimapCluster.ZoneTextButton)
-		button:SetScript("PreClick", function(self, _, down)
-			local open = self.single and ns.toolkit.IsGamepadUI() and not InCombatLockdown()
-			if not InCombatLockdown() then
-				-- The /mappin test: the game's own command sets the waypoint and opens the map on its zone, all in Blizzard's code
-				-- (Blizzard_SharedMapDataProviders/WaypointLocationDataProvider.lua:213-229); the macro passes only data.
-				local target = open and self.single.target
-				self:SetAttribute("type", target and "macro" or nil)
-				self:SetAttribute("macrotext", target and ("%s %d %.1f %.1f"):format(SLASH_MAPPIN1, target.mapID, target.x * 100, target.y * 100) or nil)
-			end
-			ns.toolkit:Trace(ns.module, "secure map press", "down", down, "type", self:GetAttribute("type"))
-			if not down then return end
-			Press(self)
-		end)
-		button:SetScript("PostClick", function(_, _, down)
-			ns.toolkit:Trace(ns.module, "secure map open", "down", down, "shown", WorldMapFrame and WorldMapFrame:IsShown(),
-				"map", WorldMapFrame and WorldMapFrame:GetMapID())
-		end)
-	else
-		button:SetScript("OnClick", Press)
-	end
+	end)
 	-- A disabled button still shows its tooltip: the sources are the reason it is disabled.
 	button:SetMotionScriptsWhileDisabled(true)
 	button:SetScript("OnEnter", ShowMapTooltip)
@@ -1139,6 +1113,7 @@ UpdatePlaceMenu = function()
 		button:SetPoint("TOPLEFT", placeMenu, "TOPLEFT", inset.left, -inset.top - (index - 1) * PLACE_ENTRY_HEIGHT)
 		button:SetText(source.label)
 		button:Show()
+		ns.PinShield(button, source.target)
 	end
 	for index = #places + 1, #sourceButtons do sourceButtons[index]:Hide() end
 	placeMenu:ClearAllPoints()
@@ -1343,6 +1318,7 @@ FillDetail = function()
 	mapButton.sources = data.sources
 	mapButton.recipeInfo = selected
 	mapButton.single = #data.places == 1 and data.places[1] or false
+	ns.PinShield(mapButton, mapButton:IsShown() and mapButton.single and mapButton.single.target or nil)
 	mapMore:SetShown(several)
 	mapMore.sources = data.sources
 	mapMore.places = data.places
@@ -2104,10 +2080,12 @@ ns.toolkit:EventFrame(ns.module, {
 	-- still be cleared (SmartNavigation.lua, the override handling in Navigate). They are set again after combat.
 	PLAYER_REGEN_DISABLED = function()
 		ClosePlaces() -- its key handler calls a function the client restricts in combat
+		ns.HidePinShields()
 		ClearNav()
 		navPending = true
 	end,
 	PLAYER_REGEN_ENABLED = function()
+		ns.RestorePinShields()
 		if navPending then SyncNav() end
 		pool.resume()
 	end,

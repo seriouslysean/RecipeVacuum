@@ -966,20 +966,6 @@ end, quiet = true })
 table.insert(troubleshooting, { "learned", label = "Learned Services", button = "Read", "Read the open trainer's learned services once", function()
 	ns.ReadLearnedNow()
 end })
--- Decision 0068's secure test: under the Gamepad UI the working build's Map Pin opens the map through a secure click.
-ns.secureMapTest = true
--- Whether opening the world map from addon code taints (kit decision 0068): pins the last Map Pin place again and opens the
--- map at it; a block that follows is logged with its tainted fields.
-table.insert(troubleshooting, { "mapopen", label = "Map Pin and Open", button = "Test", "Pin the last Map Pin place and open the map at it", function()
-	local target = ns.lastPin
-	if not target then
-		ns.toolkit:Trace(ns.module, "map open test", "result", "skipped", "reason", "no_map_pin_yet")
-		return ns.toolkit:Debug("Press Map Pin on a recipe first, then this.")
-	end
-	ns.ShowOnMap(target)
-	OpenWorldMap(target.mapID)
-	ns.toolkit:Trace(ns.module, "map open test", "map", target.mapID, "shown", WorldMapFrame and WorldMapFrame:IsShown())
-end })
 table.insert(troubleshooting, { "scan", label = "Recipe Items", button = "Find", "Find the recipe items for the open profession's recipes", Scan, quiet = true })
 
 ns.commands = ns.commands or {}

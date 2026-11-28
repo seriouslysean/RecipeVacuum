@@ -1187,6 +1187,8 @@ describe("simulation", function()
 			pns.GetRecipeFaction = function() return false end -- read from tooltip data
 			pns.GetRecipeLock = function() return false end
 			pns.SourceRows, pns.SortTargets = function() return {} end, function() end -- nor RecipePanel.lua
+			pns.PinShield, pns.HidePinShields, pns.RestorePinShields = function() end, function() end, function() end
+			pns.PinNavFrame = function(control) return control end
 			pns.db.found.recipes[101] = { { kind = "trainer", count = 1, skill = 30 } }
 			pns.db.met.recipes[102] = pns.LEVEL.FRIENDS
 			pns.db.met.recipes[103] = pns.LEVEL.PUBLIC
