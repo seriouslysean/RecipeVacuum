@@ -2,7 +2,7 @@
 
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 89
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 90
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1621,6 +1621,12 @@ function Share:Mark(entry, context)
 	self:ScheduleOffer()
 end
 
+-- An entry the module dropped from its found layer: its row goes stale, so no reply holds it again.
+function Share:Forget(entry)
+	entry.rev = nil
+	wipe(self.cachedReplies)
+end
+
 -- Rows after revision `after`, oldest first, up to `limit`; returns the rows and the revision they cover.
 function Share:Since(after, limit)
 	local rows, through = {}, after
@@ -2112,7 +2118,7 @@ function Share:OnEvent(event, index)
 	end
 	if event == "CHAT_SERVER_RECONNECTED" or (self.deferred and not C_ChatInfo.InChatMessagingLockdown()) then
 		self.deferred = nil
-		self.channelDirty, self.friendDirty, self.forceChannels, self.forceFriends = true, true, true, true
+		return self:Hello()
 	elseif event == "GROUP_JOINED" then
 		self.home, self.instance = nil, nil
 		self.channelDirty = true
@@ -2128,12 +2134,21 @@ function Share:OnEvent(event, index)
 	self:ScheduleRefresh()
 end
 
--- After a sharing setting changes: the connection follows whether either direction is wanted, a player who
--- starts sharing advertises at once, and one who stops receiving drops pending requests.
+-- Every channel and friend is probed again: peers answer a hello with what they hold.
+function Share:Hello()
+	self.channelDirty, self.friendDirty, self.forceChannels, self.forceFriends = true, true, true, true
+	self:ScheduleRefresh()
+end
+
+-- After a sharing setting changes: the connection follows whether either direction is wanted, a player who starts
+-- sharing advertises at once, one who starts receiving says hello (an idle peer answers only that), and one who
+-- stops receiving drops pending requests.
 function Share:Update()
 	self:Connect(self:Wanted())
 	if not self.enabled then return end
-	if not self.spec.receiving() then
+	if self.spec.receiving() then
+		self:Hello()
+	else
 		if self.active and self.active.timer then self.active.timer:Cancel() end
 		self.active = nil
 		wipe(self.waiting)
@@ -2153,9 +2168,8 @@ function Share:Connect(value)
 		end
 		self.comm:RegisterComm(self.prefix, function(_, message, channel, sender) self:OnProbe(message, channel, sender) end)
 		self.comm:RegisterComm(self.dataPrefix, function(_, message, channel, sender) self:OnData(message, channel, sender) end)
-		self.channelDirty, self.friendDirty, self.forceChannels, self.forceFriends = true, true, true, true
 		C_FriendList.ShowFriends()
-		self:ScheduleRefresh()
+		self:Hello()
 	else
 		self.comm:UnregisterComm(self.prefix)
 		self.comm:UnregisterComm(self.dataPrefix)

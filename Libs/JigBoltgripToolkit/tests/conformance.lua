@@ -48,20 +48,24 @@ end
 -- Ethos 7). The patterns match a person named as a source, never an API or log key.
 local ATTRIBUTION = { "%f[%a][Oo]wner,%s*%d%d%d%d%-", "%f[%a][Oo]wner:%s*\"", "%(owner[,;%s%)]",
 	"%f[%a][Tt]he assistant%f[%A]", "^## Owner's words" }
-local function VoiceProblems(path, text)
+-- One problem for each line `find` returns something for; `message` takes the path, the line number and what was found.
+local function LineProblems(path, text, find, message)
 	local problems, number = {}, 0
 	for line in (text .. "\n"):gmatch("(.-)\n") do
 		number = number + 1
+		local found = find(line)
+		if found then problems[#problems + 1] = message:format(path, number, found) end
+	end
+	return problems
+end
+local function VoiceProblems(path, text)
+	return LineProblems(path, text, function(line)
 		local prose = Prose(path, line)
 		prose = prose and prose:gsub("`[^`]*`", "") -- a code span names an API, never who decided
 		for _, pattern in ipairs(ATTRIBUTION) do
-			if prose and prose:find(pattern) then
-				problems[#problems + 1] = ("%s line %d: an attribution; write the rule and its reason instead"):format(path, number)
-				break
-			end
+			if prose and prose:find(pattern) then return true end
 		end
-	end
-	return problems
+	end, "%s line %d: an attribution; write the rule and its reason instead")
 end
 
 -- No other addon is cited as a source, model or comparison: an unreleased suite's sources read as copying
@@ -72,6 +76,12 @@ local SOURCE_PHRASES = { "as another addon", "as other addons", "like another ad
 	"wording of another addon", "another addon `", "(another addon", "established addon",
 	"pattern addons use" }
 local SOURCE_EXEMPT = { "^Libs/", "/Libs/", "LICENSE", "THIRD%-PARTY%-NOTICES%.md$", "tests/globalstrings%.lua$" }
+local SOURCE_MESSAGE = "; cite Blizzard's file, game data or our own test"
+local function Exempt(path)
+	for _, pattern in ipairs(SOURCE_EXEMPT) do
+		if path:find(pattern) then return true end
+	end
+end
 
 -- SHA-256 on plain Lua 5.1 numbers (FIPS 180-4), for the name list below; the client's Lua has no bit library.
 local AND = {}
@@ -202,12 +212,8 @@ end
 -- Whole lines, code included: a name is banned everywhere. Words are runs of letters and digits; a phrase joins up to
 -- three that only spaces or hyphens part.
 local function NameProblems(path, text)
-	local problems, number = {}, 0
-	for _, pattern in ipairs(SOURCE_EXEMPT) do
-		if path:find(pattern) then return problems end
-	end
-	for line in (text .. "\n"):gmatch("(.-)\n") do
-		number = number + 1
+	if Exempt(path) then return {} end
+	return LineProblems(path, text, function(line)
 		line = line:gsub("BigWigs packager", "")
 		local found
 		-- Code joins a name's words with capitals or underscores, so the line is also read with those parted.
@@ -227,32 +233,18 @@ local function NameProblems(path, text)
 				end
 			end
 		end
-		if found then
-			problems[#problems + 1] = ("%s line %d: %q is another addon's name; cite Blizzard's file, game data or our own test")
-				:format(path, number, found)
-		end
-	end
-	return problems
+		return found
+	end, "%s line %d: %q is another addon's name" .. SOURCE_MESSAGE)
 end
 local function SourceProblems(path, text)
-	local problems, number = {}, 0
-	for _, pattern in ipairs(SOURCE_EXEMPT) do
-		if path:find(pattern) then return problems end
-	end
-	for line in (text .. "\n"):gmatch("(.-)\n") do
-		number = number + 1
+	if Exempt(path) then return {} end
+	return LineProblems(path, text, function(line)
 		local prose = Prose(path, line)
 		prose = prose and prose:gsub("BigWigs packager", "") -- the build tool, named in the release docs
-		local found
 		for _, phrase in ipairs(prose and SOURCE_PHRASES or {}) do
-			if prose:lower():find(phrase, 1, true) then found = phrase break end
+			if prose:lower():find(phrase, 1, true) then return phrase end
 		end
-		if found then
-			problems[#problems + 1] = ("%s line %d: %q cites another addon as a source; cite Blizzard's file, game data or our own test")
-				:format(path, number, found)
-		end
-	end
-	return problems
+	end, "%s line %d: %q cites another addon as a source" .. SOURCE_MESSAGE)
 end
 
 if arg[1] == "--voice" then
@@ -318,13 +310,13 @@ local FORBIDDEN = {
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
 	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap", "ToggleWorldMap",
 	"Settings%.OpenToCategory" }) do
-	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")",
-		inDebug = nil })
+	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")" })
 end
 -- Script text in a macro runs tainted even from a secure button (decision 0068): a macro names a Blizzard slash command.
-table.insert(FORBIDDEN, { "[\"']/run%f[%A]", "a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
-table.insert(FORBIDDEN, { "[\"']/script%f[%A]", "a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
-table.insert(FORBIDDEN, { "[\"']/dump%f[%A]", "a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
+for _, command in ipairs({ "run", "script", "dump" }) do
+	table.insert(FORBIDDEN, { "[\"']/" .. command .. "%f[%A]",
+		"a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
+end
 -- No tutorial tips: a pad never shows them, so first-use guidance is a once-only chat line (lib:SayOnce) on every device
 -- (decision 0074). HelpTip:Show also writes onto Blizzard's shared pool and taints the action bar in combat.
 table.insert(FORBIDDEN, { "%f[%w_]HelpTip", "a tutorial tip; first-use guidance is a once-only chat line (docs/standards.md, \"Voice\")" })
@@ -368,7 +360,7 @@ for _, file in ipairs(files) do
 			number = number + 1
 			local code = line:gsub("%-%-.*$", "")
 			for _, rule in ipairs(FORBIDDEN) do
-				if code:find(rule[1]) and not (open and rule.inDebug) then
+				if code:find(rule[1]) then
 					problems[#problems + 1] = ("line %d: %s"):format(number, rule[2])
 				end
 			end
@@ -426,12 +418,16 @@ local function ConstantOrder(text)
 	end
 	return problems
 end
-for _, file in ipairs(files) do
-	if file:find("%.lua$") then
-		local problems = ConstantOrder(Read(addonDir .. "/" .. file) or "")
-		check(file .. ": constants are declared before they are read", #problems == 0, table.concat(problems, "; "))
+-- One line per Lua file of the addon for a rule that reads the file's text and returns its problems.
+local function EachFile(what, rule)
+	for _, file in ipairs(files) do
+		if file:find("%.lua$") then
+			local problems = rule(Read(addonDir .. "/" .. file) or "")
+			check(file .. ": " .. what, #problems == 0, table.concat(problems, "; "))
+		end
 	end
 end
+EachFile("constants are declared before they are read", ConstantOrder)
 do
 	local problems = ConstantOrder(Read(kitDir .. "/JigBoltgripToolkit.lua") or "")
 	check("JigBoltgripToolkit.lua: constants are declared before they are read", #problems == 0, table.concat(problems, "; "))
@@ -476,12 +472,7 @@ local function LogCallProblems(text)
 	end
 	return problems
 end
-for _, file in ipairs(files) do
-	if file:find("%.lua$") then
-		local problems = LogCallProblems(Read(addonDir .. "/" .. file) or "")
-		check(file .. ": log lines go through the kit's event and pairs", #problems == 0, table.concat(problems, "; "))
-	end
-end
+EachFile("log lines go through the kit's event and pairs", LogCallProblems)
 
 local kitLookups = 0
 for _, file in ipairs(files) do
@@ -569,8 +560,15 @@ end
 local listing = assert(io.popen('find "' .. kitDir .. '" -name "*.xml"')):read("*a")
 check("the embedded kit has no XML", listing == "")
 local toolkitCheckout = addonDir .. "/../JigBoltgripToolkit"
-for _, file in ipairs({ "JigBoltgripToolkit.lua", "tests/stubs.lua", "tests/conformance.lua", "tests/module-check.sh",
-	"tests/deploy-deck.sh", "tests/agents-opening.md", "tests/readme-license.md", "tests/deprecated.lua", "tests/globalstrings.lua" }) do
+-- The embedded tests folder holds these shared files only: a stray copy is checked by nothing and goes stale.
+local SHARED = { "stubs.lua", "conformance.lua", "module-check.sh", "check-steps.sh", "deploy-deck.sh", "agents-opening.md", "readme-license.md",
+	"deprecated.lua", "globalstrings.lua" }
+local embedded, strays = { "JigBoltgripToolkit.lua" }, {}
+for _, name in ipairs(SHARED) do
+	SHARED[name] = true
+	embedded[#embedded + 1] = "tests/" .. name
+end
+for _, file in ipairs(embedded) do
 	local theirs = Read(toolkitCheckout .. "/" .. file)
 	if theirs then
 		check("the embedded " .. file .. " is the toolkit's", Read(kitDir .. "/" .. file) == theirs)
@@ -592,23 +590,18 @@ local firstSection = agents:match("\n(## .-)\n## ") or agents:match("\n(## .*)$"
 check("AGENTS.md opens with the toolkit's section", firstSection:gsub("%s+$", "") == opening:gsub("%s+$", ""),
 	"its first ## section must be the kit's tests/agents-opening.md")
 
-local voice = {}
-for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" "*.sh" "scripts/*" ".githooks/*" ":!Libs" 2>/dev/null')):lines() do
-	for _, problem in ipairs(VoiceProblems(path, Read(addonDir .. "/" .. path) or "")) do voice[#voice + 1] = problem end
+-- One check over the tracked files of the given kinds, the embedded libraries left out.
+local PROSE_FILES = '"*.md" "*.lua" "*.sh" "scripts/*" ".githooks/*"'
+local function Tracked(what, kinds, rule)
+	local problems = {}
+	for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- ' .. kinds .. ' ":!Libs" 2>/dev/null')):lines() do
+		for _, problem in ipairs(rule(path, Read(addonDir .. "/" .. path) or "")) do problems[#problems + 1] = problem end
+	end
+	check(what, #problems == 0, table.concat(problems, "; "))
 end
-check("docs and comments carry no attributions", #voice == 0, table.concat(voice, "; "))
-
-local sources = {}
-for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" ".luacheckrc" "*.sh" "scripts/*" ".githooks/*" ":!Libs" 2>/dev/null')):lines() do
-	for _, problem in ipairs(SourceProblems(path, Read(addonDir .. "/" .. path) or "")) do sources[#sources + 1] = problem end
-end
-check("docs and comments name no other addon as a source", #sources == 0, table.concat(sources, "; "))
-
-local names = {}
-for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" "*.toc" "*.xml" "*.yml" "*.sh" "*.py" ".luacheckrc" ".pkgmeta" "scripts/*" ".githooks/*" ":!Libs" 2>/dev/null')):lines() do
-	for _, problem in ipairs(NameProblems(path, Read(addonDir .. "/" .. path) or "")) do names[#names + 1] = problem end
-end
-check("no tracked file holds another addon's name", #names == 0, table.concat(names, "; "))
+Tracked("docs and comments carry no attributions", PROSE_FILES, VoiceProblems)
+Tracked("docs and comments name no other addon as a source", PROSE_FILES .. ' ".luacheckrc"', SourceProblems)
+Tracked("no tracked file holds another addon's name", PROSE_FILES .. ' ".luacheckrc" "*.toc" "*.xml" "*.yml" "*.py" ".pkgmeta"', NameProblems)
 
 -- The repository: the same root files, license text and TOC fields in every module, so none drifts
 -- (docs/standards.md, "Repository"). A module with no license file, icon or CI passed every other check.
@@ -648,12 +641,8 @@ check("README.md ends with the toolkit's License section", readme:sub(-#licenseS
 	"its last section must be the kit's tests/readme-license.md")
 check("README.md links the toolkit as the main repository",
 	readme:find("Part of [Jig Boltgrip's Toolkit](https://github.com/seriouslysean/JigBoltgripToolkit)", 1, true) ~= nil)
--- The embedded tests folder holds the shared files only: a stray copy is checked by nothing and goes stale.
-local shared = { ["stubs.lua"] = true, ["conformance.lua"] = true, ["module-check.sh"] = true, ["deploy-deck.sh"] = true,
-	["agents-opening.md"] = true, ["readme-license.md"] = true, ["deprecated.lua"] = true, ["globalstrings.lua"] = true }
-local strays = {}
 for name in assert(io.popen('ls "' .. kitDir .. '/tests"')):lines() do
-	if not shared[name] then strays[#strays + 1] = name end
+	if not SHARED[name] then strays[#strays + 1] = name end
 end
 check("the embedded tests folder holds only the toolkit's shared files", #strays == 0, table.concat(strays, ", "))
 
