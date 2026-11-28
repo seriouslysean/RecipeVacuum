@@ -143,7 +143,7 @@ function ns.PinNavFrame(control)
 	return shield and shield:IsShown() and shield or control
 end
 
--- Protected frames cannot be hidden or moved in combat, so they go before it (PLAYER_REGEN_DISABLED) and our plain controls pin alone.
+-- Protected frames cannot be hidden or moved in combat, so they go before it (PLAYER_REGEN_DISABLED); Map Pin is greyed out until it ends.
 function ns.HidePinShields()
 	for _, shield in pairs(shields) do
 		shield:Hide()
