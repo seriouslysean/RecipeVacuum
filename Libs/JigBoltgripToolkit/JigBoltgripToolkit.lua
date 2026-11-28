@@ -1,6 +1,8 @@
+-- GPL-3.0 with additional terms under section 7: the toolkit's README.md, "License".
+
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 88
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 89
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return

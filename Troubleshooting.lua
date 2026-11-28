@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 -- Development commands and their log: the whole file exists only in a checkout build and is stripped from releases (docs/development.md, "Working build").
 local addonName, ns = ...
 

@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 local addonName, ns = ...
 -- The libraries, looked up once; every file uses these.
 ns.toolkit = LibStub("JigBoltgripToolkit-1.0")

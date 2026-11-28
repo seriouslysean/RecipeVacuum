@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 local addonName, ns = ...
 local L = ns.L
 

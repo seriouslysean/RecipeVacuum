@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 local _, ns = ...
 
 -- Recipes come across without a known source: chat links, nearby loot, shown professions (docs/data.md, "Come across").

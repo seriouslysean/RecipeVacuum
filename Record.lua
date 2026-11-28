@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 local _, ns = ...
 
 -- Records where recipes come from, for every profession, into the self-found layer (Core.lua); trainers by recipe ID from tooltips.

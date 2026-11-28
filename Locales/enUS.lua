@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 -- AceLocale-3.0: the key is the English text, and `true` means "the key as written". Only player text is
 -- here (docs/development.md, "Translations").
 local addonName = ...

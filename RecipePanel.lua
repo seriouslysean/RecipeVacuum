@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 local _, ns = ...
 
 -- Map pins for recipe sources. Recipe Vacuum writes nothing into Blizzard's frames: a pin is the user waypoint, super-tracked, and

@@ -1,3 +1,5 @@
+-- GPL-3.0 with additional terms under section 7: README.md, "License".
+
 local _, ns = ...
 
 -- Reviewed finds shipped with the addon (data layer 2): the saved layer layout plus NPCs.
