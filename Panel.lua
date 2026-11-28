@@ -858,12 +858,9 @@ local function PlaceList()
 	else
 		listArea:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -FRAME_INSET, bottom)
 	end
-	-- The list's background is drawn at the full height of the page's list and cut off where the details begin: squeezed into a
-	-- shorter list, its dark bottom fade showed as a bar above the box. It runs into the gap the ring hangs into, down to the box.
+	-- The list's background is drawn at the full height of the page's list and cut off at the list's end, so the list reads as a
+	-- closed box over the page as the window's does: squeezed into a shorter list, its dark bottom fade showed as a bar above the box.
 	listArea.BackgroundFrame:SetHeight(panelTop - panelBottom - top - bottom)
-	listArea.Clip:ClearAllPoints()
-	listArea.Clip:SetPoint("TOPLEFT")
-	listArea.Clip:SetPoint("BOTTOMRIGHT", 0, open and -DETAIL_GAP or 0)
 end
 
 -- Keeps a row inside the list's view. The d-pad's jumps land on rows scrolled out of view without scrolling to them, and the
@@ -983,6 +980,7 @@ end
 -- Every source, one line each: "who, type" left and its place right (none for a source with no place). The hint only when a press pins.
 local function ShowMapTooltip(self)
 	ns.OwnTooltip(self)
+	if #self.sources == 0 and self.recipeInfo then ns.AddSourceLines(GameTooltip, self.recipeInfo, false, true) end
 	for _, source in ipairs(self.sources) do
 		GameTooltip:AddDoubleLine(source.label, source.place or "", HIGHLIGHT_FONT_COLOR.r, HIGHLIGHT_FONT_COLOR.g, HIGHLIGHT_FONT_COLOR.b,
 			NORMAL_FONT_COLOR.r, NORMAL_FONT_COLOR.g, NORMAL_FONT_COLOR.b)
@@ -1313,10 +1311,11 @@ FillDetail = function()
 	pool.AdoptMapControl(mapButton)
 	pool.AdoptMapControl(mapMore)
 	local several = #data.places > 1
-	mapButton:SetShown(#data.sources > 0 and not several)
+	mapButton:SetShown(not several)
 	mapButton:SetEnabled(#data.places > 0)
 	mapButton.sources = data.sources
-	mapButton.single = #data.places == 1 and data.places[1] or nil
+	mapButton.recipeInfo = selected
+	mapButton.single = #data.places == 1 and data.places[1] or false
 	mapMore:SetShown(several)
 	mapMore.sources = data.sources
 	mapMore.places = data.places
@@ -1861,6 +1860,7 @@ local function CreatePanel()
 	listArea = CreateFrame("Frame", nil, panel)
 	listArea.Clip = CreateFrame("Frame", nil, listArea)
 	listArea.Clip:SetClipsChildren(true)
+	listArea.Clip:SetAllPoints()
 	listArea.Clip:SetFrameLevel(listArea:GetFrameLevel()) -- under the list's rows, which sit a level above
 	listArea.BackgroundFrame = CreateFrame("Frame", nil, listArea.Clip)
 	listArea.BackgroundFrame:SetPoint("TOPLEFT")
