@@ -16,7 +16,7 @@ local SCROLLBAR_WIDTH = 20
 -- from x 8 to right -20 (Blizzard_ProfessionsRecipeList.xml:76-79): the same 304 here, so names fit as the window's do.
 local RECIPE_COLUMN_WIDTH = 304
 local LIST_WIDTH = RECIPE_COLUMN_WIDTH - LIST_LEFT - SCROLLBAR_WIDTH -- usable width between the left inset and the scroll bar column
-local LIST_BOTTOM_INSET = 5
+local LIST_BOTTOM_INSET = 5 -- also how far a scroll bar's arrows stand inside both ends of their box, as Blizzard's list's do
 local PANEL_WIDTH = LIST_WIDTH + LIST_LEFT + SCROLLBAR_WIDTH + 2 * FRAME_INSET -- covers the quest tracker a little more on the Deck's 1280x800 (docs/client-notes.md, "Panel")
 -- NineSliceLayouts.lua:20 (PortraitFrameTemplate): the top left and bottom left corners stand this far outside the frame, so
 -- the panel keeps that much extra from the tab column and the corner never covers a tab.
@@ -1957,6 +1957,10 @@ local function CreatePanel()
 		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
 	end)
 	detailScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -DETAIL_SCROLL_TOP)
+	-- The bar sits in the box as the list's sits in the list: the box's right column, inset alike at top and bottom.
+	detailScroll.ScrollBar:ClearAllPoints()
+	detailScroll.ScrollBar:SetPoint("TOPLEFT", detail, "TOPRIGHT", -SCROLLBAR_WIDTH, -LIST_BOTTOM_INSET)
+	detailScroll.ScrollBar:SetPoint("BOTTOMLEFT", detail, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
 	local textWidth = math.min(OUTPUT_TEXT_MAX, PANEL_INNER_WIDTH - NAME_LEFT - FRAME_INSET - SCROLLBAR_WIDTH)
 	detail.Name = detailChild:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
 	detail.Name:SetPoint("TOPLEFT", detailChild, "TOPLEFT", NAME_LEFT, -(NAME_TOP - DETAIL_SCROLL_TOP))
@@ -1976,6 +1980,7 @@ local function CreatePanel()
 		frame:SetPoint("BOTTOMRIGHT", listArea, "BOTTOMRIGHT", barShown and -SCROLLBAR_WIDTH or 0, LIST_BOTTOM_INSET)
 	end)
 	scroll:SetPoint("TOPLEFT", listArea, "TOPLEFT", LIST_LEFT, 0)
+	scroll.ScrollBar:SetPoint("TOPLEFT", scroll, "TOPRIGHT", 0, -LIST_BOTTOM_INSET) -- clear of the list's top edge, as of its bottom
 	child:SetWidth(LIST_WIDTH)
 
 	empty = listArea:CreateFontString(nil, "ARTWORK", "GameFontDisable")
