@@ -45,6 +45,7 @@ local function VoiceProblems(path, text)
 	for line in (text .. "\n"):gmatch("(.-)\n") do
 		number = number + 1
 		local prose = path:find("%.md$") and line or line:match("%-%-(.*)$")
+		prose = prose and prose:gsub("`[^`]*`", "") -- a code span names an API, never who decided
 		for _, pattern in ipairs(ATTRIBUTION) do
 			if prose and prose:find(pattern) then
 				problems[#problems + 1] = ("%s line %d: an attribution; write the rule and its reason instead"):format(path, number)
@@ -115,11 +116,15 @@ local FORBIDDEN = {
 -- Addon code that adds to Blizzard's lists, menus or panels is tainted, and the Gamepad UI then refuses
 -- to navigate them (docs/standards.md, "Gamepad UI"). Only the kit builds options, from Blizzard's own rows.
 for _, name in ipairs({ "Settings%.CreateDropdown", "Settings%.CreateElementInitializer", "Menu%.ModifyMenu",
-	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel",
+	"MenuUtil%.CreateContextMenu", "SetupMenu", "ShowUIPanel", "HideUIPanel", "OpenWorldMap", "ToggleWorldMap",
 	"Settings%.OpenToCategory" }) do
 	table.insert(FORBIDDEN, { "%f[%w_]" .. name .. "%f[^%w_]", "taints the Gamepad UI (docs/standards.md, \"Gamepad UI\")",
 		inDebug = nil })
 end
+-- Script text in a macro runs tainted even from a secure button (decision 0068): a macro names a Blizzard slash command.
+table.insert(FORBIDDEN, { "[\"']/run%f[%A]", "a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
+table.insert(FORBIDDEN, { "[\"']/script%f[%A]", "a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
+table.insert(FORBIDDEN, { "[\"']/dump%f[%A]", "a script line in a macro runs tainted; name a Blizzard slash command (docs/clean-paths.md)" })
 -- No tutorial tips: a pad never shows them, so first-use guidance is a once-only chat line (lib:SayOnce) on every device
 -- (decision 0074). HelpTip:Show also writes onto Blizzard's shared pool and taints the action bar in combat.
 table.insert(FORBIDDEN, { "%f[%w_]HelpTip", "a tutorial tip; first-use guidance is a once-only chat line (docs/standards.md, \"Voice\")" })
