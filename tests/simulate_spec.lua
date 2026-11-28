@@ -1196,7 +1196,7 @@ describe("simulation", function()
 			pns.toolkit = setmetatable({ Trace = function(self, _, event, ...) traces[#traces + 1] = self.LogLine(event, ...) end }, { __index = pns.toolkit })
 			load("Panel.lua", pns)
 			for _, entry in ipairs(loaded) do if entry[1] == "Blizzard_Professions" then entry[2]() end end
-			init = function(skill) ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, skillLevel = skill or 40, maxSkillLevel = 75 }) end
+			init = function(skill) ProfessionsFrame.CraftingPage.Init(ProfessionsFrame.CraftingPage, { professionID = 164, professionName = "Blacksmithing", skillLevel = skill or 40, maxSkillLevel = 75 }) end
 		end)
 		-- Fails if the frames are not counted from the saved finds and made before a list needs them.
 		it("makes frames ahead of the list, from the finds the character's professions would list", function()
