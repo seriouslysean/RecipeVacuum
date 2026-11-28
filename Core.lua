@@ -46,6 +46,25 @@ local defaults = {
 -- recipeFacts: per-build facts from recipe tooltips (Sources.lua), rebuilt on a new game build.
 }
 
+-- The game can place the player on a continent map with no zone (Odd Child, map 1415): move such a position to the zone under
+-- it (C_Map.GetMapInfoAtPosition, GetMapRectOnMap), so the pin and the map open on the zone.
+function ns.ZonePosition(mapID, x, y)
+	local mapInfo = mapID and x and C_Map.GetMapInfo(mapID)
+	if not (mapInfo and mapInfo.mapType and mapInfo.mapType <= Enum.UIMapType.Continent) then
+		return mapID, x, y
+	end
+	local zone = C_Map.GetMapInfoAtPosition(mapID, x, y)
+	local minX, maxX, minY, maxY
+	if zone and zone.mapID ~= mapID then
+		minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(zone.mapID, mapID)
+	end
+	if not (minX and maxX > minX and maxY > minY) then
+		return mapID, x, y
+	end
+	ns.toolkit:Trace(ns.module, "zone position", "from", mapID, "to", zone.mapID)
+	return zone.mapID, (x - minX) / (maxX - minX), (y - minY) / (maxY - minY)
+end
+
 function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 	local npc = npcs[npcID]
 	if not npc then
@@ -55,6 +74,7 @@ function ns.NoteNPC(npcs, npcID, name, mapID, x, y, seen, fromPeer)
 	-- A peer only fills gaps: it never replaces our NPC name or a position the player saw.
 	if name and not (fromPeer and npc.name) then npc.name = name end
 	if mapID and x and y then
+		mapID, x, y = ns.ZonePosition(mapID, x, y) -- a peer's or an older build's continent position
 		local position = npc.positions[mapID]
 		if not position or (not fromPeer and (seen or 0) >= (position.seen or 0)) then
 			npc.positions[mapID] = { x = x, y = y, seen = seen }

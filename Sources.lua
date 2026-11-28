@@ -152,25 +152,6 @@ function ns.NewestPosition(positions)
 	return newestMap, newest
 end
 
--- The game can place the player on a continent map with no zone (Odd Child, map 1415): move such a position to the zone under
--- it (C_Map.GetMapInfoAtPosition, GetMapRectOnMap), so the pin and the map open on the zone.
-function ns.ZonePosition(mapID, x, y)
-	local mapInfo = mapID and x and C_Map.GetMapInfo(mapID)
-	if not (mapInfo and mapInfo.mapType and mapInfo.mapType <= Enum.UIMapType.Continent) then
-		return mapID, x, y
-	end
-	local zone = C_Map.GetMapInfoAtPosition(mapID, x, y)
-	local minX, maxX, minY, maxY
-	if zone and zone.mapID ~= mapID then
-		minX, maxX, minY, maxY = C_Map.GetMapRectOnMap(zone.mapID, mapID)
-	end
-	if not (minX and maxX > minX and maxY > minY) then
-		return mapID, x, y
-	end
-	ns.toolkit:Trace(ns.module, "zone position", "from", mapID, "to", zone.mapID)
-	return zone.mapID, (x - minX) / (maxX - minX), (y - minY) / (maxY - minY)
-end
-
 -- The fields that identify a source (Core.lua); for a quest the NPC is a detail.
 -- Two drops are in the same place when map, subzone and dungeon all match.
 function ns.SamePlace(a, b)
@@ -344,7 +325,31 @@ local LOAD_TIMEOUT = 10
 local awaitedItems, linkAttempts = {}, {}
 local LINK_LOG_MS = 1 -- an item read at least this slow gets a trace line
 
+-- Saved NPC and object positions on a continent move to their zone at login, when the map data is there, so reads stop
+-- converting them (docs/client-notes.md, "Gamepad").
+local function RepairPositions(positions)
+	local moves = {} -- a new key added during pairs() is undefined in Lua, so the moves wait for the walk to end
+	for mapID, position in pairs(positions or {}) do
+		local zoneID, x, y = ns.ZonePosition(mapID, position.x, position.y)
+		if zoneID ~= mapID then moves[#moves + 1] = { mapID, zoneID, { x = x, y = y, seen = position.seen } } end
+	end
+	for _, move in ipairs(moves) do
+		local from, to, position = move[1], move[2], move[3]
+		positions[from] = nil
+		if (position.seen or 0) >= ((positions[to] or {}).seen or 0) then positions[to] = position end
+	end
+	return #moves
+end
+
+local function RepairSaved(db)
+	local moved = 0
+	for _, owner in pairs(db.npcs) do moved = moved + RepairPositions(owner.positions) end
+	for _, owner in pairs(db.objects) do moved = moved + RepairPositions(owner.positions) end
+	ns.toolkit:Trace(ns.module, "positions repaired", "moved", moved)
+end
+
 ns.toolkit:EventFrame(ns.module, {
+	PLAYER_LOGIN = function() RepairSaved(ns.db) end,
 	ITEM_DATA_LOAD_RESULT = function(itemID, success)
 		if awaitedItems[itemID] then
 			awaitedItems[itemID] = nil
