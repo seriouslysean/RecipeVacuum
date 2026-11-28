@@ -361,6 +361,15 @@ local function CreateSlimScroll(parent, place)
 	return frame, content
 end
 
+-- The details bar sits in the box as the list's sits in the list: the box's right column, as far inside the box's frame line as
+-- the list's stands inside its edge, alike at top and bottom.
+function pool.PlaceDetailBar()
+	local inset = LINE_IN_TOP + LIST_BOTTOM_INSET
+	detailScroll.ScrollBar:ClearAllPoints()
+	detailScroll.ScrollBar:SetPoint("TOPLEFT", detail, "TOPRIGHT", -SCROLLBAR_WIDTH, -inset)
+	detailScroll.ScrollBar:SetPoint("BOTTOMLEFT", detail, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, inset)
+end
+
 local function CreateRow()
 	local row = CreateFrame("Button", nil, child or pool.holder, ROW_TEMPLATE)
 	row.SkillUps:Hide()
@@ -1979,10 +1988,6 @@ local function CreatePanel()
 		frame:SetPoint("BOTTOMRIGHT", detail, "BOTTOMRIGHT", -(DETAIL_SCROLL_RIGHT + (barShown and SCROLLBAR_WIDTH or 0)), DETAIL_BOTTOM)
 	end)
 	detailScroll:SetPoint("TOPLEFT", detail, "TOPLEFT", 0, -DETAIL_SCROLL_TOP)
-	-- The bar sits in the box as the list's sits in the list: the box's right column, inset alike at top and bottom.
-	detailScroll.ScrollBar:ClearAllPoints()
-	detailScroll.ScrollBar:SetPoint("TOPLEFT", detail, "TOPRIGHT", -SCROLLBAR_WIDTH, -LIST_BOTTOM_INSET)
-	detailScroll.ScrollBar:SetPoint("BOTTOMLEFT", detail, "BOTTOMRIGHT", -SCROLLBAR_WIDTH, LIST_BOTTOM_INSET)
 	local textWidth = math.min(OUTPUT_TEXT_MAX, PANEL_INNER_WIDTH - NAME_LEFT - FRAME_INSET - SCROLLBAR_WIDTH)
 	detail.Name = detailChild:CreateFontString(nil, "ARTWORK", "GameFontHighlightMed2")
 	detail.Name:SetPoint("TOPLEFT", detailChild, "TOPLEFT", NAME_LEFT, -(NAME_TOP - DETAIL_SCROLL_TOP))
@@ -2031,12 +2036,14 @@ function ns.RequestPanel()
 	pool.rescan()
 end
 
--- Another window opened beside Professions takes the center slot; the panel steps aside for it. Read after
--- Blizzard has laid its windows out. The Gamepad UI shows one window at a time, so this never triggers there.
+-- Another window beside Professions takes the center slot, or one before it (the world map) pushes Professions out of the left
+-- slot; either way the panel steps aside until Blizzard lays its windows out again (kit decision 0077). The Gamepad UI shows one
+-- window at a time, so this never triggers there.
 function UpdateVisibility()
 	if not panel then return end
-	local center = GetUIPanel("center")
-	panel:SetShown(wanted and not bare and not (center and center ~= ProfessionsFrame))
+	local left, center = GetUIPanel("left"), GetUIPanel("center")
+	local covered = (center and center ~= ProfessionsFrame) or (left and left ~= ProfessionsFrame)
+	panel:SetShown(wanted and not bare and not covered)
 end
 
 -- Read-only post-hook: the window's own crafting page tells which profession is open. It runs once per
@@ -2044,6 +2051,7 @@ end
 local function OnInit(_, info)
 	if not panel then
 		panel = CreatePanel()
+		pool.PlaceDetailBar()
 		pool.start() -- the window opened before the login start came, or in combat: the remainder is made now
 	end
 	local changed = not (professionInfo and professionInfo.professionID == info.professionID)

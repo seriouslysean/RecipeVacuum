@@ -73,7 +73,6 @@ end
 
 -- Sets the waypoint and super-tracks it, as Blizzard's own pin links do (ItemRefHandlers.lua), then opens the map at it with
 -- mouse and keyboard, measured clean on the Mac; under the Gamepad UI only once a Deck test passes (kit decision 0068).
--- The profession window closes first, through Blizzard's own TRADE_SKILL_CLOSE handler, so the map has the screen (kit 0077).
 function ns.ShowOnMap(target)
 	ns.toolkit:Trace(ns.module, "map pin", "label", target.label, "map", target.mapID)
 	if not C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(target.mapID, target.x, target.y)) then
@@ -83,7 +82,6 @@ function ns.ShowOnMap(target)
 	ns.lastPin = target -- the working build's map-open test pins it again (decision 0068)
 	ns.toolkit:Say(ns.module, ns.voice.pinned, target.label)
 	if not ns.toolkit.IsGamepadUI() then
-		C_TradeSkillUI.CloseTradeSkill()
 		OpenWorldMap(target.mapID)
 	end
 	ns.toolkit:Trace(ns.module, "map open", "map", target.mapID, "opened", not ns.toolkit.IsGamepadUI())
