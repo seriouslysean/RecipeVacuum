@@ -78,7 +78,7 @@ function ns.ShowOnMap(target)
 	C_SuperTrack.SetSuperTrackedUserWaypoint(true)
 	ns.lastPin = target -- the working build's map-open test pins it again (decision 0068)
 	ns.toolkit:Say(ns.module, ns.voice.pinned, target.name, target.place) -- the place in the sentence, as Tackletron says its zone
-	local open = not ns.toolkit.IsGamepadUI() or ns.gamepadMapTest
+	local open = not ns.toolkit.IsGamepadUI() -- under the Gamepad UI the open taints its navigation (kit decision 0068, Deck result)
 	if open then
 		OpenWorldMap(target.mapID)
 	end
