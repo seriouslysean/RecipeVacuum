@@ -1,6 +1,5 @@
 -- Conformance: the rules every toolkit addon follows, checked against the addon's own files, so the addons
--- cannot drift apart (owner, 2026-11-25: "lets get some rules baked in to the kit so we don't make this
--- mistake or drift again"). It travels with the library; each addon's checks run it:
+-- cannot drift apart. It travels with the library; each addon's checks run it:
 --   luajit Libs/JigBoltgripToolkit/tests/conformance.lua <addon folder>
 -- Style is checked here, at commit time; the library itself refuses only what would break the page or
 -- the line at runtime (docs/standards.md, "Enforced by").
@@ -35,6 +34,37 @@ local function CommentProblems(text)
 		end
 	end
 	return problems
+end
+
+-- Docs and comments are written in one imperative voice, with no attribution of who decided (docs/standards.md,
+-- Ethos 7). The patterns match a person named as a source, never an API or log key.
+local ATTRIBUTION = { "%f[%a][Oo]wner,%s*%d%d%d%d%-", "%f[%a][Oo]wner:%s*\"", "%(owner[,;%s%)]",
+	"%f[%a][Tt]he assistant%f[%A]", "^## Owner's words" }
+local function VoiceProblems(path, text)
+	local problems, number = {}, 0
+	for line in (text .. "\n"):gmatch("(.-)\n") do
+		number = number + 1
+		local prose = path:find("%.md$") and line or line:match("%-%-(.*)$")
+		for _, pattern in ipairs(ATTRIBUTION) do
+			if prose and prose:find(pattern) then
+				problems[#problems + 1] = ("%s line %d: an attribution; write the rule and its reason instead"):format(path, number)
+				break
+			end
+		end
+	end
+	return problems
+end
+
+if arg[1] == "--voice" then
+	local problems = {}
+	for i = 2, #arg do
+		for _, problem in ipairs(VoiceProblems(arg[i], assert(io.open(arg[i])):read("*a"))) do
+			problems[#problems + 1] = problem
+		end
+	end
+	for _, problem in ipairs(problems) do print("FAIL " .. problem) end
+	print(#problems == 0 and "VOICE PASS" or (#problems .. " VOICE PROBLEMS"))
+	os.exit(#problems == 0 and 0 or 1)
 end
 
 if arg[1] == "--comments" then
@@ -115,8 +145,7 @@ end
 -- them on the namespace, and the locale files take the addon's name from the TOC.
 table.insert(FORBIDDEN, { "[GN][ew][tw]Locale%(%s*\"", "a locale table is named by the addon's name from the TOC, not a string" })
 
--- Player text outside working-build blocks goes through the addon's locale table, so it can be translated
--- (owner, 2026-11-25: "I want the strings pulled out for localization").
+-- Player text outside working-build blocks goes through the addon's locale table, so it can be translated.
 local LITERAL_TEXT = { "%f[%w_]label%s*=%s*\"%a", "%f[%w_]tooltip%s*=%s*\"%a", "%f[%w_]note%s*=%s*\"%a",
 	"%f[%w_]description%s*=%s*\"%a", "%f[%w_]heading%s*=%s*\"%a", "%f[%w_]text%s*=%s*\"%a",
 	"%f[%w_]noise%s*=%s*\"%a", "%f[%w_]report%s*=%s*\"%a" }
@@ -349,6 +378,12 @@ local firstSection = agents:match("\n(## .-)\n## ") or agents:match("\n(## .*)$"
 check("AGENTS.md opens with the toolkit's section", firstSection:gsub("%s+$", "") == opening:gsub("%s+$", ""),
 	"its first ## section must be the kit's tests/agents-opening.md")
 
+local voice = {}
+for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" ":!Libs" 2>/dev/null')):lines() do
+	for _, problem in ipairs(VoiceProblems(path, Read(addonDir .. "/" .. path) or "")) do voice[#voice + 1] = problem end
+end
+check("docs and comments carry no attributions", #voice == 0, table.concat(voice, "; "))
+
 -- 3. Load the addon on the kit's stand-ins and read what it hands the kit.
 local client = dofile(kitDir .. "/tests/stubs.lua")
 for name in (Read(tocPath):match("## SavedVariables[%w]*:%s*([^\r\n]+)") or ""):gmatch("[%w_]+") do
@@ -395,8 +430,8 @@ for _, limit in ipairs(client.standInLimits) do
 	print("SKIP a start-up handler needs a number the stand-ins cannot give: " .. limit)
 end
 
--- Style rules, as standards.md words them ("Plain text", "Options"). Owner, 2026-11-25: "wow style plain
--- language, simple sentences", no colons in settings text, and "Your subnotes are also insanely long".
+-- Style rules, as standards.md words them ("Plain text", "Options"): WoW-style plain language, simple
+-- sentences, no colons in settings text, and short notes.
 local SMALL_WORDS = { a = true, an = true, ["and"] = true, as = true, at = true, by = true, ["for"] = true,
 	["in"] = true, of = true, on = true, ["or"] = true, the = true, to = true }
 local NOT_GAME_WORDS = { "addon", "addons", "data", "database", "community", "server", "upload", "sync",
