@@ -12,7 +12,7 @@ local MISCELLANEOUS_CATEGORY_ID = -2
 -- (docs/client-notes.md, "Panel").
 local reads = {} -- stage one, [professionID] = { candidates, established, complete, skillChanges }
 local cache = {} -- stage two, [professionID] = categories of a complete read
--- The read runs in slices, a few ms a frame, as a coroutine (the pattern addons use for long loops); one job per profession.
+-- The read runs in slices, a few ms a frame, as a coroutine, so a long read never stalls a frame; one job per profession.
 local jobs = {} -- [professionID] = { co, slices, ms, worst, stage, stageMs }
 local partial = {} -- [professionID] = categories of a finished read whose data was incomplete, handed to the next call once
 local listed = {} -- [professionID] = { categories, list, total }, built with the read

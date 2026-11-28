@@ -36,6 +36,14 @@ local function CommentProblems(text)
 	return problems
 end
 
+-- The part of a line people read: all of a doc line, a Lua comment, or a shell comment ("#" opening the line or
+-- after a space, so "$#" and "${#x}" never count).
+local function Prose(path, line)
+	if path:find("%.md$") then return line end
+	if path:find("%.lua$") or path:find("%.luacheckrc$") then return line:match("%-%-(.*)$") end
+	return line:match("^%s*#(.*)$") or line:match("%s#%s(.*)$")
+end
+
 -- Docs and comments are written in one imperative voice, with no attribution of who decided (docs/standards.md,
 -- Ethos 7). The patterns match a person named as a source, never an API or log key.
 local ATTRIBUTION = { "%f[%a][Oo]wner,%s*%d%d%d%d%-", "%f[%a][Oo]wner:%s*\"", "%(owner[,;%s%)]",
@@ -44,7 +52,7 @@ local function VoiceProblems(path, text)
 	local problems, number = {}, 0
 	for line in (text .. "\n"):gmatch("(.-)\n") do
 		number = number + 1
-		local prose = path:find("%.md$") and line or line:match("%-%-(.*)$")
+		local prose = Prose(path, line)
 		prose = prose and prose:gsub("`[^`]*`", "") -- a code span names an API, never who decided
 		for _, pattern in ipairs(ATTRIBUTION) do
 			if prose and prose:find(pattern) then
@@ -56,15 +64,13 @@ local function VoiceProblems(path, text)
 	return problems
 end
 
--- No other addon is named as a source, model or comparison: an unreleased suite's sources read as copying
--- (docs/decisions/0086). Docs and Lua comments only; a library's own files, licenses and game strings are exempt.
-local OTHER_ADDONS = { "another addon", "another addon", "another addon", "another addon", "another addon", "another addon", "another addon",
-	"another addon", "another addon", "another addon", "another addon", "another addon", "another addon", "another addon",
-	"another addon", "another addon", "another addon", "another addon", "another addon", "another addon", "another addon",
-	"another addon", "another addon", "another addon", "another addon", "another addon", "another addon", "another addon", "another addon", "another addon",
-	"another addon", "another addon", "another addon" }
-local SOURCE_PHRASES = { "as another addon", "another addon's pattern", "the another addon", "another addon shape",
-	"as other addons", "established addon" }
+-- No other addon is cited as a source, model or comparison: an unreleased suite's sources read as copying
+-- (docs/decisions/0086). The list holds citing phrases only, since a list of names would itself name them.
+-- Docs and comments only; a library's own files, licenses and game strings are exempt.
+local SOURCE_PHRASES = { "as another addon", "as other addons", "like another addon", "like other addons",
+	"another addon's pattern", "other addons' pattern", "another addon shape", "another addon-style", "another addon style",
+	"wording of another addon", "another addon `", "(another addon", "established addon",
+	"pattern addons use" }
 local SOURCE_EXEMPT = { "^Libs/", "/Libs/", "LICENSE", "THIRD%-PARTY%-NOTICES%.md$", "tests/globalstrings%.lua$" }
 local function SourceProblems(path, text)
 	local problems, number = {}, 0
@@ -73,22 +79,14 @@ local function SourceProblems(path, text)
 	end
 	for line in (text .. "\n"):gmatch("(.-)\n") do
 		number = number + 1
-		local prose = path:find("%.md$") and line or line:match("%-%-(.*)$")
+		local prose = Prose(path, line)
 		prose = prose and prose:gsub("BigWigs packager", "") -- the build tool, named in the release docs
 		local found
-		for _, name in ipairs(prose and OTHER_ADDONS or {}) do
-			local from, to = prose:find(name, 1, true)
-			-- A whole word only, so a short name never matches inside a longer word.
-			if from and not prose:sub(from - 1, from - 1):find("%w") and not prose:sub(to + 1, to + 1):find("%w") then
-				found = name
-				break
-			end
-		end
-		for _, phrase in ipairs(prose and not found and SOURCE_PHRASES or {}) do
+		for _, phrase in ipairs(prose and SOURCE_PHRASES or {}) do
 			if prose:lower():find(phrase, 1, true) then found = phrase break end
 		end
 		if found then
-			problems[#problems + 1] = ("%s line %d: %q names another addon as a source; cite Blizzard's file, game data or our own test")
+			problems[#problems + 1] = ("%s line %d: %q cites another addon as a source; cite Blizzard's file, game data or our own test")
 				:format(path, number, found)
 		end
 	end
@@ -424,13 +422,13 @@ check("AGENTS.md opens with the toolkit's section", firstSection:gsub("%s+$", ""
 	"its first ## section must be the kit's tests/agents-opening.md")
 
 local voice = {}
-for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" ":!Libs" 2>/dev/null')):lines() do
+for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" "*.sh" "scripts/*" ".githooks/*" ":!Libs" 2>/dev/null')):lines() do
 	for _, problem in ipairs(VoiceProblems(path, Read(addonDir .. "/" .. path) or "")) do voice[#voice + 1] = problem end
 end
 check("docs and comments carry no attributions", #voice == 0, table.concat(voice, "; "))
 
 local sources = {}
-for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" ".luacheckrc" ":!Libs" 2>/dev/null')):lines() do
+for path in assert(io.popen('git -C "' .. addonDir .. '" ls-files -- "*.md" "*.lua" ".luacheckrc" "*.sh" "scripts/*" ".githooks/*" ":!Libs" 2>/dev/null')):lines() do
 	for _, problem in ipairs(SourceProblems(path, Read(addonDir .. "/" .. path) or "")) do sources[#sources + 1] = problem end
 end
 check("docs and comments name no other addon as a source", #sources == 0, table.concat(sources, "; "))

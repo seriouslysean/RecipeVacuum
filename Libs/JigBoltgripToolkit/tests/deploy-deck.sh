@@ -12,7 +12,7 @@ host=${1:-deck-host}
 addons='/home/deck/.local/share/Steam/steamapps/compatdata/4077668031/pfx/drive_c/Program Files (x86)/World of Warcraft/_forever_/Interface/AddOns'
 name=$(basename "$PWD")
 scripts/check
-# The copy names its code by commit (owner, 2026-11-26, Astra's format): "a81c4ef@08", or "7bd31fa+@42" when it carries
+# The copy names its code by commit, so a log line traces to the code that ran: "a81c4ef@08", or "7bd31fa+@42" when it carries
 # uncommitted work. That work is kept as a snapshot commit (parent HEAD, the working tree's files) under refs/deck/, so the
 # hash always resolves to the code that ran; an identical tree reuses its snapshot. @SS is the copy's second.
 full=$(git rev-parse HEAD)

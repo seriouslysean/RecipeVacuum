@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- Records where recipes come from, for every profession, into the self-found layer (Core.lua); trainers by recipe ID from tooltips (another addon Scanner.lua).
+-- Records where recipes come from, for every profession, into the self-found layer (Core.lua); trainers by recipe ID from tooltips.
 -- Only Enum.ItemClass.Recipe items are kept, so other loot costs one item-class check.
 
 -- Positions are rounded to three decimals of the 0..1 map coordinate.
