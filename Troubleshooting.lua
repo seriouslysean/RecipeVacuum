@@ -868,6 +868,33 @@ local function RecordLayout()
 	Edge("ours details", parts.detail)
 	Edge("ours reagents label", parts.detail and parts.detail.ReagentsLabel)
 	Edge("ours map pin", parts.mapButton and parts.mapButton:IsShown() and parts.mapButton or parts.mapMore)
+	-- The map pin can be reported shown yet not seen: record every frame of ours over its centre, with level and strata,
+	-- and the button's own regions, so what hides it is measured.
+	local pin = parts.mapButton and parts.mapButton:IsShown() and parts.mapButton or parts.mapMore
+	if pin and pin:IsVisible() then
+		local x, y = pin:GetCenter()
+		local function Walk(frame)
+			for _, kid in ipairs({ frame:GetChildren() }) do
+				if kid ~= pin and kid:IsVisible() then
+					local left, right, top, bottom = kid:GetLeft(), kid:GetRight(), kid:GetTop(), kid:GetBottom()
+					if left and x >= left and x <= right and y >= bottom and y <= top then
+						toolkit:Trace(ns.module, "layout pin cover", "type", kid:GetObjectType(), "level", kid:GetFrameLevel(),
+							"strata", kid:GetFrameStrata(), "pin_level", pin:GetFrameLevel(), "pin_strata", pin:GetFrameStrata(),
+							"parent_is_panel", kid:GetParent() == parts.panel, "debug", kid:GetDebugName())
+					end
+					Walk(kid)
+				end
+			end
+		end
+		Walk(parts.panel)
+		for _, region in ipairs({ pin:GetRegions() }) do
+			local isTexture = region:GetObjectType() == "Texture"
+			toolkit:Trace(ns.module, "layout pin region", "type", region:GetObjectType(), "shown", region:IsShown(),
+				"alpha", region:GetAlpha(), "layer", (region:GetDrawLayer()), "width", region:GetWidth(), "height", region:GetHeight(),
+				"atlas", isTexture and region:GetAtlas() or nil, "texture", isTexture and region:GetTexture() or nil,
+				"text", not isTexture and region.GetText and region:GetText() or nil)
+		end
+	end
 	-- Scroll arrows: Blizzard's list bar against ours, and the details bar (MinimalScrollBar's Back and Forward buttons).
 	local function Bar(name, bar)
 		Edge(name .. " up arrow", bar and bar.Back)
