@@ -1092,13 +1092,18 @@ local function MakeMapButton()
 		button:SetAttribute("clickbutton", MinimapCluster and MinimapCluster.ZoneTextButton)
 		button:SetScript("PreClick", function(self, _, down)
 			local open = self.single and ns.toolkit.IsGamepadUI() and not InCombatLockdown()
-			if not InCombatLockdown() then self:SetAttribute("type", open and "click" or nil) end
+			if not InCombatLockdown() then
+				-- The macro test: the map opens from the macro system's /run on the pin's zone, not from our code.
+				self:SetAttribute("type", open and "macro" or nil)
+				self:SetAttribute("macrotext", open and ("/run OpenWorldMap(%d)"):format(self.single.target.mapID) or nil)
+			end
 			ns.toolkit:Trace(ns.module, "secure map press", "down", down, "type", self:GetAttribute("type"))
 			if not down then return end
 			Press(self)
 		end)
 		button:SetScript("PostClick", function(_, _, down)
-			ns.toolkit:Trace(ns.module, "secure map open", "down", down, "shown", WorldMapFrame and WorldMapFrame:IsShown())
+			ns.toolkit:Trace(ns.module, "secure map open", "down", down, "shown", WorldMapFrame and WorldMapFrame:IsShown(),
+				"map", WorldMapFrame and WorldMapFrame:GetMapID())
 		end)
 	else
 		button:SetScript("OnClick", Press)
