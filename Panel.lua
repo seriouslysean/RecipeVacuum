@@ -1093,9 +1093,11 @@ local function MakeMapButton()
 		button:SetScript("PreClick", function(self, _, down)
 			local open = self.single and ns.toolkit.IsGamepadUI() and not InCombatLockdown()
 			if not InCombatLockdown() then
-				-- The macro test: the map opens from the macro system's /run on the pin's zone, not from our code.
-				self:SetAttribute("type", open and "macro" or nil)
-				self:SetAttribute("macrotext", open and ("/run OpenWorldMap(%d)"):format(self.single.target.mapID) or nil)
+				-- The /mappin test: the game's own command sets the waypoint and opens the map on its zone, all in Blizzard's code
+				-- (Blizzard_SharedMapDataProviders/WaypointLocationDataProvider.lua:213-229); the macro passes only data.
+				local target = open and self.single.target
+				self:SetAttribute("type", target and "macro" or nil)
+				self:SetAttribute("macrotext", target and ("%s %d %.1f %.1f"):format(SLASH_MAPPIN1, target.mapID, target.x * 100, target.y * 100) or nil)
 			end
 			ns.toolkit:Trace(ns.module, "secure map press", "down", down, "type", self:GetAttribute("type"))
 			if not down then return end
