@@ -297,13 +297,13 @@ local function SyncNav()
 			previous = button
 		end
 	end
-	if previous ~= detail.Output then
-		if into ~= detail.Output then
-			SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, into)
-			SetNav(into, SMART_NAV_INPUT_DIRECTION.UP, previous)
-		else
-			SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous)
-		end
+	local pin = (mapMore and mapMore:IsShown() and mapMore)
+		or (mapButton and mapButton:IsShown() and mapButton:IsEnabled() and mapButton)
+	if pin then
+		SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, pin)
+		SetNav(pin, SMART_NAV_INPUT_DIRECTION.UP, previous)
+	else
+		SetNav(previous, SMART_NAV_INPUT_DIRECTION.DOWN, previous)
 	end
 	local count = PointBack(back)
 	for _, control in ipairs(DetailControls()) do
