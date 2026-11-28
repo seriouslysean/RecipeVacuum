@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 85
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 86
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1859,7 +1859,7 @@ function Share:QueuePeer(sender, id, tip)
 	self:NextPeer()
 end
 
--- One answer per channel after a quiet moment, as another addon version check does (Loader.lua, GROUP_FORMED).
+-- One answer per channel after a quiet moment, so probes that arrive together get one reply (docs/sharing.md).
 function Share:ScheduleChannelReply(channel)
 	if self.replyTimers[channel] then
 		self.replyTimers[channel]:Cancel()

@@ -1,4 +1,4 @@
--- Lint for the client's Lua 5.1; vendored libraries are excluded, as another addon does.
+-- Lint for the client's Lua 5.1; vendored libraries are excluded: their code is not ours to change.
 -- `globals` lists the only globals the addon sets; add each game global it reads to `read_globals`.
 std = "lua51"
 exclude_files = { "Libs/JigBoltgripToolkit", "Libs/AceLocale-3.0", "Libs/AceComm-3.0", "Libs/CallbackHandler-1.0", "Libs/LibStub" } -- the kit is linted in its own repository

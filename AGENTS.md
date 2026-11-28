@@ -18,7 +18,7 @@ A module of Jig Boltgrip's Toolkit. Every module follows the toolkit's shared [s
 The short form of the shared standards, as they apply here.
 
 - Build on Blizzard's frames and look: its templates, atlases, fonts, colors, global strings, enums and APIs. Copy a Blizzard value only when no API exposes it, and mark the copy with the file it came from.
-- Use patterns established addons use, and say which one in a short comment. Nothing custom without a real need.
+- Patterns follow Blizzard's own code, cited by file in a short comment; nothing names another addon as a source (toolkit decision 0086). Nothing custom without a real need.
 - Keep it simple and in one place (DRY). Data lives in tables, not in branches.
 - Fast: no per-row or per-rebuild work that can be cached. Non-recipe loot costs one item-class check.
 - Quiet: no chat output except the one line after a visit with new recipe sources and the one line when a window closes on recipes seen for the character's professions (both turned off by Show Chat Alerts), the one line when a click sets a map pin, and once a session the one line when combat starts with the profession window open.

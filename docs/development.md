@@ -47,7 +47,7 @@ The Ace3 copies came from a repository checkout, not a tagged release, and that 
 
 ## Working build
 
-Code between `--@debug@` and `--@end-debug@` exists in a checkout and is stripped from released builds by the BigWigs packager, as other addons use the same markers. A checkout build:
+Code between `--@debug@` and `--@end-debug@` exists in a checkout and is stripped from released builds by the BigWigs packager. A checkout build:
 
 - has the development commands `perf`, `scan`, `layout`, `sharetest` (a one-account check of sharing: every reply is built, decoded, merged into a scratch copy and whispered to the same character), `navdump` and `navrefresh`;
 - times its own work all session (unlearned-recipe builds, loot, vendor, trainer and quest reads, tooltips, linking) and writes the table to the saved log at logout or `/reload`, as `PERF` lines in `RecipeVacuumDB.devLog`;

@@ -60,7 +60,7 @@ Hidden addon messages only. The transport (probes, requests, batches, limits, wh
 2. A peer that is behind whispers a request for everything after its revision.
 3. The owner replies with one batch, capped near 4 kB encoded; the receiver asks again until it reaches the tip.
 
-Received rows are parsed and checked field by field, never run as code: another addon (2021) ran received text through `loadstring`, which let any sender run code in the receiver's game. A row that fails its checks is dropped on its own and the rest of the batch is kept; a batch that cannot be read at all is skipped. Either way the cursor moves past it, since the same batch would fail the same way every time it was asked for.
+Received rows are parsed and checked field by field, never run as code: received text passed to `loadstring` would let any sender run code in the receiver's game. A row that fails its checks is dropped on its own and the rest of the batch is kept; a batch that cannot be read at all is skipped. Either way the cursor moves past it, since the same batch would fail the same way every time it was asked for.
 
 Rows carry IDs; each client reads item, recipe and quest names in its own language. NPC and object names are sent, since the client has no lookup by ID. Keys: `k` kind, `r` recipe, `i` item; source `n` npc, `o` object, `ci` container, `fi` fishing zone, `z` roll zone, `q` quest; `nm`, `on` names, `nf` NPC faction; `m`, `x`, `y` place; on drops only `a` subzone area ID, `di` dungeon or raid instance ID, `cn` times seen; `f` faction, `s` seen, `b` build; details `sk`, `c`, `p`, `l`, `sp`, `ch`, `fn`, `gi`. Every received row is validated before it is saved, and received data is never executed.
 
