@@ -1,9 +1,9 @@
 -- Conformance: the rules every toolkit addon follows, checked against the addon's own files, so the addons
 -- cannot drift apart. It travels with the library; each addon's checks run it:
---   luajit Libs/JigBoltgripToolkit/tests/conformance.lua <addon folder>
+--   lua Libs/JigBoltgripToolkit/tests/conformance.lua <addon folder>
 -- Style is checked here, at commit time; the library itself refuses only what would break the page or
 -- the line at runtime (docs/standards.md, "Enforced by").
--- Also: luajit conformance.lua --comments <file.lua>, the comment rule alone (the kit's own checks use it).
+-- Also: lua conformance.lua --comments <file.lua>, the comment rule alone (the kit's own checks use it).
 
 -- Comments give the reason only: no history, at most three lines a block (docs/standards.md, "Comments").
 -- Debug-only blocks are exempt; a packager marker line is not a comment.
@@ -208,19 +208,23 @@ local function NameProblems(path, text)
 	end
 	for line in (text .. "\n"):gmatch("(.-)\n") do
 		number = number + 1
-		local words = {}
-		for start, word, stop in line:gsub("BigWigs packager", ""):gmatch("()(%w+)()") do
-			words[#words + 1] = { word:lower(), start, stop }
-		end
+		line = line:gsub("BigWigs packager", "")
 		local found
-		for first = 1, #words do
-			local phrase = words[first][1]
-			for last = first, math.min(first + NAME_WORDS - 1, #words) do
-				if last > first then
-					if not line:gsub("BigWigs packager", ""):sub(words[last - 1][3], words[last][2] - 1):find("^[ %-]+$") then break end
-					phrase = phrase .. " " .. words[last][1]
+		-- Code joins a name's words with capitals or underscores, so the line is also read with those parted.
+		for _, form in ipairs({ line, (line:gsub("(%l)(%u)", "%1 %2"):gsub("_", " ")) }) do
+			local words = {}
+			for start, word, stop in form:gmatch("()(%w+)()") do
+				words[#words + 1] = { word:lower(), start, stop }
+			end
+			for first = 1, #words do
+				local phrase = words[first][1]
+				for last = first, math.min(first + NAME_WORDS - 1, #words) do
+					if last > first then
+						if not form:sub(words[last - 1][3], words[last][2] - 1):find("^[ %-]+$") then break end
+						phrase = phrase .. " " .. words[last][1]
+					end
+					if IsName(phrase) then found = phrase end
 				end
-				if IsName(phrase) then found = phrase end
 			end
 		end
 		if found then
@@ -271,7 +275,7 @@ if arg[1] == "--comments" then
 	os.exit(#problems == 0 and 0 or 1)
 end
 
-local addonDir = assert(arg[1], "usage: luajit conformance.lua <addon folder>")
+local addonDir = assert(arg[1], "usage: lua conformance.lua <addon folder>")
 local kitDir = addonDir .. "/Libs/JigBoltgripToolkit"
 
 local failures = 0
@@ -613,7 +617,7 @@ for _, file in ipairs(libraries) do embedsAce = embedsAce or file:find("^Libs/Ac
 check("an embedded Ace3 library comes with Libs/Ace3-LICENSE.txt", not embedsAce or Read(addonDir .. "/Libs/Ace3-LICENSE.txt") ~= nil)
 local fields = {}
 for _, field in ipairs({ { "Title", "." }, { "Notes", "." }, { "Author", "." }, { "Category", "^Jig Boltgrip's Toolkit$" },
-	{ "Version", "^@project%-version@$" }, { "X-License", "^GPL%-3%.0$" }, { "IconTexture", "." } }) do
+	{ "Version", "^@project%-version@$" }, { "X-License", "^GPL%-3%.0$" }, { "IconTexture", "^Interface\\Icons\\." } }) do
 	local value = tocText:match("## " .. field[1]:gsub("%-", "%%-") .. ":%s*([^\r\n]*)")
 	if not (value and value:find(field[2])) then fields[#fields + 1] = field[1] end
 end

@@ -68,8 +68,8 @@ xml() {
 	# shellcheck disable=SC2086 # one path per word
 	xmllint --noout $files
 }
-# The execute bit is for scripts only. A clone whose file modes are rewritten from outside (the launcher does it through
-# the AddOns symlink) once committed 66 plain files as executable.
+# The execute bit is for scripts only: a clone's file modes can be rewritten from outside (the launcher does it through
+# the AddOns symlink), and a commit would then carry them.
 modes() {
 	local mode path bad=0
 	while read -r mode _ _ path; do

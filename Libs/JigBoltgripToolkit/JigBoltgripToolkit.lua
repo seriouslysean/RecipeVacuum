@@ -1,6 +1,6 @@
 -- Shared home for Jig Boltgrip's Toolkit modules. Each module embeds this file; LibStub keeps the newest.
 -- One Settings category for the toolkit, one subcategory per installed module.
-local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 87
+local MAJOR, MINOR = "JigBoltgripToolkit-1.0", 88
 local lib = LibStub:NewLibrary(MAJOR, MINOR)
 if not lib then
 	return
@@ -1722,10 +1722,12 @@ function Share:SendData(text, target, isReply)
 		return
 	end
 	self.replying = self.replying or {}
-	if isReply then self.replying[target] = GetTime() end
+	local started = GetTime()
+	if isReply then self.replying[target] = started end
 	self.comm:SendCommMessage(self.dataPrefix, text, "WHISPER", target, "BULK", function(name, sent, total)
 		self:WhisperSent(name)
-		if isReply and sent >= total then self.replying[name] = nil end
+		-- Only its own send: a reply that outlasts REQUEST_TIMEOUT finishes after a newer one has started.
+		if isReply and sent >= total and self.replying[name] == started then self.replying[name] = nil end
 	end, target)
 end
 
