@@ -88,15 +88,18 @@ local function ValidRow(row)
 	if row.i and not ns.IsRecipeItem(row.i) then return false, "item is not a recipe item" end
 	if row.r and not C_TradeSkillUI.GetTradeSkillLineForRecipe(row.r) then return false, "recipe is unknown" end
 	-- Each kind carries only its own identity: a quest ID on quests, a drop's origin on drops.
-	if row.k ~= "quest" and row.q then return false, "carries a quest ID" end
-	if row.k ~= "drop" and (row.o or row.ci or row.fi or row.z or row.a or row.di or row.cn) then return false, "carries a drop's fields" end
+	-- Absent means nil: false is a value a peer can send, and it would be saved as the source.
+	if row.k ~= "quest" and row.q ~= nil then return false, "carries a quest ID" end
+	for _, field in ipairs({ "o", "ci", "fi", "z", "a", "di", "cn" }) do
+		if row.k ~= "drop" and row[field] ~= nil then return false, "carries a drop's fields" end
+	end
 	if not (OptionalID(row.a) and OptionalID(row.di) and OptionalID(row.cn)) then return false, "bad area, instance or count" end
 	if (row.x == nil) ~= (row.y == nil) then return false, "position has one coordinate" end
 	if not (wire.Optional(wire.Name, row.nm, MAX_NAME_LENGTH) and wire.Optional(wire.Name, row.on, MAX_NAME_LENGTH)) then return false, "bad name" end
 	if not (OptionalID(row.n) and OptionalID(row.fn) and OptionalID(row.gi)) then return false, "bad NPC, finisher or giver item" end
 	if row.m ~= nil and not (PositiveID(row.m) and C_Map.GetMapInfo(row.m)) then return false, "unknown map" end
-	if row.fi ~= nil and not C_Map.GetMapInfo(row.fi) then return false, "unknown fishing zone" end
-	if row.z ~= nil and not C_Map.GetMapInfo(row.z) then return false, "unknown roll zone" end
+	if row.fi ~= nil and not (PositiveID(row.fi) and C_Map.GetMapInfo(row.fi)) then return false, "unknown fishing zone" end
+	if row.z ~= nil and not (PositiveID(row.z) and C_Map.GetMapInfo(row.z)) then return false, "unknown roll zone" end
 	if not (wire.Optional(wire.Coordinate, row.x) and wire.Optional(wire.Coordinate, row.y)) then return false, "coordinate out of range" end
 	if row.f ~= nil and not FACTIONS[row.f] then return false, "bad faction" end
 	if row.nf ~= nil and not NPC_FACTIONS[row.nf] then return false, "bad NPC faction" end
@@ -121,75 +124,83 @@ local MERGED_FIELDS = {
 
 -- Row kinds this version reads; the toolkit skips the rest (docs/sharing.md, "Versions").
 local KNOWN_KINDS = { trainer = true, vendor = true, quest = true, drop = true }
+-- Shared sources one recipe keeps: a peer's rows cannot be checked against the game, so they cannot grow a recipe
+-- without end (docs/data.md, "Sharing").
+local MAX_SHARED_SOURCES = 64
 
 -- The checked rows into the shared layer, newest per source. Returns whether anything changed.
 function ns.MergeFinds(rows)
-	local db, changed = ns.db, false
+	local db, changed, capped = ns.db, false, 0
 	for _, row in ipairs(rows) do
 		local wireField = SourceField(row)
 		local field, value = IDENTITY[wireField], row[wireField]
-		if row.n then
-			ns.NoteNPC(db.npcs, row.n, row.nm, not row.o and row.m, row.x, row.y, row.s, true)
-			-- A peer only fills in a faction we have not seen ourselves.
-			if not db.npcs[row.n].faction then ns.NoteNPCFaction(row.n, row.nf) end
-		end
-		if row.o then ns.NoteNPC(db.objects, row.o, row.on, row.m, row.x, row.y, row.s, true) end
 		local bucket, id = row.r and db.shared.recipes or db.shared.items, row.r or row.i
 		bucket[id] = bucket[id] or {}
 		local observation = ns.FindSource(bucket[id], { kind = row.k, [field] = value, map = row.m, area = row.a,
 			instance = row.di })
-		if not observation then
-			observation = { kind = row.k, [field] = value, map = row.k == "drop" and row.m or nil }
-			table.insert(bucket[id], observation)
-			changed = true
-		end
-		-- Per field, with the time it was learned (observation.at): fill what is missing, let a newer sighting correct, never clear.
-		-- Reports reach the same result in any order; repeating the same facts changes nothing.
-		local at = observation.at
-		if not at then
-			at = {}
-			for name in pairs(MERGED_FIELDS) do
-				if observation[name] ~= nil then at[name] = observation.seen or 0 end
+		if not observation and #bucket[id] >= MAX_SHARED_SOURCES then
+			capped = capped + 1
+		else
+			if row.n then
+				ns.NoteNPC(db.npcs, row.n, row.nm, not row.o and row.m, row.x, row.y, row.s, true)
+				-- A peer only fills in a faction we have not seen ourselves.
+				if not db.npcs[row.n].faction then ns.NoteNPCFaction(row.n, row.nf) end
 			end
-			observation.at = at
-		end
-		local seen = row.s or 0
-		for name, key in pairs(MERGED_FIELDS) do
-			local incoming = row[key]
-			if incoming ~= nil and name ~= "x" and name ~= "y" then
-				local current, learned = observation[name], at[name]
-				-- Equal times: the higher value wins, so every player settles on the same one.
-				local tie = seen == learned and incoming ~= current and tostring(incoming) > tostring(current)
+			if row.o then ns.NoteNPC(db.objects, row.o, row.on, row.m, row.x, row.y, row.s, true) end
+			if not observation then
+				observation = { kind = row.k, [field] = value, map = row.k == "drop" and row.m or nil }
+				table.insert(bucket[id], observation)
+				changed = true
+			end
+			-- Per field, with the time it was learned (observation.at): fill what is missing, let a newer sighting correct, never clear.
+			-- Reports reach the same result in any order; repeating the same facts changes nothing.
+			local at = observation.at
+			if not at then
+				at = {}
+				for name in pairs(MERGED_FIELDS) do
+					if observation[name] ~= nil then at[name] = observation.seen or 0 end
+				end
+				observation.at = at
+			end
+			local seen = row.s or 0
+			for name, key in pairs(MERGED_FIELDS) do
+				local incoming = row[key]
+				if incoming ~= nil and name ~= "x" and name ~= "y" then
+					local current, learned = observation[name], at[name]
+					-- Equal times: the higher value wins, so every player settles on the same one.
+					local tie = seen == learned and incoming ~= current and tostring(incoming) > tostring(current)
+					if current == nil or seen > learned or tie then
+						if incoming ~= current then
+							observation[name] = incoming
+							changed = true
+						end
+						at[name] = seen
+					end
+				end
+			end
+			-- A fishing spot and a creature or object drop keep their own position, merged as one pair so two
+			-- reports never combine into a spot nobody stood at; other sources use the NPC's.
+			if row.x and (row.fi or (row.k == "drop" and (row.n or row.o))) then
+				local learned = at.x
+				local incoming, current = ("%s,%s"):format(row.x, row.y), observation.x and ("%s,%s"):format(observation.x, observation.y)
+				local tie = seen == learned and incoming ~= current and incoming > current
 				if current == nil or seen > learned or tie then
 					if incoming ~= current then
-						observation[name] = incoming
+						observation.x, observation.y = row.x, row.y
 						changed = true
 					end
-					at[name] = seen
+					at.x, at.y = seen, seen
 				end
 			end
-		end
-		-- A fishing spot and a creature or object drop keep their own position, merged as one pair so two
-		-- reports never combine into a spot nobody stood at; other sources use the NPC's.
-		if row.x and (row.fi or (row.k == "drop" and (row.n or row.o))) then
-			local learned = at.x
-			local incoming, current = ("%s,%s"):format(row.x, row.y), observation.x and ("%s,%s"):format(observation.x, observation.y)
-			local tie = seen == learned and incoming ~= current and incoming > current
-			if current == nil or seen > learned or tie then
-				if incoming ~= current then
-					observation.x, observation.y = row.x, row.y
-					changed = true
-				end
-				at.x, at.y = seen, seen
+			if seen > (observation.seen or 0) then
+				observation.seen, observation.build = seen, row.b or observation.build
 			end
-		end
-		if seen > (observation.seen or 0) then
-			observation.seen, observation.build = seen, row.b or observation.build
-		end
-		if row.i and not db.itemRecipe[row.i] and not ns.GetSeededRecipe(row.i) then
-			db.pendingItems[row.i] = db.pendingItems[row.i] or {}
+			if row.i and not db.itemRecipe[row.i] and not ns.GetSeededRecipe(row.i) then
+				db.pendingItems[row.i] = db.pendingItems[row.i] or {}
+			end
 		end
 	end
+	if capped > 0 then ns.toolkit:Trace(ns.module, "sources capped", "rows", capped, "limit", MAX_SHARED_SOURCES) end
 	return changed
 end
 

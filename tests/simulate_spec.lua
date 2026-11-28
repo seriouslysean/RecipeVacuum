@@ -769,6 +769,26 @@ describe("simulation", function()
 	end)
 
 	-- 6. Validation rejects malformed new rows
+	-- Fails if false passes for an absent field: a vendor row with q, o or ci set to false was saved as a source
+	-- with quest, object or container = false, and fi or z = false reached the client's map lookup.
+	it("reject false where a field must be absent", function()
+		for _, field in ipairs({ "q", "o", "ci", "fi", "z" }) do
+			local row = { k = "vendor", i = 1, n = 1 }
+			row[field] = false
+			assert(Rejected(b, row), "a vendor row with " .. field .. " = false is rejected")
+		end
+	end)
+	-- Fails if a peer can grow one recipe's shared sources without end: 200 replies of 64 made-up vendors left
+	-- 12,801 sources on one recipe.
+	it("a recipe keeps at most 64 shared sources", function()
+		local m = boot(nil)
+		for batch = 0, 2 do
+			local vendors = {}
+			for index = 1, 64 do vendors[index] = { k = "vendor", i = 1000, n = batch * 64 + index } end
+			m.share:Merge(vendors)
+		end
+		assert(#m.db.shared.items[1000] == 64 and m.db.npcs[65] == nil, "the recipe has " .. #m.db.shared.items[1000] .. " shared sources")
+	end)
 	it("reject drop with two sources", function() assert(Rejected(b, { k = "drop", i = 1, n = 1, o = 2 }), "reject drop with two sources") end)
 	it("reject quest without quest id", function() assert(Rejected(b, { k = "quest", i = 1 }), "reject quest without quest id") end)
 	it("reject vendor carrying a quest", function() assert(Rejected(b, { k = "vendor", i = 1, n = 1, q = 5 }), "reject vendor carrying a quest") end)
