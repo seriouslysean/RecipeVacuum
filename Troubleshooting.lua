@@ -497,7 +497,7 @@ table.insert(troubleshooting, { "mockranks", label = "Test Rank Sources", button
 		ns.included.items[itemID] = ns.included.items[itemID] or {}
 		table.insert(ns.included.items[itemID], { kind = "vendor", npc = npcID, faction = faction, seen = now })
 	end
-	-- Rank links go in a session-only overlay, so a real rank learned meanwhile is never touched (Astra review).
+	-- Rank links go in a session-only overlay, so a real rank learned meanwhile is never touched.
 	ns.rankOverlay = {}
 	local function Add(skillLine, fromCap)
 		ns.rankOverlay[skillLine] = ns.rankOverlay[skillLine] or {}
@@ -912,7 +912,7 @@ local function RecordLayout()
 	Edge("ours details box", parts.detail)
 	ns.db.devLayout = ns.db.devLayout or {}
 	-- Every record is kept, by view and time, so each view and each build of it stays to be read: debugging data, nothing is
-	-- dropped (owner, 2026-11-26).
+	-- dropped.
 	record.recipe = parts.detail.recipeID and parts.detail.Name:GetText() or "no recipe selected"
 	record.when = date("%Y-%m-%d %H:%M:%S")
 	ns.db.devLayout[record.profession .. " / " .. record.recipe .. " @ " .. record.when] = record

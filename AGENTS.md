@@ -26,6 +26,7 @@ The short form of the shared standards, as they apply here.
 - Works in every client language: identify things by ID, never by matching English text. Names are for display only. Where the game gives no ID, say so in a comment and list it under known gaps.
 - Sit nicely with other addons: hooks that read Blizzard's state run after its code (`hooksecurefunc`), and the only globals are the saved variables, slash commands and one named frame (see `.luacheckrc`).
 - Comments say why, in a line or two. Explanations, measurements and history go in `docs/`, and the comment points there.
+- Write docs and comments imperatively in one voice: no third person, no attributions or quotes of who decided (toolkit decision 0081).
 
 ## Layout
 

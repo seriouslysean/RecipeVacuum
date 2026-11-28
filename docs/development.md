@@ -28,7 +28,7 @@ The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/
 
 ## Testing on the Steam Deck
 
-`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the copy's commit and second (`a81c4ef@08 <full hash> <UTC time>`, `+` after the short hash when it carries uncommitted work, kept as a snapshot under `refs/deck/` so the hash resolves to the code that ran; kit `docs/standards.md`, "Working build"). The panel title shows the first word, which changes on every copy and reads in a screenshot; the session log line has all of it. No counter is kept (owner, 2026-11-26, after a Grok antagonist pass: a per-clone counter numbers copies, not code and needs a ledger). The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
+`scripts/deploy-deck` runs the checks, copies the working build to the Deck's AddOns folder over SSH and stamps the copied TOC's version with the copy's commit and second (`a81c4ef@08 <full hash> <UTC time>`, `+` after the short hash when it carries uncommitted work, kept as a snapshot under `refs/deck/` so the hash resolves to the code that ran; kit `docs/standards.md`, "Working build"). The panel title shows the first word, which changes on every copy and reads in a screenshot; the session log line has all of it. No counter is kept: a per-clone counter numbers copies, not code, and needs a ledger. The repository's TOC keeps `@project-version@`; the release packager fills it from the tag. A checkout loaded straight from the repository (the Mac's symlinked AddOns folder) shows "dev".
 
 ## Embedded libraries
 
@@ -54,7 +54,7 @@ Code between `--@debug@` and `--@end-debug@` exists in a checkout and is strippe
 - turns on the game's Lua error display (`scriptErrors`) at load and leaves it on;
 - uses a scan from the current game build ahead of the seed.
 
-The layout is recorded only from the Window Layout [Record] row. It used to be taken by itself whenever the panel drew a different view (25c7ef5); the logfmt rule of 2026-11-27 says a development tool logs only when its button is pressed (kit `docs/standards.md`, "Working build"), so that stopped. `/recipevacuum layout` takes one on demand. It measures Blizzard's profession window against our panel so the layout is matched mechanically (owner, 2026-11-26: "I shouldn't have to correct what is a mechanical match").
+The layout is recorded only from the Window Layout [Record] row. It used to be taken by itself whenever the panel drew a different view (25c7ef5); the logfmt rule of 2026-11-27 says a development tool logs only when its button is pressed (kit `docs/standards.md`, "Working build"), so that stopped. `/recipevacuum layout` takes one on demand. It measures Blizzard's profession window against our panel so the layout is matched mechanically, never corrected by eye.
 
     luajit tools/layout-diff.lua <WTF/Account/<account>/SavedVariables/RecipeVacuum.lua>
 
@@ -64,7 +64,7 @@ A file must still compile with the marked blocks removed.
 
 ## Development commands
 
-In a checkout build only; releases have none of these (owner, 2026-11-25: "Watch should stay a command and only be for debug builds"). `/recipevacuum help` lists them. Watch and log are the toolkit's, shared by every Boltgrip addon (owner, 2026-11-25: "Go, kit commands only"): The log is on from the start in a working build (owner, 2026-11-25: "don't I want an always on debug mode while testing?"): it records where loot, quest rewards, vendor stock and trainer lists come from, and every sharing step, written by the toolkit (lines starting `SHARE`: probes sent and heard, finds asked for, batches sent and received with row counts, merged or rejected), with one chat line when recipes are involved. `/boltgrip watch off` pauses it and is remembered; `/boltgrip watch on` resumes. `/boltgrip log` shows each addon's current run in a window to copy from; `/boltgrip log all` shows the last 20,000 lines of each; `/boltgrip log clear` empties them. The log is written with the saved variables on `/reload` or logout.
+In a checkout build only; releases have none of these; watch stays a command, for working builds only. `/recipevacuum help` lists them. Watch and log are the toolkit's, shared by every Boltgrip addon, and only the kit has them. The log is on from the start in a working build: it records where loot, quest rewards, vendor stock and trainer lists come from, and every sharing step, written by the toolkit (lines starting `SHARE`: probes sent and heard, finds asked for, batches sent and received with row counts, merged or rejected), with one chat line when recipes are involved. `/boltgrip watch off` pauses it and is remembered; `/boltgrip watch on` resumes. `/boltgrip log` shows each addon's current run in a window to copy from; `/boltgrip log all` shows the last 20,000 lines of each; `/boltgrip log clear` empties them. The log is written with the saved variables on `/reload` or logout.
 
 ## Seeding
 
@@ -83,11 +83,11 @@ The file holds IDs only. Names are left out on purpose: they differ by language 
 
 ## Translations
 
-Every string a player reads is looked up in `Locales/enUS.lua` (AceLocale-3.0; the key is the English text), so the addon can be translated without touching code (owner, 2026-11-25: "English as the default. Let's only ship English to start though, but I want the strings pulled out for localization"). v0.1.0 ships English only. A language is one more file in `Locales/`, listed in the TOC after `enUS.lua`; translations will be made with Opus against Blizzard's own translated game terms. Working-build lines (watch, log, scan, perf) stay English in the code. Known gap: the drop evidence line joins three counted phrases, so a language with other word order cannot reorder them.
+Every string a player reads is looked up in `Locales/enUS.lua` (AceLocale-3.0; the key is the English text), so the addon can be translated without touching code; English is the default. v0.1.0 ships English only. A language is one more file in `Locales/`, listed in the TOC after `enUS.lua`; translations will be made with Opus against Blizzard's own translated game terms. Working-build lines (watch, log, scan, perf) stay English in the code. Known gap: the drop evidence line joins three counted phrases, so a language with other word order cannot reorder them.
 
 ## Known gaps
 
-Recorded from the Astra review of 2026-11-25 (RecipeVacuum a763a62..434c27a); none is fixed until what would make it real happens.
+Recorded from the review of 2026-11-25 (RecipeVacuum a763a62..434c27a); none is fixed until what would make it real happens.
 
 | Gap | Who can reach it today | What would make it worth fixing |
 |---|---|---|

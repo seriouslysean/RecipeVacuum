@@ -128,7 +128,7 @@ describe("simulation", function()
 		function count(layer) local r, i = 0, 0 for _, l in pairs(layer.recipes) do r = r + #l end for _, l in pairs(layer.items) do i = i + #l end return r, i end
 	end)
 
-	-- 1. Schema 3 -> 4 on the owner's real save
+	-- 1. Schema 3 -> 4 on a real save
 	local a, db, before, beforeRecipes, beforeItems, beforeRevision
 	it("schema is 14", function()
 		dofile(savedFile); before = RecipeVacuumDB
@@ -1056,7 +1056,7 @@ describe("simulation", function()
 		end)
 	end)
 
-	-- 6c. The unlearned recipes panel, built on the owner's Steam Deck as a prototype.
+	-- 6c. The unlearned recipes panel, built on the Steam Deck as a prototype.
 	describe("panel", function()
 		local pns, queue, buttons, traces, init, Fake, inLine, clientDifficulty, clientCapped, skillRank
 		local made = {} -- every stand-in frame, in creation order
@@ -1206,7 +1206,7 @@ describe("simulation", function()
 			assert(text:find("pool target", 1, true), "the target is worked out from the finds")
 			assert(text:find("pool ready", 1, true), "the frames are made before the list needs them")
 		end)
-		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the owner's window froze for 6 s.
+		-- Fails if each Init of the crafting page, several in one frame as the window opens, rebuilds the list: the window froze for 6 s.
 		it("several Init calls in one frame build the list once", function()
 			for _ = 1, 5 do init() end
 			Flush()
@@ -1451,7 +1451,7 @@ describe("simulation", function()
 			clientDifficulty[101] = rawDifficulty
 			assert(ok, err)
 		end)
-		-- Fails if events or Init calls with the same content rebuild the list: the owner's log showed "UI panel shown" every 2 to 30 seconds with
+		-- Fails if events or Init calls with the same content rebuild the list: a working log showed "UI panel shown" every 2 to 30 seconds with
 		-- no input, which re-anchored the rows under the gamepad cursor. A skill rise inside a band and a refreshed cache change no content.
 		it("an event with unchanged content does not rebuild", function()
 			pns.ClearUnlearnedCache()
@@ -1467,7 +1467,7 @@ describe("simulation", function()
 			assert(Builds() == builds, "an event with unchanged content does not rebuild")
 		end)
 		-- Fails if a craft blanks the shown list: a skill rise clears the summaries, the list reads as not ready for a frame,
-		-- and the panel hid it, then rebuilt it from nothing (owner's Deck video, 2026-11-27).
+		-- and the panel hid it, then rebuilt it from nothing (Deck video, 2026-11-27).
 		it("a list read again after a craft stays shown and refreshes in place", function()
 			pns.ClearUnlearnedCache()
 			init(300)
@@ -1563,7 +1563,7 @@ describe("simulation", function()
 			schematic.reagentSlotSchematics = {}
 			assert(ok, err)
 		end)
-		-- Fails if the details' header stays fixed above the reagents: the owner chose one scroll for the whole box, as the quest
+		-- Fails if the details' header stays fixed above the reagents: the whole box is one scroll, as the quest
 		-- log's details scroll their title (QuestMapFrame.xml:801), and a new recipe must open at its name.
 		it("the details' header scrolls with the reagents, and a new recipe opens at the top", function()
 			local detail, detailScroll
