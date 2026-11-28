@@ -27,7 +27,7 @@ function ns.InitSettings()
 				end },
 			{ kind = "checkbox", key = "shareFinds", label = L["Share My Finds"], default = true,
 				tooltip = L["Sends what you find to party, guild and friends who use Recipe Vacuum."],
-				note = L["Nothing else is sent."],
+				note = L["Others can tell your characters are one player, and see where you found drops and fish."],
 				onChange = function() ns.share:Update() end },
 		} },
 		{ heading = L["Personal Finds"], place = "features", rows = {
