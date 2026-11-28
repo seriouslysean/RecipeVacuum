@@ -72,7 +72,11 @@ GetServerTime = os.time
 UnitName = function() return "Tester" end
 UnitLevel = function() return 1 end
 UnitFactionGroup = function() return "Alliance", "Alliance" end
-GetSubZoneText = function() return "" end
+GetZoneText, GetSubZoneText, GetMinimapZoneText = function() return "Elwynn Forest" end, function() return "" end, function()
+	return "Elwynn Forest"
+end
+-- Outside any instance, as the client answers it: both values, since Lua 5.1's format refuses a missing one.
+IsInInstance = function() return false, "none" end
 GetPhysicalScreenSize = function() return 1280, 800 end
 GetLocale = function() return "enUS" end
 -- A client with no gamepad and no add-on profiler: both answer numbers the stand-ins cannot.

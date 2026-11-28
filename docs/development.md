@@ -8,7 +8,7 @@ Link the repository into the Forever client, then `/reload` after each change:
 ln -s "$PWD" "/Applications/World of Warcraft/_forever_/Interface/AddOns/RecipeVacuum"
 ```
 
-`luacheck` and `busted` come from LuaRocks (`luarocks --lua-version 5.1 install busted`) and `luajit` from Homebrew; all match the client's Lua 5.1.
+The checks run on PUC Lua 5.1, the client's Lua and CI's; the toolkit's `tools/setup-lua.sh` builds it with CI's busted and luacheck (kit decision 0082). The repository's tools (`tools/*.lua`) run on `luajit` from Homebrew.
 
 ## Checks
 
@@ -18,7 +18,7 @@ One script runs every check; the pre-push hook and CI run it too. Turn the hook 
 scripts/check [an old save] [a current save]
 ```
 
-The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/module-check.sh`), one line each with its seconds: Lua 5.1 syntax (through LuaJIT; the `luac` on a current machine is a newer Lua and accepts syntax the client rejects), ShellCheck and shfmt on `scripts/check`, `luacheck`, the toolkit's conformance check, that every file still compiles with the `--@debug@` blocks removed, then the specs (`busted`, `tests/*_spec.lua`, set up by `.busted`) on the source and on the stripped release build. A failed step shows its output, and any failure fails the run.
+The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/module-check.sh`), one line each with its seconds: Lua 5.1 syntax (Lua 5.1's own `luac -p`), ShellCheck and shfmt on `scripts/check`, `luacheck`, the toolkit's conformance check, that every file still compiles with the `--@debug@` blocks removed, then the specs (`busted`, `tests/*_spec.lua`, set up by `.busted`) on the source and on the stripped release build. A failed step shows its output, and any failure fails the run.
 
 - The script passes its inputs to the specs as `RV_OLD_SAVE` and `RV_SAVE`; one spec alone runs with them set, for example `RV_SAVE=tests/fixtures/current.lua busted tests/simulate_spec.lua`.
 - The upgrade and simulation specs run on the made-up saved files in `tests/fixtures` (schema 2 and the current schema). A real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`) can be given instead, to try the code on real data; real saves stay out of the repository.
