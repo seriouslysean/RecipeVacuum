@@ -1172,9 +1172,31 @@ end
 
 -- What the box shows with no recipe, and between recipes: the schematic background of the profession, as the window's pane has it
 -- before a pick.
+
+-- The art keeps the scale the window's pane gives it, cut to our shorter box from its bottom right, where its picture sits.
+local function CropDetailBackground()
+	local info = detail.backgroundInfo
+	local pane = ProfessionsFrame and ProfessionsFrame.CraftingPage and ProfessionsFrame.CraftingPage.SchematicForm
+	pane = type(pane) == "table" and pane.GetWidth and pane
+	local paneWidth, paneHeight = pane and pane:GetWidth() or 0, pane and pane:GetHeight() or 0
+	if not info or paneWidth <= 0 or paneHeight <= 0 then return end
+	local shareX = math.min(detail:GetWidth() / paneWidth, 1)
+	local shareY = math.min(detail:GetHeight() / paneHeight, 1)
+	local du, dv = info.rightTexCoord - info.leftTexCoord, info.bottomTexCoord - info.topTexCoord
+	detail.Background:SetTexture(info.file)
+	detail.Background:SetTexCoord(info.rightTexCoord - du * shareX, info.rightTexCoord, info.bottomTexCoord - dv * shareY, info.bottomTexCoord)
+	ns.toolkit:Trace(ns.module, "details art", "share_x", shareX, "share_y", shareY, "pane_width", paneWidth, "pane_height", paneHeight)
+end
+
 local function SetDetailBackground()
 	local atlas = professionInfo and Professions.GetProfessionBackgroundAtlas(professionInfo)
 	detail.Background:SetAtlas(atlas or "Professions-background-summarylist", TextureKitConstants.IgnoreAtlasSize)
+	detail.backgroundInfo = atlas and C_Texture.GetAtlasInfo(atlas) or nil
+	if not detail.cropHooked then
+		detail.cropHooked = true
+		detail:HookScript("OnSizeChanged", CropDetailBackground)
+	end
+	CropDetailBackground()
 end
 
 local function ShowEmptyDetail()
