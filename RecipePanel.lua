@@ -134,8 +134,18 @@ local function MakeShield(control)
 	return shield
 end
 
+-- A secure button cannot be made and set up in combat: a first target asked for then waits here until combat ends.
+local waiting = {} -- [control] = target
+
 function ns.PinShield(control, target)
-	local shield = shields[control] or MakeShield(control)
+	local shield = shields[control]
+	if not shield then
+		if InCombatLockdown() then
+			waiting[control] = target
+			return
+		end
+		shield = MakeShield(control)
+	end
 	shield.target = target
 	Place(shield)
 end
@@ -154,5 +164,7 @@ function ns.HidePinShields()
 end
 
 function ns.RestorePinShields()
+	for control, target in pairs(waiting) do ns.PinShield(control, target) end
+	wipe(waiting)
 	for _, shield in pairs(shields) do Place(shield) end
 end
