@@ -1096,14 +1096,6 @@ local function MakeMapButton()
 			ns.toolkit:Trace(ns.module, "secure map press", "down", down, "type", self:GetAttribute("type"))
 			if not down then return end
 			Press(self)
-			-- The map opens on the player's zone (Blizzard_WorldMap.lua:381); a frame later, outside the secure open, it moves to the pin's.
-			local mapID = open and self.single.target.mapID
-			if mapID then
-				RunNextFrame(function()
-					if WorldMapFrame and WorldMapFrame:IsShown() then WorldMapFrame:SetMapID(mapID) end
-					ns.toolkit:Trace(ns.module, "secure map zone", "map", mapID, "now", WorldMapFrame and WorldMapFrame:GetMapID())
-				end)
-			end
 		end)
 		button:SetScript("PostClick", function(_, _, down)
 			ns.toolkit:Trace(ns.module, "secure map open", "down", down, "shown", WorldMapFrame and WorldMapFrame:IsShown())
