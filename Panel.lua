@@ -1074,15 +1074,34 @@ end
 -- several are the dropdown-looking button above, which opens the list of places. Our own Buttons throughout: a Blizzard menu
 -- would taint the Gamepad UI (docs/client-notes.md, "Gamepad").
 local function MakeMapButton()
-	local button = CreateFrame("Button", nil, detail or pool.holder, "UIPanelButtonTemplate")
+	local secure = ns.secureMapTest
+	local button = CreateFrame("Button", nil, detail or pool.holder,
+		secure and "UIPanelButtonTemplate, SecureActionButtonTemplate" or "UIPanelButtonTemplate")
 	button:SetSize(PANEL_INNER_WIDTH, SOURCE_HEIGHT)
 	button:SetText(MAP_PIN)
-	button:SetScript("OnClick", function(self)
+	local function Press(self)
 		if self.single then
 			ns.toolkit:Trace(ns.module, "source pressed", "label", self.single.label)
 			ns.ShowOnMap(self.single.target)
 		end
-	end)
+	end
+	if secure then
+		-- Decision 0068's secure test: the pin is set before the template's secure OnClick clicks the minimap's zone text,
+		-- whose own handler opens the map (Blizzard_Minimap/Mainline/Minimap.lua:110), so the open runs from Blizzard's code.
+		button:RegisterForClicks("AnyUp", "AnyDown")
+		button:SetAttribute("clickbutton", MinimapCluster and MinimapCluster.ZoneTextButton)
+		button:SetScript("PreClick", function(self, _, down)
+			local open = self.single and ns.toolkit.IsGamepadUI() and not InCombatLockdown()
+			if not InCombatLockdown() then self:SetAttribute("type", open and "click" or nil) end
+			ns.toolkit:Trace(ns.module, "secure map press", "down", down, "type", self:GetAttribute("type"))
+			if not down then Press(self) end
+		end)
+		button:SetScript("PostClick", function(_, _, down)
+			ns.toolkit:Trace(ns.module, "secure map open", "down", down, "shown", WorldMapFrame and WorldMapFrame:IsShown())
+		end)
+	else
+		button:SetScript("OnClick", Press)
+	end
 	-- A disabled button still shows its tooltip: the sources are the reason it is disabled.
 	button:SetMotionScriptsWhileDisabled(true)
 	button:SetScript("OnEnter", ShowMapTooltip)

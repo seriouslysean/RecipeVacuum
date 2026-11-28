@@ -966,6 +966,8 @@ end, quiet = true })
 table.insert(troubleshooting, { "learned", label = "Learned Services", button = "Read", "Read the open trainer's learned services once", function()
 	ns.ReadLearnedNow()
 end })
+-- Decision 0068's secure test: under the Gamepad UI the working build's Map Pin opens the map through a secure click.
+ns.secureMapTest = true
 -- Whether opening the world map from addon code taints (kit decision 0068): pins the last Map Pin place again and opens the
 -- map at it; a block that follows is logged with its tainted fields.
 table.insert(troubleshooting, { "mapopen", label = "Map Pin and Open", button = "Test", "Pin the last Map Pin place and open the map at it", function()
