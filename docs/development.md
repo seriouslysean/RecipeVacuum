@@ -18,7 +18,7 @@ One script runs every check; the pre-push hook and CI run it too. Turn the hook 
 scripts/check [an old save] [a current save]
 ```
 
-The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/module-check.sh`), one line each with its seconds: Lua 5.1 syntax (Lua 5.1's own `luac -p`), ShellCheck and shfmt on `scripts/check`, `luacheck`, the toolkit's conformance check, that every file still compiles with the `--@debug@` blocks removed, then the specs (`busted`, `tests/*_spec.lua`, set up by `.busted`) on the source and on the stripped release build. A failed step shows its output, and any failure fails the run.
+The steps are the toolkit's shared module check (`Libs/JigBoltgripToolkit/tests/module-check.sh`), one line each with its seconds: Lua 5.1 syntax (Lua 5.1's own `luac -p`), ShellCheck and shfmt on `scripts/check`, that every tracked XML file is well formed, that only scripts carry the execute bit, `luacheck`, the toolkit's conformance check, that every file still compiles with the `--@debug@` blocks removed, then the specs (`busted`, `tests/*_spec.lua`, set up by `.busted`) on the source and on the stripped release build. A failed step shows its output, and any failure fails the run.
 
 - The script passes its inputs to the specs as `RV_OLD_SAVE` and `RV_SAVE`; one spec alone runs with them set, for example `RV_SAVE=tests/fixtures/current.lua busted tests/simulate_spec.lua`.
 - The upgrade and simulation specs run on the made-up saved files in `tests/fixtures` (schema 2 and the current schema). A real saved-variables file (`WTF/Account/<account>/SavedVariables/RecipeVacuum.lua`) can be given instead, to try the code on real data; real saves stay out of the repository.
@@ -41,7 +41,7 @@ Vendored copies under `Libs/`, loaded in TOC order; nothing is fetched at packag
 | ChatThrottleLib | 32 | Ace3 (with AceComm-3.0) |
 | AceComm-3.0 | MINOR 14 | Ace3 (the toolkit's share sends through it) |
 | AceLocale-3.0 | MINOR 6 | Ace3 commit 075bafb (master; newer than the last release tag, r981, so it is the copy that runs) |
-| JigBoltgripToolkit-1.0 | MINOR 48 | the toolkit repository; change it there, raise MINOR, copy the file and its `tests/stubs.lua` and `tests/conformance.lua` |
+| JigBoltgripToolkit-1.0 | the toolkit's `MINOR` (line 3 of the file) | the toolkit repository; change it there, raise MINOR, copy the file and the shared files of its `tests/` folder, which conformance compares with the toolkit checkout |
 
 The Ace3 copies came from a repository checkout, not a tagged release, and that revision was not recorded; record the release tag at the next update. At run time LibStub uses the highest version of each library among all installed addons, so another addon's newer copy can be the one that runs.
 

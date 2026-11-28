@@ -8,7 +8,7 @@ It tracks a recipe once you have come across it, and fills in where it comes fro
 - **Friends** (the default): also what your party, raid, guild and friends see, link or share.
 - **Public**: also recipes linked in public chat.
 
-On a profession's rank bar, a mark appears when the next rank has a known place; clicking it sets a map pin. **Announce New Finds** controls the chat line after a visit with new sources and the line when a bag, auction house, bank, trade or mail window closes on new recipes for your professions.
+On a profession's rank bar, a mark appears when the next rank has a known place; clicking it sets a map pin. **Show Chat Alerts** controls the chat line after a visit with new sources and the line when a bag, auction house, bank, trade or mail window closes on new recipes for your professions.
 
 ## Sharing
 

@@ -58,7 +58,7 @@ Hidden addon messages only. The transport (probes, requests, batches, limits, wh
 
 1. A probe (collection ID, revision) goes out on joining a guild or group, on reconnecting, and when a friend comes online. With Share My Finds off the probe carries no collection ID (`0-0`, revision 0).
 2. A peer that is behind whispers a request for everything after its revision.
-3. The owner replies with one batch, capped near 4 kB encoded; the receiver asks again until it reaches the tip.
+3. The owner replies with one batch, capped near 4 kB encoded; the receiver asks again until it reaches the tip, for at most 64 replies; what is left follows at the owner's next probe (toolkit decision 0087).
 
 Received rows are parsed and checked field by field, never run as code: received text passed to `loadstring` would let any sender run code in the receiver's game. A row that fails its checks is dropped on its own and the rest of the batch is kept; a batch that cannot be read at all is skipped. Either way the cursor moves past it, since the same batch would fail the same way every time it was asked for.
 
