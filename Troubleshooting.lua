@@ -871,13 +871,17 @@ local function RecordLayout()
 	-- The map pin can be reported shown yet not seen: record every frame of ours over its centre, with level and strata,
 	-- and the button's own regions, so what hides it is measured.
 	local pin = parts.mapButton and parts.mapButton:IsShown() and parts.mapButton or parts.mapMore
+	local x, y
 	if pin and pin:IsVisible() then
-		local x, y = pin:GetCenter()
+		x, y = pin:GetCenter()
+		if not x then toolkit:Trace(ns.module, "layout pin unplaced", "points", pin:GetNumPoints()) end
+	end
+	if x then
 		local function Walk(frame)
 			for _, kid in ipairs({ frame:GetChildren() }) do
 				if kid ~= pin and kid:IsVisible() then
 					local left, right, top, bottom = kid:GetLeft(), kid:GetRight(), kid:GetTop(), kid:GetBottom()
-					if left and x >= left and x <= right and y >= bottom and y <= top then
+					if left and right and top and bottom and x >= left and x <= right and y >= bottom and y <= top then
 						toolkit:Trace(ns.module, "layout pin cover", "type", kid:GetObjectType(), "level", kid:GetFrameLevel(),
 							"strata", kid:GetFrameStrata(), "pin_level", pin:GetFrameLevel(), "pin_strata", pin:GetFrameStrata(),
 							"parent_is_panel", kid:GetParent() == parts.panel, "debug", kid:GetDebugName())

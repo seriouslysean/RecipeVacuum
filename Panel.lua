@@ -1514,7 +1514,8 @@ end
 
 -- Show Map's two buttons sit in the strip under the box, in the details' frame.
 function pool.AdoptMapControl(button)
-	if button:GetParent() == detail then return end
+	-- Placed once: a control made ahead may already be the details' child yet have no point, and an unplaced frame draws nothing.
+	if button:GetParent() == detail and button:GetNumPoints() > 0 then return end
 	button:SetParent(detail)
 	button:ClearAllPoints()
 	button:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", FRAME_INSET, BUTTON_BOTTOM) -- the window's action buttons sit at the bottom of their page
