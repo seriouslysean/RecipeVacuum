@@ -9,7 +9,7 @@ L["Intake complete! %d recipe from %s!"] = true
 L["Intake complete! %d recipes from %s!"] = true
 L["%d recipe seen!"] = true
 L["%d recipes seen!"] = true
-L["%s located in %s! Map pin set!"] = true
+L["Coordinates locked! %s triangulated in %s! Pin deployed!"] = true
 
 -- Panel (Panel.lua)
 L["Skill %d to %d"] = true

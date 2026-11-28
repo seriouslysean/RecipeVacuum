@@ -1,6 +1,6 @@
 # Voice
 
-The addon's voiced lines show the Vacuum at work: "Boltgrip's Recipe Vacuum whirs and rattles. Intake complete! 8 recipes from Stephen Ryback!" The second, said when a bag, auction house, bank, trade or mail window closes on new recipes for the character's professions: "Boltgrip's Recipe Vacuum whirs and rattles. 2 recipes seen!" The third, said when a click sets a map pin: "Boltgrip's Recipe Vacuum whirs and rattles. Stephen Ryback located in Stormwind City! Map pin set!" Every line is in `Voice.lua`; a new or changed line goes there, never inline in code. The rules and the delivery are the toolkit's, in the library repository's `docs/standards.md` ("Voice"); this page holds what is the Vacuum's own.
+The addon's voiced lines show the Vacuum at work: "Boltgrip's Recipe Vacuum whirs and rattles. Intake complete! 8 recipes from Stephen Ryback!" The second, said when a bag, auction house, bank, trade or mail window closes on new recipes for the character's professions: "Boltgrip's Recipe Vacuum whirs and rattles. 2 recipes seen!" The third, said when a click sets a map pin: "Boltgrip's Recipe Vacuum whirs and rattles. Coordinates locked! Stephen Ryback triangulated in Stormwind City! Pin deployed!" Every line is in `Voice.lua`; a new or changed line goes there, never inline in code. The rules and the delivery are the toolkit's, in the library repository's `docs/standards.md` ("Voice"); this page holds what is the Vacuum's own.
 
 ## Rules
 
